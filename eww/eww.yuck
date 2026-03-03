@@ -1,0 +1,118 @@
+(defpoll hour :interval "1s" `date +%H`)
+(defpoll minutes :interval "1s" `date +:%M`)
+(defpoll seconds :interval "1s" `date +%S`)
+
+(defpoll date_year :interval "1m"
+  `date +%Y.`)
+
+(defpoll date_day :interval "1m"
+  `date "+| %B %d. | %A"`)
+
+(defpoll system_info :interval "5s"
+  `./scripts/system.py`)
+
+(defpoll weather_info :interval "10m"
+  `./scripts/weather.py $(jq -r '.api_key' config.json) $(jq -r '.city' config.json) $(jq -r '.lang' config.json) $(jq -r '.units' config.json)`)
+
+(defpoll config :interval "1h" `cat config.json`)
+
+(defwindow main_window
+           :monitor 0
+           :geometry (geometry :x "0%"
+                               :y "0%"
+                               :width "820px"
+                               :height "250px"
+                               :anchor "center")
+           :stacking "bottom"
+           :windowtype "normal"
+           :wm-ignore true
+  (widget_clock_weather))
+
+(defwidget widget_clock_weather []
+  (box :class "main-container" :orientation "h" :space-evenly false
+    
+    ;; LEFT SECTION: Clock and System Info
+    (box :class "clock-section" :orientation "v" :space-evenly false :width 450
+      
+      (box :class "date-box" :orientation "h" :space-evenly false
+        (label :class "year-label" :text date_year)
+        (label :class "date-label" :text date_day)
+      )
+
+      (box :class "time-box" :orientation "h" :space-evenly false
+        (label :class "hour-label" :text hour)
+        (label :class "minutes-label" :text minutes)
+        (label :class "seconds-label" :text ": ${seconds}")
+      )
+
+      (box :class "system-info" :orientation "h" :space-evenly false :spacing 40
+        ;; HDD & CPU Column
+        (box :orientation "v" :space-evenly false :spacing 5
+          (box :orientation "h" :space-evenly false :spacing 10
+            (label :class "system-label" :text "HDD")
+            (label :class "system-value" :text {system_info.hdd})
+          )
+          (box :orientation "h" :space-evenly false :spacing 10
+            (label :class "system-label" :text "CPU")
+            (label :class "system-value" :text {system_info.cpu})
+          )
+        )
+        ;; RAM & SWAP Column
+        (box :orientation "v" :space-evenly false :spacing 5
+          (box :orientation "h" :space-evenly false :spacing 10
+            (label :class "system-label" :text "RAM")
+            (label :class "system-value" :text {system_info.ram})
+          )
+          (box :orientation "h" :space-evenly false :spacing 10
+            (label :class "system-label" :text "SWAP")
+            (label :class "system-value" :text {system_info.swap})
+          )
+        )
+      )
+    )
+
+    ;; RIGHT SECTION: Weather
+    (box :class "weather-section" :orientation "h" :space-evenly false
+      
+      ;; Vertical line image
+      (image :path { "images/theme/" + config.appearance + "/elements/line.png" } :image-width 2 :image-height 200)
+
+      (box :class "weather-content" :orientation "v" :space-evenly false :margin-left 20
+        
+        (box :class "weather-header" :orientation "h" :space-evenly false :halign "start"
+          (image :path { "images/theme/" + config.appearance + "/weather/dovora/" + weather_info.icon_path + ".png" } :image-width 80 :image-height 80)
+        )
+
+        (box :class "city-box" :orientation "h" :space-evenly false :spacing 10
+          (image :path { "images/theme/" + config.appearance + "/elements/map-marker.png" } :image-width 20 :image-height 20)
+          (label :class "city-label" :text {weather_info.name})
+        )
+
+        (box :class "temp-box" :orientation "h" :space-evenly false :spacing 10
+          (image :path { "images/theme/" + config.appearance + "/elements/temperature.png" } :image-width 30 :image-height 30)
+          (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol})
+        )
+
+        (box :class "details-box" :orientation "h" :space-evenly false :spacing 5
+          (image :path { "images/theme/" + config.appearance + "/elements/arrow-right.png" } :image-width 15 :image-height 15)
+          (label :class "details-label" :text {weather_info.weather[0].description})
+        )
+
+        (box :class "temp-stats" :orientation "h" :space-evenly false :spacing 15
+          (box :orientation "h" :space-evenly false :spacing 5
+            (image :path { "images/theme/" + config.appearance + "/elements/arrow-down.png" } :image-width 15 :image-height 15)
+            (label :class "stat-label" :text {weather_info.temp_min_fmt + weather_info.unit_symbol})
+          )
+          (box :orientation "h" :space-evenly false :spacing 5
+            (image :path { "images/theme/" + config.appearance + "/elements/arrow-up.png" } :image-width 15 :image-height 15)
+            (label :class "stat-label" :text {weather_info.temp_max_fmt + weather_info.unit_symbol})
+          )
+          (box :orientation "h" :space-evenly false :spacing 5
+            (image :path { "images/theme/" + config.appearance + "/elements/white-man.png" } :image-width 15 :image-height 15)
+            (label :class "stat-label" :text {weather_info.feels_like_fmt + weather_info.unit_symbol})
+          )
+        )
+      )
+    )
+  )
+)

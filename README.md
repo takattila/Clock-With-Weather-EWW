@@ -122,7 +122,38 @@ Use the above command to **change** the following **settings**:
 
 [Back to top](#conky-widget-with-clock-and-current-weather-report)
 
-## Screenshots
+## Eww Version (Migration)
+
+The project has been migrated to **eww** (ElKowar's Wacky Widgets).
+
+### Prerequisites
+- [eww](https://github.com/elkowar/eww) (0.4.0+)
+- [jq](https://stedolan.github.io/jq/)
+- Python 3 with `requests` and `psutil` libraries
+
+### How to use
+1. Go to the `eww` directory:
+   ```bash
+   cd eww
+   ```
+2. Open `config.json` and set your OpenWeatherMap API key:
+   ```json
+   {
+       "api_key": "YOUR_API_KEY",
+       "city": "Your City",
+       "lang": "en",
+       "units": "metric",
+       "appearance": "light"
+   }
+   ```
+3. Start the widget:
+   ```bash
+   ./start.sh
+   ```
+
+---
+
+## Conky Version (Original)
 
 ### With panel, theme: light-orange
 
