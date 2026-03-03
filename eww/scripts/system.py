@@ -3,27 +3,34 @@ import shutil
 import psutil
 import json
 
+def format_bytes(n):
+    if n is None:
+        return "N/A"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if n < 1024.0:
+            # Ha egész szám, ne legyen tizedesjegy
+            if n == int(n):
+                return f"{int(n)} {unit}"
+            return f"{n:.1f} {unit}"
+        n /= 1024.0
+    return f"{n:.1f} PB"
+
 def get_system_info():
     # HDD info
     total, used, free = shutil.disk_usage("/")
-    hdd_free = f"{free // (2**30)} GB"
-    hdd_total = f"{total // (2**30)} GB"
-    hdd_fmt = f"{hdd_free} / {hdd_total}"
+    # A Conky-hoz hasonlóan a szabad és az összes helyet mutatjuk
+    hdd_fmt = f"{format_bytes(free)} / {format_bytes(total)}"
 
     # RAM info
     mem = psutil.virtual_memory()
-    ram_used = f"{mem.used // (2**20)} MB"
-    ram_max = f"{mem.total // (2**20)} MB"
-    ram_fmt = f"{ram_used} / {ram_max}"
+    ram_fmt = f"{format_bytes(mem.used)} / {format_bytes(mem.total)}"
 
     # CPU info
     cpu_usage = f"{psutil.cpu_percent()}%"
 
     # SWAP info
     swap = psutil.swap_memory()
-    swap_perc = f"{swap.percent}%"
-    swap_max = f"{swap.total // (2**20)} MB"
-    swap_fmt = f"{swap_perc} (size: {swap_max})"
+    swap_fmt = f"{swap.percent}% (size: {format_bytes(swap.total)})"
 
     data = {
         "hdd": hdd_fmt,
