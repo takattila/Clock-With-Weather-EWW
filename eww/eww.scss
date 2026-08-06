@@ -46,21 +46,21 @@
   font-size: 145px;
   color: $color-light;
   margin-left: 10px;
-  margin-top: 22px;
+  margin-top: 18px;
 }
 
 .minutes-label {
   font-size: 145px;
   color: $color-dark;
   margin-left: 170px;
-  margin-top: 22px;
+  margin-top: 18px;
 }
 
 .seconds-label {
   font-size: 20px;
   color: $color-light;
   margin-left: 370px;
-  margin-top: 113px;
+  margin-top: 154px;
 }
 
 /* ---------- System info row 1 (HDD, RAM) - baseline y=180, font 15 ---------- */
@@ -123,7 +123,7 @@
 
 .divider {
   margin-left: 414px;
-  margin-top: 8px;
+  margin-top: 14px;
 }
 
 /* ---------- Weather ---------- */
@@ -156,11 +156,11 @@
 }
 
 .temp-label {
-  font-size: 70px;
+  font-size: 52px;
   font-weight: bold;
   color: $color-light;
   margin-left: 490px;
-  margin-top: 104px;
+  margin-top: 112px;
 }
 
 /* Description: same row as HDD/RAM (row 1, baseline y180) */

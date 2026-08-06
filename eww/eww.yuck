@@ -91,7 +91,7 @@
       ;; Vertical divider line --- cwDraw image centered (415,110), 1x205
       (image :class "divider"
              :path { "images/theme/" + theme.theme + "/elements/line.png" }
-             :image-width 2 :image-height 205
+             :image-width 2 :image-height 219
              :halign "start" :valign "start")
 
       ;; Weather icon --- cwDraw image centered (470,45), 64x64
@@ -111,7 +111,7 @@
       ;; Temperature --- thermometer icon beside celsius, same row as CPU/SWAP
       (image :class "temp-icon"
              :path { "images/theme/" + theme.theme + "/elements/temperature.png" }
-             :image-width 52 :image-height 52
+             :image-width 40 :image-height 40
              :halign "start" :valign "start")
       (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol}
              :halign "start" :valign "start")
