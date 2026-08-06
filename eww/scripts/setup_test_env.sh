@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# setup_test_env.sh — KDE Plasma tesztkörnyezet beállítása / visszaállítása
+# setup_test_env.sh - KDE Plasma test environment setup / restore
 #
-# Az eww widget képernyőkép-alapú ellenőrzéséhez tiszta, egyszínű hátterű,
-# widget- és asztali-ikonmentes asztalt hoz létre. A normál asztalod a
-# "restore" alparanccsal áll vissza.
+# Creates a clean desktop (solid background, no desktop widgets, no desktop
+# icons) for screenshot-based verification of the eww widget. The normal
+# desktop is restored with the "restore" subcommand.
 #
-# Használat:
-#   ./setup_test_env.sh hide                # tesztmód bekapcsolása
-#   ./setup_test_env.sh hide "#RRGGBB"      # tesztmód bekapcsolása egyedi színnel
-#   ./setup_test_env.sh restore             # normál asztal visszaállítása
-#   ./setup_test_env.sh status              # aktuális állapot kiírása
-#
-# Mit csinál:
-#   1. Elrejti az asztali widgeteket (desktopcontainment -> folder view)
-#   2. Elrejti az asztali ikonokat (pozíciók törlése)
-#   3. Egyszínű hátteret állít be (alapértelmezett #2d3034, ld. EWW_TEST_BG_COLOR)
-#   4. Újraindítja a plasmashell-t, hogy a módosítás életbe lépjen
+# How it works:
+#   - The original appletsrc is backed up once (used by "restore").
+#   - Desktop containments are detected dynamically (plugin + formfactor);
+#     nothing is hardcoded.
+#   - A test copy is written while plasmashell is stopped, so the daemon
+#     cannot overwrite it on exit. Desktop widgets, icon positions and the
+#     video wallpaper are removed; the solid background is set. The panel
+#     (taskbar) is kept untouched.
+#   - plasmashell is restarted with nohup so the changes take effect.
 # ===========================================================================
 set -euo pipefail
 
@@ -26,9 +24,9 @@ BG_FILE="$HOME/.config/eww-test-background.png"
 BG_COLOR="${EWW_TEST_BG_COLOR:-#2d3034}"
 
 log() { echo "[setup_test_env] $*"; }
-die() { echo "[setup_test_env] HIBA: $*" >&2; exit 1; }
+die() { echo "[setup_test_env] ERROR: $*" >&2; exit 1; }
 
-# ---------------------------------------------------------------- generálás
+# ---------------------------------------------------------------- generate
 generate_background() {
   local color="$1"
   python3 - "$BG_FILE" "$color" <<'PY'
@@ -43,7 +41,7 @@ color = color.lstrip("#")
 if len(color) == 3:
     color = "".join(ch * 2 for ch in color)
 if not re.fullmatch(r"[0-9a-fA-F]{6}", color):
-    sys.exit("Érvénytelen szín: %s (pl. #2d3034)" % color)
+    sys.exit("Invalid color: %s (e.g. #2d3034)" % color)
 rgb = tuple(int(color[i:i + 2], 16) for i in (0, 2, 4))
 
 w, h = 1920, 1080
@@ -56,111 +54,197 @@ except Exception:
     pass
 
 Image.new("RGB", (w, h), rgb).save(bg_file)
-print("  hatter: %s (%dx%d) %s" % (bg_file, w, h, "#%02x%02x%02x" % rgb))
+print("  background: %s (%dx%d) %s" % (bg_file, w, h, "#%02x%02x%02x" % rgb))
 PY
 }
 
-# ------------------------------------------------ teszt-konfig létrehozása
+# --------------------------------------------------------- test config
+# Build the test appletsrc from the backup: strip desktop widgets and icon
+# positions, set the solid wallpaper, drop the ScreenMapping. The panel is
+# detected dynamically (formfactor != 0) and left untouched.
 make_test_config() {
-  # Az aktuális appletsrc-t tesztmódra alakítjuk: desktopcontainment helyett
-  # folder view (widgetek nincsenek), ikon-pozíciók és ScreenMapping törölve,
-  # háttér az egyszínű PNG-re cserélve. A panelt (Containments[2]) érintetlen
-  # hagyjuk.
-  python3 - "$APLETSRC" "$BG_FILE" <<'PY'
+  python3 - "$BACKUP" "$APLETSRC" "$BG_FILE" <<'PY'
 import re
 import sys
 
-cfg_path, bg_path = sys.argv[1], sys.argv[2]
-text = open(cfg_path, encoding="utf-8").read()
+src, dst, bg_path = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(src, encoding="utf-8").read()
 
+# Pass 1: detect desktop containments (plugin + formfactor=0).
+desktop_ids = set()
+cur = None
+cur_keys = {}
+for line in text.splitlines():
+    s = line.strip()
+    m = re.match(r"^\[Containments\]\[(\d+)\]$", s)
+    if m:
+        if cur is not None and cur_keys.get("formfactor") == "0" and cur_keys.get("plugin") in (
+            "org.kde.desktopcontainment",
+            "org.kde.plasma.folder",
+        ):
+            desktop_ids.add(cur)
+        cur = int(m.group(1))
+        cur_keys = {}
+        continue
+    if cur is not None and s.startswith("[Containments]"):
+        if cur_keys.get("formfactor") == "0" and cur_keys.get("plugin") in (
+            "org.kde.desktopcontainment",
+            "org.kde.plasma.folder",
+        ):
+            desktop_ids.add(cur)
+        cur = None
+        cur_keys = {}
+        continue
+    if cur is not None and not s.startswith("[") and "=" in s:
+        k, _, v = s.partition("=")
+        cur_keys[k.strip()] = v.strip()
+if cur is not None and cur_keys.get("formfactor") == "0" and cur_keys.get("plugin") in (
+    "org.kde.desktopcontainment",
+    "org.kde.plasma.folder",
+):
+    desktop_ids.add(cur)
+
+# Pass 2: rewrite the file.
 out = []
 section = ""
+skip = False
+desktop_wallpaper_seen = set()
+
 for line in text.splitlines(keepends=True):
     stripped = line.strip()
-    # a teljes szekciófejléc, pl. "[Containments][1][General]"
+
     if stripped.startswith("[") and stripped.endswith("]") and "=" not in stripped:
         section = stripped
-        out.append(line)
+        keep = True
+        if section == "[ScreenMapping]":
+            keep = False
+        else:
+            m = re.match(r"^\[Containments\]\[(\d+)\](.*)$", section)
+            if m:
+                cid = int(m.group(1))
+                rest = m.group(2)
+                if cid in desktop_ids:
+                    if "[Applets]" in rest:
+                        keep = False
+                    else:
+                        wm = re.match(r"^\[Wallpaper\]\[([^\]]+)\]", rest)
+                        if wm and wm.group(1) != "org.kde.image":
+                            keep = False
+                        elif wm:
+                            desktop_wallpaper_seen.add(cid)
+        skip = not keep
+        if keep:
+            out.append(line)
         continue
 
-    # desktop ikon-pozíciók törlése (üres folder view = nincs ikon)
-    if section == "[Containments][1][General]" and re.match(
-        r"^(changedPositions|positions|arrangement)=", stripped
+    if skip:
+        continue
+
+    # drop icon geometry keys from the desktop containment body
+    cm = re.match(r"^\[Containments\]\[(\d+)\]$", section)
+    if cm and int(cm.group(1)) in desktop_ids and (
+        stripped.startswith("ItemGeometries-") or stripped.startswith("ItemGeometriesHorizontal")
     ):
         continue
 
-    # desktop containment -> folder view (asztali widgetek elrejtése)
-    if section == "[Containments][1]" and stripped == "plugin=org.kde.desktopcontainment":
-        line = line.replace(
-            "plugin=org.kde.desktopcontainment", "plugin=org.kde.plasma.folder"
-        )
+    # drop icon positions / widget order from the desktop [General] group
+    gm = re.match(r"^\[Containments\]\[(\d+)\]\[General\]$", section)
+    if gm and int(gm.group(1)) in desktop_ids:
+        if (
+            re.match(r"^(positions|changedPositions|arrangement|lastResolution|AppletOrder|sortMode)=", stripped)
+            or stripped.startswith("ItemGeometries-")
+            or stripped.startswith("ItemGeometriesHorizontal")
+        ):
+            continue
 
-    # háttér cseréje az egyszínű PNG-re
-    if section == "[Containments][1][Wallpaper][org.kde.image][General]" and stripped.startswith("Image="):
+    # solid wallpaper
+    wm = re.match(r"^\[Containments\]\[(\d+)\]\[Wallpaper\]\[org\.kde\.image\]\[General\]$", section)
+    if wm and int(wm.group(1)) in desktop_ids and stripped.startswith("Image="):
         line = "Image=file://%s\n" % bg_path
 
     out.append(line)
 
+for cid in sorted(desktop_ids):
+    if cid not in desktop_wallpaper_seen:
+        out.append("\n[Containments][%d][Wallpaper][org.kde.image][General]\n" % cid)
+        out.append("Image=file://%s\n" % bg_path)
+
 text = "".join(out)
-# ikonok képernyőleképezésének törlése
 text = re.sub(r"(?m)^(itemsOnDisabledScreens|screenMapping)=.*\n", "", text)
-open(cfg_path, "w", encoding="utf-8").write(text)
+open(dst, "w", encoding="utf-8").write(text)
 PY
-  log "teszt-konfig írva: $APLETSRC"
+  log "test config written: $APLETSRC"
 }
 
 # ------------------------------------------------------------ plasmashell
-restart_plasmashell() {
-  log "plasmashell újraindítása..."
+stop_plasmashell() {
+  log "stopping plasmashell..."
   kquitapp6 plasmashell 2>/dev/null || true
   sleep 1
+}
+
+start_plasmashell() {
   nohup plasmashell >/dev/null 2>&1 &
   disown
   sleep 2
-  log "plasmashell fut."
+  log "plasmashell running."
 }
 
-# ----------------------------------------------------------------- parancsok
+# ----------------------------------------------------------------- commands
 cmd_hide() {
   local color="${1:-$BG_COLOR}"
 
-  [[ -f "$APLETSRC" ]] || die "Nem található: $APLETSRC"
+  [[ -f "$APLETSRC" ]] || die "Not found: $APLETSRC"
 
-  # biztonsági mentés csak egyszer (a normál asztal megőrzése)
+  # back up the original desktop once (kept for restore)
   if [[ ! -f "$BACKUP" ]]; then
     cp "$APLETSRC" "$BACKUP"
-    log "biztonsági mentés készült: $BACKUP"
+    log "backup created: $BACKUP"
   else
-    log "biztonsági mentés már létezik: $BACKUP (megtartom)"
+    log "backup already exists: $BACKUP (keeping it)"
   fi
 
   generate_background "$color"
+  stop_plasmashell
   make_test_config
-  restart_plasmashell
-  log "Tesztkörnyezet aktív (widgetek + ikonok rejtve, egyszínű háttér)."
+  start_plasmashell
+  log "Test environment active (desktop widgets + icons hidden, solid background)."
 }
 
 cmd_restore() {
-  [[ -f "$BACKUP" ]] || die "Nincs visszaállítható mentés ($BACKUP). Futtasd előbb a 'hide'-ot."
+  [[ -f "$BACKUP" ]] || die "No backup to restore ($BACKUP). Run 'hide' first."
 
+  stop_plasmashell
   cp "$BACKUP" "$APLETSRC"
-  log "visszaállítva: $APLETSRC (a .backup megmaradt)"
-  restart_plasmashell
-  log "Normál asztal visszaállítva."
+  log "restored: $APLETSRC (the .backup is kept)"
+  start_plasmashell
+  log "Normal desktop restored."
 }
 
 cmd_status() {
-  if [[ -f "$APLETSRC" ]] && grep -q "plugin=org.kde.plasma.folder" "$APLETSRC"; then
-    echo "Állapot: TESZTMÓD aktív (folder view, nincs widget/ikon). Visszaállítás: $0 restore"
+  if [[ -f "$APLETSRC" ]] && grep -q "Image=file://$BG_FILE" "$APLETSRC"; then
+    echo "Status: TEST MODE active (desktop widgets + icons hidden, solid background). Restore: $0 restore"
   elif [[ -f "$BACKUP" ]]; then
-    echo "Állapot: NORMÁL asztal (van mentés: $BACKUP). Tesztmód: $0 hide"
+    echo "Status: NORMAL desktop (backup exists: $BACKUP). Test mode: $0 hide"
   else
-    echo "Állapot: NORMÁL asztal (nincs mentés). Tesztmód: $0 hide"
+    echo "Status: NORMAL desktop (no backup). Test mode: $0 hide"
   fi
 }
 
 usage() {
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  cat <<EOF
+Usage: $0 <command> [color]
+
+Commands:
+  hide                Enable test mode (default background color $BG_COLOR)
+  hide "#RRGGBB"      Enable test mode with a custom background color
+  restore             Restore the normal desktop from the backup
+  status              Print the current state
+  -h, --help          Show this help
+
+Environment:
+  EWW_TEST_BG_COLOR   Background color used by 'hide' (default $BG_COLOR)
+EOF
   exit 0
 }
 
@@ -171,7 +255,7 @@ main() {
     restore) cmd_restore ;;
     status)  cmd_status ;;
     -h|--help|"") usage ;;
-    *) die "Ismeretlen alparancs: ${1} (használat: hide | restore | status)" ;;
+    *) die "Unknown command: ${1} (usage: hide | restore | status)" ;;
   esac
 }
 

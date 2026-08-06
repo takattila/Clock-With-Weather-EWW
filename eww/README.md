@@ -152,22 +152,29 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
    `...desktop-appletsrc.backup` (only once, to preserve the normal desktop).
 2. **Solid background** — generates a solid PNG with PIL
    (`~/.config/eww-test-background.png`, default color `#2d3034`, overridable
-   with the `EWW_TEST_BG_COLOR` environment variable), and sets it as the
-   Plasma wallpaper.
-3. **Hiding widgets** — the desktop containment
-   (`org.kde.desktopcontainment`) is replaced by **folder view**
-   (`org.kde.plasma.folder`), so the desktop widgets disappear.
-4. **Hiding icons** — the folder view `positions`/`changedPositions`/`arrangement`
-   and the `screenMapping` entries are removed, so the desktop icons are not
-   visible either.
-5. **Restarting `plasmashell`** — the changes take effect.
+   with the `EWW_TEST_BG_COLOR` environment variable).
+3. **File swap** — with plasmashell stopped, a test copy of the appletsrc is
+   written. The desktop containments are detected **dynamically** (by
+   `plugin` + `formfactor`), nothing is hardcoded. The script removes the
+   desktop widget applets and the icon positions, sets the solid wallpaper and
+   drops the `[ScreenMapping]` section; video-wallpaper sections are also
+   removed. **The panel/taskbar is kept untouched**, so the workarea stays
+   realistic.
+4. **Restart** — plasmashell is restarted with `nohup plasmashell & disown`
+   so the changes take effect.
 
 ### Notes (verified facts, 2026-08-05)
 
 - Plasma version: **6.7.3**; use `kquitapp6` (`kquitapp5` does not exist).
 - In the `plasma-org.kde.plasma.desktop-appletsrc` file, widgets do **not**
-  have a separate visibility state — they either exist or not. That is why
-  moving files is the reliable method.
+  have a separate visibility state — they either exist or not. The script
+  therefore **swaps whole files** instead of editing the running config in
+  place: the test copy is written while plasmashell is stopped, so the daemon
+  cannot overwrite the changes when it exits.
+- The desktop containments are **not** at fixed indices (on this machine the
+  panel is `[Containments][23]`, the desktops `[Containments][43]`/`[51]`),
+  so the script detects them dynamically instead of assuming
+  `[Containments][1]`.
 - `plasmashell` runs **manually** (the `plasma-plasmashell.service` is
   inactive), so the script restarts it with `nohup plasmashell & disown`.
 - For manual testing you can also use the KDE Session (System Settings →
