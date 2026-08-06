@@ -286,9 +286,7 @@ def main():
 
     def net_status(hist):
         current = hist[-1] if hist else 0
-        if current > 1024:
-            return "Current: %.1f MiB/s" % (current / 1024)
-        return "Current: %.1f KiB/s" % current
+        return "Current: " + format_bytes(current) + "/s"
 
     cpu_txt = "Current: %.1f%%" % cpu
     if cpu_freq is not None:

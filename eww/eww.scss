@@ -29,7 +29,7 @@
 .year-label {
   font-size: 20px;
   color: $color-light;
-  margin-left: 20px;
+  margin-left: 16px;
   margin-top: 15px;
 }
 
@@ -66,44 +66,44 @@
 /* ---------- System info row 1 (HDD, RAM) - baseline y=180, font 15 ---------- */
 
 .hdd-label {
-  margin-left: 20px;
+  margin-left: 13px;
   margin-top: 194px;
 }
 
 .hdd-value {
-  margin-left: 60px;
+  margin-left: 55px;
   margin-top: 194px;
 }
 
 .ram-label {
-  margin-left: 200px;
+  margin-left: 220px;
   margin-top: 194px;
 }
 
 .ram-value {
-  margin-left: 250px;
+  margin-left: 265px;
   margin-top: 194px;
 }
 
 /* ---------- System info row 2 (CPU, SWAP) - baseline y=200, font 15 ---------- */
 
 .cpu-label {
-  margin-left: 20px;
+  margin-left: 13px;
   margin-top: 214px;
 }
 
 .cpu-value {
-  margin-left: 60px;
+  margin-left: 55px;
   margin-top: 214px;
 }
 
 .swap-label {
-  margin-left: 200px;
+  margin-left: 220px;
   margin-top: 214px;
 }
 
 .swap-value {
-  margin-left: 250px;
+  margin-left: 265px;
   margin-top: 214px;
 }
 
@@ -152,7 +152,7 @@
    between city (y110) and description (y180). */
 .temp-icon {
   margin-left: 430px;
-  margin-top: 129px;
+  margin-top: 136px;
 }
 
 .temp-label {
@@ -160,7 +160,7 @@
   font-weight: bold;
   color: $color-light;
   margin-left: 490px;
-  margin-top: 112px;
+  margin-top: 120px;
 }
 
 /* Description: same row as HDD/RAM (row 1, baseline y180) */

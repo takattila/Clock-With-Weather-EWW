@@ -156,25 +156,25 @@
 (defwidget widget_panel []
   (box :class "panel-container" :orientation "v" :space-evenly true
 
-    (box :class "panel-section" :orientation "v" :space-evenly false
-      (label :class "panel-title" :text "CPU")
-      (label :class "panel-status" :text {panel.cpu_txt})
-      (image :class "panel-chart" :path {panel.cpu_file}))
+    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+      (label :class "panel-title" :text "CPU" :halign "start")
+      (label :class "panel-status" :text {panel.cpu_txt} :halign "start")
+      (image :class "panel-chart" :path {panel.cpu_file} :halign "start"))
 
-    (box :class "panel-section" :orientation "v" :space-evenly false
-      (label :class "panel-title" :text "MEMORY")
-      (label :class "panel-status" :text {panel.mem_txt})
-      (image :class "panel-chart" :path {panel.mem_file}))
+    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+      (label :class "panel-title" :text "MEMORY" :halign "start")
+      (label :class "panel-status" :text {panel.mem_txt} :halign "start")
+      (image :class "panel-chart" :path {panel.mem_file} :halign "start"))
 
-    (box :class "panel-section" :orientation "v" :space-evenly false
-      (label :class "panel-title" :text "NET DOWN")
-      (label :class "panel-status" :text {panel.down_txt})
-      (image :class "panel-chart" :path {panel.down_file}))
+    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+      (label :class "panel-title" :text "NET DOWN" :halign "start")
+      (label :class "panel-status" :text {panel.down_txt} :halign "start")
+      (image :class "panel-chart" :path {panel.down_file} :halign "start"))
 
-    (box :class "panel-section" :orientation "v" :space-evenly false
-      (label :class "panel-title" :text "NET UP")
-      (label :class "panel-status" :text {panel.up_txt})
-      (image :class "panel-chart" :path {panel.up_file}))))
+    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+      (label :class "panel-title" :text "NET UP" :halign "start")
+      (label :class "panel-status" :text {panel.up_txt} :halign "start")
+      (image :class "panel-chart" :path {panel.up_file} :halign "start"))))
 
 ;; ===========================================================================
 ;; Windows
