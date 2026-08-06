@@ -1,109 +1,112 @@
-# Clock-With-Weather-Conky — EWW (Wayland) verzió
+# Clock-With-Weather-Conky — EWW (Wayland) version
 
-Az eredeti Lua/Cairo alapú Conky óra + időjárás widget **EWW** (`ElKowar's Wacky
-Widgets`) átírása Wayland alá. Két ablak tükrözi az eredeti Conky elrendezést:
+The original Lua/Cairo-based Conky clock + weather widget rewritten in **EWW**
+(`ElKowar's Wacky Widgets`) for Wayland. Two windows mirror the original Conky
+layout:
 
-| Ablak | Méret | Tartalom |
+| Window | Size | Content |
 |---|---|---|
-| `main_window` | 745x250, középre igazítva | óra + dátum + rendszerinfó + időjárás |
-| `panel_window` | 250 széles, teljes magasságú, jobb felső sarok | CPU / MEMORY / NET DOWN / NET UP grafikonok |
+| `main_window` | 745x250, center-aligned | clock + date + system info + weather |
+| `panel_window` | 250 wide, full height, top-right | CPU / MEMORY / NET DOWN / NET UP charts |
 
-A koordináták, betűméretek és színek a `cwDraw.lua` / `panelDraw.lua` értékeit
-követik pixel-pontosan.
+The coordinates, font sizes and colors follow the `cwDraw.lua` / `panelDraw.lua`
+values pixel-exactly.
 
 ---
 
-## 1. Függőségek
+## 1. Dependencies
 
-### Kötelező
+### Required
 
-| Függőség | Minimum / tesztelt verzió | Szerepe |
+| Dependency | Minimum / tested version | Role |
 |---|---|---|
-| `eww` | 0.5.0+ (tesztelt: `0.5.0 d87c2fd`) | az ablakok és a widget-fa renderelése |
-| `python3` | 3.14+ (tesztelt: 3.14.6) | az adat-előállító scriptek |
-| `python3-requests` | 2.x (tesztelt: 2.34.2) | OpenWeatherMap API hívás (`weather.py`) |
-| `python3-psutil` | 5.x–7.x (tesztelt: 7.2.2) | CPU/RAM/SWAP/HDD/hálózat (`system.py`, `panel.py`) |
-| `jq` | 1.6+ (tesztelt: 1.8.2) | `config.json` értékek kiolvasása a `defpoll` parancsokban |
-| `xprop` | bármely | `_NET_WORKAREA` kiolvasása (panel magasság) |
-| `xrandr` | bármely | felbontás / workarea fallback |
-| `Noto Sans` font | tetszőleges | az egyetlen használt betűcsalád |
+| `eww` | 0.5.0+ (tested: `0.5.0 d87c2fd`) | renders the windows and the widget tree |
+| `python3` | 3.14+ (tested: 3.14.6) | the data-producing scripts |
+| `python3-requests` | 2.x (tested: 2.34.2) | OpenWeatherMap API call (`weather.py`) |
+| `python3-psutil` | 5.x–7.x (tested: 7.2.2) | CPU/RAM/SWAP/HDD/network (`system.py`, `panel.py`) |
+| `jq` | 1.6+ (tested: 1.8.2) | reading `config.json` values in the `defpoll` commands |
+| `xprop` | any | reading `_NET_WORKAREA` (panel height) |
+| `xrandr` | any | resolution / workarea fallback |
+| `Noto Sans` font | any | the only font family used |
 
-### Teszteléshez / fejlesztéshez
+### For testing / development
 
-| Függőség | Szerepe |
+| Dependency | Role |
 |---|---|
-| `spectacle` | képernyőkép készítése ellenőrzéshez |
-| `PIL` (pillow) | képmérés / -összehasonlítás (fejlesztési segédeszköz) |
+| `spectacle` | taking screenshots for verification |
+| `PIL` (pillow) | image measurement / comparison (development aid) |
 
-### A Lua (Conky) verzió külön követelményei
+### Separate requirements of the Lua (Conky) version
 
-A `../` gyökérben található eredeti Lua verzió **külön** Conky-t igényel
-(`conky`, `lua-cairo`, `lua-json`, `curl`, `OPENWEATHER_API_KEY` környezeti
-változó). Az `eww/` könyvtár **nem** függ tőle — a Lua fájlok csak a
-koordináták és a `themes/` könyvtár forrásai.
+The original Lua version in `../` requires a **separate** Conky
+(`conky`, `lua-cairo`, `lua-json`, `curl`, `OPENWEATHER_API_KEY` environment
+variable). The `eww/` directory does **not** depend on it — the Lua files are
+only the source of the coordinates and the `themes/` directory.
 
 ---
 
-## 2. Verzió-változás kockázatai („nem indul a widget”)
+## 2. Version-change risks ("widget does not start")
 
-A widget érzékeny a következő verzió-változásokra. A legtöbb hibajel megjelenése
-néma (üres ablak, hiányzó szöveg), ezért indulás után **mindenképp ellenőrizd a
-terminált** (`eww` naplózza a `defpoll` hibákat).
+The widget is sensitive to the following version changes. Most failure symptoms
+are silent (empty window, missing text), so after starting **always check the
+terminal** (`eww` logs `defpoll` errors).
 
-| Mi változik | Milyen tünet | Ok / megoldás |
+| What changes | Symptom | Cause / solution |
 |---|---|---|
-| **`eww` major verzió** (0.5 → 0.6/1.0) | a widget nem indul, vagy CSS nem tölt be | A `yuck` szintaxis (`:geometry`, `defpoll`, `:anchor`) és a SCSS `@import` API változhat. Ellenőrizd a [eww release-eket](https://github.com/elkowar/eww/releases). |
-| **`eww` minor/patch** | ritkán gond | Ha a `daemon` `Error while forwarding command` hibát ad, a config betöltése után előfordul, de a widget renderel — ne ijedj meg, mérd a képernyőt. |
-| **`python` major** (3.x → 4.x) | `system.py` / `panel.py` hibák | A `psutil`/`requests` binary-wheel elérhetősége függ tőle. |
-| **`psutil` major** | `panel.py` nem ad JSON-t | API eltérések (pl. `cpu_times` sorrend, `net_io_counters`). Tünet: a panel-ablak üres. |
-| **`jq` hiányzik / régi** | az óra és a `defpoll`-ok üresek | A `config.json` kiolvasás `$(jq -r ...)` minden `defpoll`-ban — ha nincs `jq`, az egész widget üres. |
-| **`xprop` hiányzik** | a panel magassága hibás | A `workarea.py` fallback-láncba esik (`xrandr` → 1080). |
-| **`Noto Sans` nincs telepítve** | minden eltolódik | A `fc-match "Noto Sans"` → `NotoSans-Regular.ttf` kell legyen. Másik fontra cserélni a `eww.theme.scss` `$font-face`-ben, és újrakalibrálni a margókat. |
-| **KDE/kwin verzió** | ablak-eltolódás | Az ablak középre igazítása a workarea-hez képest történik (lásd 6. fejezet, „Ablak-geometria”). |
+| **`eww` major version** (0.5 → 0.6/1.0) | the widget does not start, or CSS fails to load | The `yuck` syntax (`:geometry`, `defpoll`, `:anchor`) and the SCSS `@import` API may change. Check the [eww releases](https://github.com/elkowar/eww/releases). |
+| **`eww` minor/patch** | rarely a problem | If the `daemon` reports `Error while forwarding command` after the config loads, it can happen, but the widget still renders — don't panic, measure the screen. |
+| **`python` major** (3.x → 4.x) | `system.py` / `panel.py` errors | Depends on the availability of `psutil`/`requests` binary wheels. |
+| **`psutil` major** | `panel.py` produces no JSON | API differences (e.g. `cpu_times` order, `net_io_counters`). Symptom: the panel window is empty. |
+| **`jq` missing / old** | the clock and the `defpoll`s are empty | Reading `config.json` via `$(jq -r ...)` is used in every `defpoll` — without `jq` the whole widget is empty. |
+| **`xprop` missing** | the panel height is wrong | `workarea.py` falls into the fallback chain (`xrandr` → 1080). |
+| **`Noto Sans` not installed** | everything is shifted | `fc-match "Noto Sans"` → must be `NotoSans-Regular.ttf`. To switch fonts, change `$font-face` in `eww.theme.scss` and recalibrate the margins. |
+| **KDE/kwin version** | window offset | The window is centered relative to the workarea (see section 6, "Window geometry"). |
 
-**Legfontosabb szabály:** a `defpoll`-ok minden értéke külső parancs kimenete
-(`date`, `jq`, `./scripts/*.py`). Ha bármelyik parancs hibázik vagy hiányzik,
-**üres/nyers `null`** érték kerül a widget-be, ami gyakran „láthatatlan” hiba.
+**Most important rule:** every value in the `defpoll`s is the output of an
+external command (`date`, `jq`, `./scripts/*.py`). If any command fails or is
+missing, an **empty/raw `null`** value goes into the widget, which is often an
+"invisible" error.
 
 ---
 
-## 3. A widget indítása
+## 3. Starting the widget
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
 ./scripts/start.sh
 ```
 
-A `scripts/start.sh` a következőket csinálja:
+`scripts/start.sh` does the following:
 
-0. **KDE Plasma ellenőrzés** — ha a `plasmashell` nem fut, a
-   `scripts/setup_test_env.sh restore` visszaállítja a normál asztalt (és
-   újraindítja a plasmashellt); ha nincs mentés, közvetlenül elindítja a
-   `plasmashell`-t, hogy a widget megjelenhessen.
-1. **`theme.py`** — legenerálja az `eww.theme.scss` és `eww.theme.json` fájlt a
-   `config.json` `appearance` mezője + `../themes/appearance/<név>/appearance.lua`
-   alapján (színek, font, ikonkészlet, háttér-átlátszóság).
-2. **`workarea.py`** — kiolvassa a `_NET_WORKAREA`-t, és a `panel_window`
-   magasságát a taskbar-mentes területhez igazítja (a `eww.yuck`-ban a
-   `panel_window` geometry-t felülírja futás közben).
-3. Elöli a régi daemont: `eww --config . kill`
+0. **KDE Plasma check** — if `plasmashell` is not running,
+   `scripts/setup_test_env.sh restore` restores the normal desktop (and
+   restarts plasmashell); if there is no backup, it starts `plasmashell`
+   directly so the widget can be displayed.
+1. **`theme.py`** — generates the `eww.theme.scss` and `eww.theme.json` files
+   from the `appearance` field of `config.json` +
+   `../themes/appearance/<name>/appearance.lua` (colors, font, icon set,
+   background transparency).
+2. **`workarea.py`** — reads `_NET_WORKAREA` and aligns the `panel_window`
+   height to the taskbar-free area (overrides the `panel_window` geometry in
+   `eww.yuck` at runtime).
+3. Kills the old daemon: `eww --config . kill`
 4. `eww --config . daemon` + `eww --config . open main_window` + `eww --config . open panel_window`
 
-### Leállítás
+### Stopping
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
 ./scripts/stop.sh
 ```
 
-A `scripts/stop.sh` az eww daemont állítja le ehhez a config-könyvtárhoz
-(`eww --config . kill`), ami mindkét ablakot bezárja. Manuálisan ennyi:
+`scripts/stop.sh` stops the eww daemon for this config directory
+(`eww --config . kill`), which closes both windows. Manually that is:
 
 ```bash
 eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
 ```
 
-### Konfiguráció (`eww/config.json`)
+### Configuration (`eww/config.json`)
 
 ```json
 {
@@ -116,179 +119,178 @@ eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
 }
 ```
 
-| Mező | Értékek | Hatás |
+| Field | Values | Effect |
 |---|---|---|
-| `api_key` | OpenWeatherMap kulcs | kötelező, kulcs nélkül nincs időjárás |
-| `city` | tetszőleges város | a városnév a widgeten + az API lekérdezés |
-| `lang` | `hu`, `en`, ... | az időjárás-leírás nyelve |
-| `units` | `metric` / `imperial` | °C / °F, a `weather.py` a `°C`/`°F` utótagot vezérli |
-| `appearance` | `light`, `dark`, `light-bg`, ... | milyen `../themes/appearance/<név>/appearance.lua` színeit használja |
-| `hour_format` | `24` / `12` | a `defpoll hour` `%H` / `%I` formátuma |
+| `api_key` | OpenWeatherMap key | required, no weather without a key |
+| `city` | any city | the city name on the widget + the API query |
+| `lang` | `hu`, `en`, ... | the language of the weather description |
+| `units` | `metric` / `imperial` | °C / °F, `weather.py` controls the `°C`/`°F` suffix |
+| `appearance` | `light`, `dark`, `light-bg`, ... | which `../themes/appearance/<name>/appearance.lua` colors to use |
+| `hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
 
 ---
 
-## 4. Tesztkörnyezet kialakítása (KDE Plasma)
+## 4. Setting up a test environment (KDE Plasma)
 
-A widget méréséhez tiszta asztal kell: nincs rajta másik widget, nincsenek
-asztali ikonok, és egyszínű a háttér. Ehhez a **`eww/scripts/setup_test_env.sh`**
+Measuring the widget needs a clean desktop: no other widgets, no desktop icons,
+and a solid background. For this, the **`eww/scripts/setup_test_env.sh`**
 script:
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
 
-./scripts/setup_test_env.sh hide                # tesztmód: widgetek + ikonok rejtve, egyszínű háttér
-./scripts/setup_test_env.sh hide "#112233"      # ... egyedi háttérszínnel
-./scripts/setup_test_env.sh status              # aktuális állapot
-./scripts/setup_test_env.sh restore             # normál asztal visszaállítása
+./scripts/setup_test_env.sh hide                # test mode: widgets + icons hidden, solid background
+./scripts/setup_test_env.sh hide "#112233"      # ... with a custom background color
+./scripts/setup_test_env.sh status              # current state
+./scripts/setup_test_env.sh restore             # restore the normal desktop
 ```
 
-### Mit csinál a script?
+### What does the script do?
 
-1. **Biztonsági mentés** — az aktuális
-   `~/.config/plasma-org.kde.plasma.desktop-appletsrc`-et
-   `...desktop-appletsrc.backup`-ba menti (csak egyszer, a normál asztal
-   megőrzésére).
-2. **Egyszínű háttér** — `PIL`-lel legenerál egy egyszínű PNG-t
-   (`~/.config/eww-test-background.png`, alapértelmezett szín `#2d3034`,
-   `EWW_TEST_BG_COLOR` környezeti változóval felülírható), és azt állítja be a
-   Plasma háttérképeként.
-3. **Widgetek elrejtése** — a desktop containment
-   (`org.kde.desktopcontainment`) helyett **folder view**
-   (`org.kde.plasma.folder`) lesz, így az asztali widgetek eltűnnek.
-4. **Ikonok elrejtése** — a folder view `positions`/`changedPositions`/`arrangement`
-   és a `screenMapping` bejegyzései törlődnek, ezért az asztali ikonok sem
-   látszanak.
-5. **`plasmashell` újraindítása** — a változások életbe lépnek.
+1. **Backup** — saves the current
+   `~/.config/plasma-org.kde.plasma.desktop-appletsrc` to
+   `...desktop-appletsrc.backup` (only once, to preserve the normal desktop).
+2. **Solid background** — generates a solid PNG with PIL
+   (`~/.config/eww-test-background.png`, default color `#2d3034`, overridable
+   with the `EWW_TEST_BG_COLOR` environment variable), and sets it as the
+   Plasma wallpaper.
+3. **Hiding widgets** — the desktop containment
+   (`org.kde.desktopcontainment`) is replaced by **folder view**
+   (`org.kde.plasma.folder`), so the desktop widgets disappear.
+4. **Hiding icons** — the folder view `positions`/`changedPositions`/`arrangement`
+   and the `screenMapping` entries are removed, so the desktop icons are not
+   visible either.
+5. **Restarting `plasmashell`** — the changes take effect.
 
-### Megjegyzések (ellenőrzött tények, 2026-08-05)
+### Notes (verified facts, 2026-08-05)
 
-- Plasma verzió: **6.7.3**; a `kquitapp6` használandó (`kquitapp5` nincs).
-- A `plasma-org.kde.plasma.desktop-appletsrc` fájlban a widgetek **nem**
-  rendelkeznek külön láthatósági állapottal — léteznek vagy nem. Ezért a
-  fájl-mozgatás a megbízható módszer.
-- A `plasmashell` **manuálisan** fut (a `plasma-plasmashell.service` inactive),
-  ezért a script `nohup plasmashell & disown`-nal indítja újra.
-- Manuális tesztelésnél a KDE Session-t is használhatod (System Settings →
-  Users → Create Session): tiszta környezet fájlmozgatás nélkül.
+- Plasma version: **6.7.3**; use `kquitapp6` (`kquitapp5` does not exist).
+- In the `plasma-org.kde.plasma.desktop-appletsrc` file, widgets do **not**
+  have a separate visibility state — they either exist or not. That is why
+  moving files is the reliable method.
+- `plasmashell` runs **manually** (the `plasma-plasmashell.service` is
+  inactive), so the script restarts it with `nohup plasmashell & disown`.
+- For manual testing you can also use the KDE Session (System Settings →
+  Users → Create Session): a clean environment without file moving.
 
 ---
 
-## 5. Struktúra — mi mit csinál
+## 5. Structure — what does what
 
-### `eww/eww.yuck` — a widget-fa és az adatforrások
+### `eww/eww.yuck` — the widget tree and the data sources
 
-A fájl három nagy részből áll:
+The file has three main parts:
 
-1. **`defpoll` blokkok** — az adatok. Minden `defpoll` időközönként futtat egy
-   shell parancsot, és annak kimenetét a widget-be tölti:
+1. **`defpoll` blocks** — the data. Every `defpoll` runs a shell command at
+   intervals and loads its output into the widget:
 
-   | defpoll | Időköz | Parancs |
+   | defpoll | Interval | Command |
    |---|---|---|
-   | `hour` | 1s | `date +%H` (vagy `%I` 12-órás formátum) |
+   | `hour` | 1s | `date +%H` (or `%I` in 12-hour format) |
    | `minutes` | 1s | `date +:%M` |
    | `seconds` | 1s | `date +%S` |
    | `date_year` | 1m | `date +%Y.` |
    | `date_day` | 1m | `date "+| %B %d. | %A"` (en_US locale) |
    | `system_info` | 5s | `./scripts/system.py` (JSON) |
    | `weather_info` | 10m | `./scripts/weather.py <key> <city> <lang> <units>` (JSON) |
-   | `panel` | 1s | `./scripts/panel.py` (JSON + SVG grafikonok) |
+   | `panel` | 1s | `./scripts/panel.py` (JSON + SVG charts) |
    | `config` | 1h | `cat config.json` |
    | `theme` | 1h | `cat eww.theme.json` |
 
-2. **`defwidget widget_clock_weather`** — a fő ablak. Egy `overlay` + fix
-   `745x250` sizer, amiben minden elem `margin-left`/`margin-top`-tal van
-   **abszolút pozícionálva** (lásd 6. fejezet). Az elemek a
-   `cwDraw.lua` koordinátáit tükrözik: év/dátum, óra/perc/másodperc, HDD/RAM,
-   CPU/SWAP, elválasztó vonal, időjárás-ikon, város, hőmérséklet, leírás,
+2. **`defwidget widget_clock_weather`** — the main window. An `overlay` + fixed
+   `745x250` sizer in which every element is **absolutely positioned** with
+   `margin-left`/`margin-top` (see section 6). The elements mirror the
+   `cwDraw.lua` coordinates: year/date, hour/minute/second, HDD/RAM, CPU/SWAP,
+   divider line, weather icon, city, temperature, description,
    MIN/MAX/Feels-like.
 
-3. **`defwidget widget_panel`** — a rendszerfigyelő panel. Négy
-   `panel-section`: `CPU`, `MEMORY`, `NET DOWN`, `NET UP`. Mindegyikben egy
-   cím (`panel-title`), egy állapotszöveg (`panel-status`) és egy
-   SVG-grafikon (`panel-chart`).
+3. **`defwidget widget_panel`** — the system monitor panel. Four
+   `panel-section`s: `CPU`, `MEMORY`, `NET DOWN`, `NET UP`. Each has a title
+   (`panel-title`), a status text (`panel-status`) and an SVG chart
+   (`panel-chart`).
 
-4. **`defwindow` blokkok** — `main_window` (745x250, center) és
-   `panel_window` (250 széles, top-right, teljes magasság).
+4. **`defwindow` blocks** — `main_window` (745x250, center) and
+   `panel_window` (250 wide, top-right, full height).
 
-### `eww/scripts/` — adat-előállító Python és shell scriptek
+### `eww/scripts/` — data-producing Python and shell scripts
 
-| Script | Kimenet | Felel |
+| Script | Output | Responsibility |
 |---|---|---|
-| `system.py` | `{hdd, ram, cpu, swap}` | `psutil`/`shutil` alapú rendszerinfó, dinamikus `format_bytes` (B/KB/MB/GB/TB) |
-| `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API hívás, kerekítés, °C/°F |
-| `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | grafikon-SVG-k generálása (`charts/*.svg`, 100 pontos görgetett hisztória), aktív NIC felderítés |
-| `theme.py` | `eww.theme.scss` + `eww.theme.json` | a `config.json` `appearance` + `../themes/appearance/<név>/appearance.lua` → EWW téma |
-| `workarea.py` | `"Y HEIGHT"` | `_NET_WORKAREA` kiolvasása a panel magasságához |
-| `start.sh` | — | a widget indítása (3. fejezet): Plasma-ellenőrzés, téma-generálás, taskbar-igazítás, `eww daemon` + ablakok megnyitása |
-| `stop.sh` | — | a widget leállítása (`eww --config . kill`) |
-| `setup_test_env.sh` | — | KDE Plasma tesztkörnyezet ki-/be- és visszakapcsolása (4. fejezet): `hide` / `status` / `restore` |
+| `system.py` | `{hdd, ram, cpu, swap}` | `psutil`/`shutil`-based system info, dynamic `format_bytes` (B/KB/MB/GB/TB) |
+| `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call, rounding, °C/°F |
+| `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
+| `theme.py` | `eww.theme.scss` + `eww.theme.json` | `config.json` `appearance` + `../themes/appearance/<name>/appearance.lua` → EWW theme |
+| `workarea.py` | `"Y HEIGHT"` | reading `_NET_WORKAREA` for the panel height |
+| `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows |
+| `stop.sh` | — | stopping the widget (`eww --config . kill`) |
+| `setup_test_env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 
-### `eww/charts/` — generált SVG-k
+### `eww/charts/` — generated SVGs
 
-A `panel.py` minden poll-nál új, időbélyegzett SVG-t ír a `charts/`-ba
-(`cpu_00042.svg`, ...), és a `defpoll panel` JSON-ban a fájlnevet adja vissza.
-A régieket automatikusan törli (3-at tart meg típusonként). **Ne commitold** —
-gitignore-olt (`.gitignore`).
+`panel.py` writes a new, timestamped SVG to `charts/` on every poll
+(`cpu_00042.svg`, ...), and returns the file name in the `defpoll panel` JSON.
+Old ones are deleted automatically (it keeps 3 per type). **Don't commit
+them** — gitignored (`.gitignore`).
 
 ### `eww/images/`, `../images/`
 
-- `../images/theme/<theme>/elements/` — vonal, lokáció-ikon, hőmérő, nyilak.
-- `../images/theme/<theme>/weather/<icon-set>/` — időjárás-ikonok
-  (`01d.png`, `02d`, ...). A `theme.py` az `icon_set`-et a `config.json`
-  `appearance`-éből veszi.
+- `../images/theme/<theme>/elements/` — line, location icon, thermometer, arrows.
+- `../images/theme/<theme>/weather/<icon-set>/` — weather icons
+  (`01d.png`, `02d`, ...). `theme.py` takes the `icon_set` from the
+  `appearance` field of `config.json`.
 
 ---
 
-## 6. Az elemek megjelenítésének módosítása (EWW CSS)
+## 6. Modifying how elements are displayed (EWW CSS)
 
-Az összes formázás az **`eww/eww.scss`** fájlban van. Az `eww.yuck` csak a
-**szerkezetet** és az **adatokat** adja; a méret, szín, pozíció mind CSS.
+All formatting is in the **`eww/eww.scss`** file. `eww.yuck` only provides the
+**structure** and the **data**; size, color and position are all CSS.
 
-### Alapszabály: a pozícionálás módja
+### The basic rule: the positioning method
 
-- Minden elem a `745x250`-es overlay-ben **abszolút pozícionált**:
-  `margin-left` = X koordináta, `margin-top` = Y koordináta (a label tetejét
-  helyezi el).
-- A `cwDraw.lua` **baseline** koordinátákat használ (`text(x, y)` a betűk
-  alapsorára igazít). Átszámítás:
-  `margin-top = baseline_y − 0.73 × font_size` (kb. a cap-height).
-- A képek (`image`) a `cwDraw.lua`-ban **középre** igazítottak
-  (`pos - size/2`), az EWW-ben viszont a bal-felső sarokra → ezért
+- Every element in the `745x250` overlay is **absolutely positioned**:
+  `margin-left` = X coordinate, `margin-top` = Y coordinate (positions the top
+  of the label).
+- `cwDraw.lua` uses **baseline** coordinates (`text(x, y)` aligns to the
+  baseline of the letters). Conversion:
+  `margin-top = baseline_y − 0.73 × font_size` (approx. the cap height).
+- Images (`image`) are **center-aligned** in `cwDraw.lua` (`pos - size/2`),
+  but in EWW they are anchored to the top-left corner → therefore
   `margin-left = pos_x − width/2`, `margin-top = pos_y − height/2`.
 
-Példa: a hőmérséklet-szöveg a `cwDraw.lua`-ban
-`text(460, 155, ..., 40, BOLD, light)`, az EWW CSS-ben:
+Example: the temperature text in `cwDraw.lua` is
+`text(460, 155, ..., 40, BOLD, light)`, in the EWW CSS:
 
 ```scss
 .temp-label {
   font-size: 44px;
   font-weight: bold;
   color: $color-light;
-  margin-left: 460px;   /* X pozíció */
-  margin-top: 128px;    /* Y pozíció (baseline → top) */
+  margin-left: 460px;   /* X position */
+  margin-top: 128px;    /* Y position (baseline → top) */
 }
 ```
 
-### Fontosabb CSS osztályok és mit befolyásolnak
+### The more important CSS classes and what they affect
 
-| Osztály | Mit jelenít meg | Fő szabályok |
+| Class | What it displays | Main rules |
 |---|---|---|
-| `.year-label`, `.date-label` | év, dátum sor | `font-size: 20px`, `margin-left/margin-top` |
-| `.hour-label`, `.minutes-label` | óra / perc | `font-size: 145px`, `margin-left: 10/170`, `margin-top: 18` |
-| `.seconds-label` | másodperc | `font-size: 20px`, `margin-left: 370`, `margin-top: 154` |
-| `.hdd-label`...`.swap-value` | rendszerinfó 2 sor | `.sys-label` (világos, bold 15px) + `.sys-value` (sötét 15px) |
-| `.divider` | elválasztó vonal | `margin-left: 414`, `margin-top: 14` |
-| `.weather-icon` | időjárás-ikon | 64x64 a `:image-width/height`-tel (a yuck-ban) |
-| `.city-icon`, `.city-label` | város ikon + név | ikon 20x20; label `font-size: 30px`, bold |
-| `.temp-icon`, `.temp-label` | hőmérő + hőmérséklet | ikon 32x32; label `font-size: 44px`, bold |
-| `.details-icon`, `.details-label` | leírás | 15px |
+| `.year-label`, `.date-label` | year, date line | `font-size: 20px`, `margin-left/margin-top` |
+| `.hour-label`, `.minutes-label` | hour / minute | `font-size: 145px`, `margin-left: 10/170`, `margin-top: 18` |
+| `.seconds-label` | seconds | `font-size: 20px`, `margin-left: 370`, `margin-top: 154` |
+| `.hdd-label`...`.swap-value` | system info, 2 lines | `.sys-label` (light, bold 15px) + `.sys-value` (dark 15px) |
+| `.divider` | divider line | `margin-left: 414`, `margin-top: 14` |
+| `.weather-icon` | weather icon | 64x64 via `:image-width/height` (in the yuck) |
+| `.city-icon`, `.city-label` | city icon + name | icon 20x20; label `font-size: 30px`, bold |
+| `.temp-icon`, `.temp-label` | thermometer + temperature | icon 32x32; label `font-size: 44px`, bold |
+| `.details-icon`, `.details-label` | description | 15px |
 | `.stat-min/...` | MIN/MAX/Feels | 15px |
-| `.panel-title`, `.panel-status`, `.panel-chart` | panel részei | 22px bold / 14px / SVG |
+| `.panel-title`, `.panel-status`, `.panel-chart` | panel parts | 22px bold / 14px / SVG |
 
-### Témaváltozók (`eww.theme.scss`)
+### Theme variables (`eww.theme.scss`)
 
-A fájlt a `theme.py` generálja; ne kézzel írd át (elvész a következő
-indításkor). Inkább a `../themes/appearance/<név>/appearance.lua`-t módosítsd:
+The file is generated by `theme.py`; don't edit it by hand (it is lost on the
+next start). Instead modify `../themes/appearance/<name>/appearance.lua`:
 
 ```scss
 $theme: "light";
@@ -300,31 +302,32 @@ $bg-color: #000000;
 $bg-alpha: 0.0;
 ```
 
-### Újraméret / újrapozícionálás munkamenete
+### Resize / reposition workflow
 
-1. Módosítsd az `eww.scss`-t.
+1. Modify `eww.scss`.
 2. `eww --config ~/.conky/Clock-With-Weather-Conky/eww reload`
-3. `spectacle -b -o shot.png` és képmérés (PIL) — lásd a 7. fejezetet.
+3. `spectacle -b -o shot.png` and image measurement (PIL) — see section 7.
 
 ---
 
-## 7. Ellenőrzött tények és mérési módszer
+## 7. Verified facts and measurement method
 
-### Ablak-geometria
+### Window geometry
 
-- Widget méret: **745x250**. A képernyőn az ablak eredete **x=587, y=392**.
-- Ez a KDE workarea-középpontozás eredménye (a sima középre igazítás y415
-  lenne, mert az EWW a taskbar nélküli területhez igazít). **Ne változtasd az
-  anchoringot** — ez elvárt viselkedés.
+- Widget size: **745x250**. On the screen the window origin is **x=587, y=392**.
+- This is the result of KDE workarea centering (plain center alignment would
+  be y415, because EWW aligns to the taskbar-free area). **Don't change the
+  anchoring** — this is expected behavior.
 
-### Átlátszó háttér
+### Transparent background
 
-- A `main-container` / `panel-container` `background-color: rgba($bg-color, $bg-alpha)`
-  — `bg-alpha: 0.0` esetén teljesen átlátszó, csak a szövegek/ikonok látszanak.
-- A tesztkörnyezet (4. fejezet) egyszínű hátterével szemben a fekete/fehér
-  szövegek ellenőrizhetők.
+- The `main-container` / `panel-container` has
+  `background-color: rgba($bg-color, $bg-alpha)` — with `bg-alpha: 0.0` it is
+  fully transparent, only the texts/icons are visible.
+- Against the solid background of the test environment (section 4) the
+  black/white texts can be verified.
 
-### Képernyőkép-mérés (fejlesztési segédlet)
+### Screenshot measurement (development aid)
 
 ```bash
 export DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000
@@ -333,131 +336,133 @@ sleep 2
 spectacle -b -o /tmp/opencode/shots/check.png
 ```
 
-Majd PIL-lel a színes képpontok koordinátái (a widget origója x=587, y=392):
+Then with PIL the coordinates of the colored pixels (the widget origin is
+x=587, y=392):
 
 ```python
 from PIL import Image
 import numpy as np
 a = np.array(Image.open('/tmp/opencode/shots/check.png').convert('RGB')).astype(int)
 lum = a.mean(axis=2)
-sub = lum[392:392+250, 587:587+745]  # widget területe
+sub = lum[392:392+250, 587:587+745]  # widget area
 m = sub > 100
 rows = np.where(m.sum(axis=1) > 0)[0]
 cols = np.where(m.sum(axis=0) > 0)[0]
-print('tartalom:', (rows.min()+392, rows.max()+392), (cols.min()+587, cols.max()+587))
+print('content:', (rows.min()+392, rows.max()+392), (cols.min()+587, cols.max()+587))
 ```
 
 ---
 
-## 8. Az eredeti Lua konfiguráció — lehetőségek
+## 8. The original Lua configuration — options
 
-Az `eww/` verzió a Lua configot **forrásként** használja: a `theme.py` a
-`../themes/` Lua fájlokból generálja az EWW témát. Ha az eredeti Conky-t is
-futtatod, itt a beállítható lehetőségek.
+The `eww/` version uses the Lua config as a **source**: `theme.py` generates
+the EWW theme from the `../themes/` Lua files. If you also run the original
+Conky, these are the configurable options.
 
-### `cwTheme.lua` — a fő kapcsolók
+### `cwTheme.lua` — the main switches
 
 ```lua
 settings = {
-    appearance = { name = "light" },   -- a ../themes/appearance/<név>/ mappát választja
-    weather    = { name = "default" }, -- a ../themes/weather/<név>/ mappát választja
+    appearance = { name = "light" },   -- selects the ../themes/appearance/<name>/ folder
+    weather    = { name = "default" }, -- selects the ../themes/weather/<name>/ folder
     system = {
-        hour_format_12 = false,        -- true = 12 órás (%I) + AM/PM kijelző
-        locale = "en_US.UTF-8",        -- a dátumozáshoz használt locale
+        hour_format_12 = false,        -- true = 12-hour (%I) + AM/PM display
+        locale = "en_US.UTF-8",        -- the locale used for the date
     },
 }
 ```
 
-### `themes/appearance/<név>/appearance.lua` — megjelenés
+### `themes/appearance/<name>/appearance.lua` — appearance
 
 ```lua
 settings.appearance = {
-    theme = "light",                       -- mappa: ../images/theme/<theme>/
+    theme = "light",                       -- folder: ../images/theme/<theme>/
     icon = {
-        set = "dovora",                    -- ikonkészlet: ../images/theme/<theme>/weather/<set>/
+        set = "dovora",                    -- icon set: ../images/theme/<theme>/weather/<set>/
         transparency = { light = 1.0, dark = 0.5 },
     },
     font = {
-        face = "Noto Sans",                -- betűcsalád
+        face = "Noto Sans",                -- font family
         color = { light = "#ffffff", dark = "#9e9e9e" },
         transparency = { light = 1.0, dark = 1.0 },
     },
     background = {
-        transparency = 0.0,                -- 0 = átlátszó, 1 = teljesen takaró
+        transparency = 0.0,                -- 0 = transparent, 1 = fully covering
         color = "#000000",
     },
 }
 ```
 
-Elérhető appearance témák (`themes/appearance/`): `light`, `dark`,
+Available appearance themes (`themes/appearance/`): `light`, `dark`,
 `light-bg`, `dark-bg`, `light-blue`, `dark-blue`, `light-blue-bg`,
-`dark-blue-bg`, `light-green`, ..., `light-orange`, `dark-orange`, stb.
-A `-bg` utótagúak háttérrel is rendelkeznek.
+`dark-blue-bg`, `light-green`, ..., `light-orange`, `dark-orange`, etc.
+The `-bg` suffixed ones also have a background.
 
-### `themes/weather/<város>/weather.lua` — időjárás-beállítások
+### `themes/weather/<city>/weather.lua` — weather settings
 
 ```lua
 settings.weather = {
     city = "Tatabánya",
-    language_code = "hu",                  -- a város/ország a lekérdezésben
-    lang = "hu",                           -- a leírás nyelve (hu, en, de, ...)
+    language_code = "hu",                  -- the city/country in the query
+    lang = "hu",                           -- the description language (hu, en, de, ...)
     units = "metric",                      -- metric = °C, imperial = °F
     api_key = os.getenv("OPENWEATHER_API_KEY"),
     api_url = "https://api.openweathermap.org/data/2.5/weather",
 }
 ```
 
-Elérhető városok (`themes/weather/`): `default`, `berlin`, `budapest`,
+Available cities (`themes/weather/`): `default`, `berlin`, `budapest`,
 `delhi`, `london`, `moscow`, `new-york`, `paris`, `sidney`, `tokyo`, `wien`.
 
-### `cwDraw.lua` — a rajzolás (a pozíciók forrása)
+### `cwDraw.lua` — the drawing (source of the positions)
 
-Minden függvény `text(cr, x, y, trans, str, font, size, weight, color)` vagy
-`image(cr, x, y, trans, path)` alakban rajzol, a koordinátákhoz hozzáadódik
-`abs_pos_x=70`, `abs_pos_y=25`.
+Every function draws in `text(cr, x, y, trans, str, font, size, weight, color)`
+or `image(cr, x, y, trans, path)` form, with `abs_pos_x=70`, `abs_pos_y=25`
+added to the coordinates.
 
-| Függvény | Mit rajzol | Kulcspozíciók |
+| Function | What it draws | Key positions |
 |---|---|---|
-| `background(cr)` | lekerekített (r=20) háttér | szín/átlátszóság az appearance-ből |
-| `element_clock` | év(20,30), dátum(70,30), óra(10,155), perc(170,155), másodperc(370,155) | font 20/145/20 |
+| `background(cr)` | rounded (r=20) background | color/transparency from the appearance |
+| `element_clock` | year(20,30), date(70,30), hour(10,155), minute(170,155), seconds(370,155) | font 20/145/20 |
 | `element_system` | HDD/RAM (y180), CPU/SWAP (y200) | font 15 |
-| `element_weather` | vonal(415,110), ikon(470,45), város-ikon(440,100)+név(455,110), hőmérő(440,140)+hőfok(460,155), leírás(435,175), MIN/MAX/Feels(y195) | |
+| `element_weather` | line(415,110), icon(470,45), city-icon(440,100)+name(455,110), thermometer(440,140)+temp(460,155), description(435,175), MIN/MAX/Feels(y195) | |
 
-Az `eww/eww.scss` margói ezekből a koordinátákból származnak (6. fejezet
-átszámítási szabálya).
+The `eww/eww.scss` margins derive from these coordinates (the conversion rule
+of section 6).
 
-### `cwApp.lua`, `panelApp.lua` — Conky ablakbeállítások
+### `cwApp.lua`, `panelApp.lua` — Conky window settings
 
 - `cwApp.lua`: `minimum_width=745`, `minimum_height=250`,
   `alignment="middle_middle"`, `own_window_transparent=true`,
   `lua_draw_hook_pre="cwMain"`.
-- `panelApp.lua`: `minimum_width=250`, magasság = workarea magassága,
+- `panelApp.lua`: `minimum_width=250`, height = workarea height,
   `alignment="top_right"`, `START_PANEL_ENABLED=true`.
 
-### `cwUtils.lua` — API hibakezelés
+### `cwUtils.lua` — API error handling
 
-- Ha nincs `OPENWEATHER_API_KEY`, a widget hibaüzenetet rajzol a képernyőre
-  (lásd `is_set_api_key`).
-- `check_api_response_status` — ha az API `cod != 200`, a válaszüzenetet
-  rajzolja ki (pl. rossz kulcs, ismeretlen város).
-
----
-
-## 9. Ismert hibák / TODO (a port-folyamatból)
-
-- [ ] A `stats-row` korábban nem renderelt (diagnosztikai hibakeresés
-      befejezve a layout commitokkal; az `eww.yuck`-ban a stats elemek a
-      `widget_clock_weather`-ben vannak, lásd `stat-min/max/feels`).
-- [ ] A `time-row` label-klip hibája (t13/t14/t15 mátrix) **megoldva** az
-      aktuális layout-ban; az itt leírt `eww.scss` margók a végső, ellenőrzött
-      értékek.
-- [ ] Végső vizuális összehasonlítás a `../images/screenshots/new-york-light.png`
-      referencia képével a 7. fejezet mérési módszerével.
+- If there is no `OPENWEATHER_API_KEY`, the widget draws an error message on
+  the screen (see `is_set_api_key`).
+- `check_api_response_status` — if the API returns `cod != 200`, it draws the
+  response message (e.g. wrong key, unknown city).
 
 ---
 
-## Kapcsolódó dokumentáció
+## 9. Known issues / TODO (from the port process)
 
-- `../README.md` — a teljes projekt leírása (Conky verzió, install, setup).
-- `../TESTS.md` — a sikeres tesztek listája.
-- `../themes/themes.md` — a példa-témák.
+- [ ] The `stats-row` did not render earlier (diagnostic debugging finished
+      with the layout commits; in `eww.yuck` the stats elements are in
+      `widget_clock_weather`, see `stat-min/max/feels`).
+- [ ] The `time-row` label-clipping bug (t13/t14/t15 matrix) **solved** in the
+      current layout; the `eww.scss` margins described here are the final,
+      verified values.
+- [ ] Final visual comparison with the
+      `../images/screenshots/new-york-light.png` reference image using the
+      measurement method of section 7.
+
+---
+
+## Related documentation
+
+- `../README.md` — description of the whole project (Conky version, install, setup).
+- `../TESTS.md` — the list of successful tests.
+- `../themes/themes.md` — the example themes.
