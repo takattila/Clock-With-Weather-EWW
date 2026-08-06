@@ -165,10 +165,14 @@ usage() {
 }
 
 # ------------------------------------------------------------- dispatch
-case "${1:-}" in
-  hide)    cmd_hide "${2:-}" ;;
-  restore) cmd_restore ;;
-  status)  cmd_status ;;
-  -h|--help|"") usage ;;
-  *) die "Ismeretlen alparancs: ${1} (használat: hide | restore | status)" ;;
-esac
+main() {
+  case "${1:-}" in
+    hide)    cmd_hide "${2:-}" ;;
+    restore) cmd_restore ;;
+    status)  cmd_status ;;
+    -h|--help|"") usage ;;
+    *) die "Ismeretlen alparancs: ${1} (használat: hide | restore | status)" ;;
+  esac
+}
+
+main "$@"

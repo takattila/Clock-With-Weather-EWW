@@ -71,11 +71,15 @@ terminált** (`eww` naplózza a `defpoll` hibákat).
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
-./start.sh
+./scripts/start.sh
 ```
 
-A `start.sh` a következőket csinálja:
+A `scripts/start.sh` a következőket csinálja:
 
+0. **KDE Plasma ellenőrzés** — ha a `plasmashell` nem fut, a
+   `scripts/setup_test_env.sh restore` visszaállítja a normál asztalt (és
+   újraindítja a plasmashellt); ha nincs mentés, közvetlenül elindítja a
+   `plasmashell`-t, hogy a widget megjelenhessen.
 1. **`theme.py`** — legenerálja az `eww.theme.scss` és `eww.theme.json` fájlt a
    `config.json` `appearance` mezője + `../themes/appearance/<név>/appearance.lua`
    alapján (színek, font, ikonkészlet, háttér-átlátszóság).
@@ -89,10 +93,10 @@ A `start.sh` a következőket csinálja:
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
-./stop.sh
+./scripts/stop.sh
 ```
 
-A `stop.sh` az eww daemont állítja le ehhez a config-könyvtárhoz
+A `scripts/stop.sh` az eww daemont állítja le ehhez a config-könyvtárhoz
 (`eww --config . kill`), ami mindkét ablakot bezárja. Manuálisan ennyi:
 
 ```bash
@@ -126,16 +130,16 @@ eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
 ## 4. Tesztkörnyezet kialakítása (KDE Plasma)
 
 A widget méréséhez tiszta asztal kell: nincs rajta másik widget, nincsenek
-asztali ikonok, és egyszínű a háttér. Ehhez a **`eww/setup_test_env.sh`**
+asztali ikonok, és egyszínű a háttér. Ehhez a **`eww/scripts/setup_test_env.sh`**
 script:
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
 
-./setup_test_env.sh hide                # tesztmód: widgetek + ikonok rejtve, egyszínű háttér
-./setup_test_env.sh hide "#112233"      # ... egyedi háttérszínnel
-./setup_test_env.sh status              # aktuális állapot
-./setup_test_env.sh restore             # normál asztal visszaállítása
+./scripts/setup_test_env.sh hide                # tesztmód: widgetek + ikonok rejtve, egyszínű háttér
+./scripts/setup_test_env.sh hide "#112233"      # ... egyedi háttérszínnel
+./scripts/setup_test_env.sh status              # aktuális állapot
+./scripts/setup_test_env.sh restore             # normál asztal visszaállítása
 ```
 
 ### Mit csinál a script?
@@ -206,7 +210,7 @@ A fájl három nagy részből áll:
 4. **`defwindow` blokkok** — `main_window` (745x250, center) és
    `panel_window` (250 széles, top-right, teljes magasság).
 
-### `eww/scripts/` — az adat-előállító Python scriptek
+### `eww/scripts/` — adat-előállító Python és shell scriptek
 
 | Script | Kimenet | Felel |
 |---|---|---|
@@ -215,6 +219,9 @@ A fájl három nagy részből áll:
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | grafikon-SVG-k generálása (`charts/*.svg`, 100 pontos görgetett hisztória), aktív NIC felderítés |
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` | a `config.json` `appearance` + `../themes/appearance/<név>/appearance.lua` → EWW téma |
 | `workarea.py` | `"Y HEIGHT"` | `_NET_WORKAREA` kiolvasása a panel magasságához |
+| `start.sh` | — | a widget indítása (3. fejezet): Plasma-ellenőrzés, téma-generálás, taskbar-igazítás, `eww daemon` + ablakok megnyitása |
+| `stop.sh` | — | a widget leállítása (`eww --config . kill`) |
+| `setup_test_env.sh` | — | KDE Plasma tesztkörnyezet ki-/be- és visszakapcsolása (4. fejezet): `hide` / `status` / `restore` |
 
 ### `eww/charts/` — generált SVG-k
 
