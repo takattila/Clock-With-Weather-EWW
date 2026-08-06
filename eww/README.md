@@ -442,8 +442,8 @@ Az `eww/eww.scss` margói ezekből a koordinátákból származnak (6. fejezet
       befejezve a layout commitokkal; az `eww.yuck`-ban a stats elemek a
       `widget_clock_weather`-ben vannak, lásd `stat-min/max/feels`).
 - [ ] A `time-row` label-klip hibája (t13/t14/t15 mátrix) **megoldva** az
-      aktuális layout-ban; dokumentálva a `PROMPT.md`-ben, az itt leírt
-      `eww.scss` margók a végső, ellenőrzött értékek.
+      aktuális layout-ban; az itt leírt `eww.scss` margók a végső, ellenőrzött
+      értékek.
 - [ ] Végső vizuális összehasonlítás a `../images/screenshots/new-york-light.png`
       referencia képével a 7. fejezet mérési módszerével.
 
@@ -454,5 +454,3 @@ Az `eww/eww.scss` margói ezekből a koordinátákból származnak (6. fejezet
 - `../README.md` — a teljes projekt leírása (Conky verzió, install, setup).
 - `../TESTS.md` — a sikeres tesztek listája.
 - `../themes/themes.md` — a példa-témák.
-- `../PLAN.md`, `../PROMPT.md` — a fejlesztési napló (ez a README ezek
-  összevont, végleges változata).
