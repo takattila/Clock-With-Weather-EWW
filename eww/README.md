@@ -88,6 +88,14 @@ A `start.sh` a következőket csinálja:
 ### Leállítás
 
 ```bash
+cd ~/.conky/Clock-With-Weather-Conky/eww
+./stop.sh
+```
+
+A `stop.sh` az eww daemont állítja le ehhez a config-könyvtárhoz
+(`eww --config . kill`), ami mindkét ablakot bezárja. Manuálisan ennyi:
+
+```bash
 eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
 ```
 
