@@ -111,7 +111,7 @@
       ;; Temperature --- thermometer icon beside celsius, same row as CPU/SWAP
       (image :class "temp-icon"
              :path { "images/theme/" + theme.theme + "/elements/temperature.png" }
-             :image-width 40 :image-height 40
+             :image-width 32 :image-height 32
              :halign "start" :valign "start")
       (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol}
              :halign "start" :valign "start")
