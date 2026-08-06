@@ -148,21 +148,22 @@
   margin-top: 88px;
 }
 
-/* Temperature: same row as CPU/SWAP (row 2), vertically centered on it */
+/* Temperature: baseline y155 (cwDraw text(460,155) font 40),
+   between city (y110) and description (y180). */
 .temp-icon {
-  margin-left: 425px;
-  margin-top: 214px;
+  margin-left: 430px;
+  margin-top: 122px;
 }
 
 .temp-label {
-  font-size: 26px;
+  font-size: 40px;
   font-weight: bold;
   color: $color-light;
   margin-left: 460px;
-  margin-top: 206px;
+  margin-top: 118px;
 }
 
-/* Description: same row as HDD/RAM (row 1) */
+/* Description: same row as HDD/RAM (row 1, baseline y180) */
 .details-icon {
   margin-left: 430px;
   margin-top: 202px;
@@ -175,35 +176,35 @@
   margin-top: 194px;
 }
 
-/* MIN/MAX/Feels: bottom of widget */
+/* MIN/MAX/Feels: same row as CPU/SWAP (row 2, baseline y200) */
 .stat-min-icon {
   margin-left: 430px;
-  margin-top: 236px;
+  margin-top: 220px;
 }
 
 .stat-min-label {
   margin-left: 445px;
-  margin-top: 234px;
+  margin-top: 214px;
 }
 
 .stat-max-icon {
   margin-left: 490px;
-  margin-top: 236px;
+  margin-top: 220px;
 }
 
 .stat-max-label {
   margin-left: 505px;
-  margin-top: 234px;
+  margin-top: 214px;
 }
 
 .stat-feels-icon {
   margin-left: 553px;
-  margin-top: 236px;
+  margin-top: 220px;
 }
 
 .stat-feels-label {
   margin-left: 565px;
-  margin-top: 234px;
+  margin-top: 214px;
 }
 
 .stat-icon {
