@@ -142,25 +142,25 @@
 
 .city-label {
   font-size: 30px;
-  font-weight: 100;
+  font-weight: bold;
   color: $color-dark;
   margin-left: 455px;
-  margin-top: 88px;
+  margin-top: 78px;
 }
 
 /* Temperature: baseline y155 (cwDraw text(460,155) font 40),
    between city (y110) and description (y180). */
 .temp-icon {
-  margin-left: 430px;
-  margin-top: 136px;
+  margin-left: 427px;
+  margin-top: 143px;
 }
 
 .temp-label {
-  font-size: 52px;
+  font-size: 44px;
   font-weight: bold;
   color: $color-light;
-  margin-left: 490px;
-  margin-top: 120px;
+  margin-left: 460px;
+  margin-top: 128px;
 }
 
 /* Description: same row as HDD/RAM (row 1, baseline y180) */
