@@ -1,104 +1,246 @@
+@import "eww.theme.scss";
+
 * {
   all: unset;
-  font-family: "Noto Sans";
+  font-family: $font-face;
 }
+
+/* ============================================================
+   Main widget (Clock + Weather) - 745x250, mirrors cwDraw.lua
+   ============================================================ */
 
 .main-container {
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba($bg-color, $bg-alpha);
   border-radius: 20px;
-  padding: 20px 30px;
-  color: white;
+  color: $color-light;
 }
 
-.date-box {
-  margin-bottom: 5px;
+.widget-overlay {
+  min-width: 745px;
+  min-height: 250px;
 }
+
+.section-sizer {
+  background-color: transparent;
+}
+
+/* ---------- Date / year (cwDraw text(20,30) / text(70,30), font 20) ---------- */
 
 .year-label {
   font-size: 20px;
-  color: #ffffff;
+  color: $color-light;
+  margin-left: 20px;
+  margin-top: 15px;
 }
 
 .date-label {
   font-size: 20px;
-  color: #9e9e9e;
-  margin-left: 10px;
+  color: $color-dark;
+  margin-left: 70px;
+  margin-top: 15px;
 }
 
-.time-box {
-  margin-bottom: 20px;
-  /* Ensure children don't overflow */
-}
+/* ---------- Hour / minutes / seconds (cwDraw baseline y=155) ---------- */
 
 .hour-label {
-  font-size: 130px; /* Reduced from 145px to fit better */
-  color: #ffffff;
+  font-size: 145px;
+  color: $color-light;
+  margin-left: 10px;
+  margin-top: 22px;
 }
 
 .minutes-label {
-  font-size: 130px; /* Reduced from 145px to fit better */
-  color: #9e9e9e;
+  font-size: 145px;
+  color: $color-dark;
+  margin-left: 170px;
+  margin-top: 22px;
 }
 
 .seconds-label {
   font-size: 20px;
-  color: #ffffff;
-  margin-top: 85px; /* Adjusted for smaller digits */
-  margin-left: 5px;
+  color: $color-light;
+  margin-left: 370px;
+  margin-top: 113px;
 }
 
-.system-info {
-  margin-top: 10px;
+/* ---------- System info row 1 (HDD, RAM) - baseline y=180, font 15 ---------- */
+
+.hdd-label {
+  margin-left: 20px;
+  margin-top: 194px;
 }
 
-.system-label {
-  font-size: 14px;
-  color: #ffffff;
+.hdd-value {
+  margin-left: 60px;
+  margin-top: 194px;
+}
+
+.ram-label {
+  margin-left: 200px;
+  margin-top: 194px;
+}
+
+.ram-value {
+  margin-left: 250px;
+  margin-top: 194px;
+}
+
+/* ---------- System info row 2 (CPU, SWAP) - baseline y=200, font 15 ---------- */
+
+.cpu-label {
+  margin-left: 20px;
+  margin-top: 214px;
+}
+
+.cpu-value {
+  margin-left: 60px;
+  margin-top: 214px;
+}
+
+.swap-label {
+  margin-left: 200px;
+  margin-top: 214px;
+}
+
+.swap-value {
+  margin-left: 250px;
+  margin-top: 214px;
+}
+
+.sys-label {
+  font-size: 15px;
   font-weight: bold;
-  min-width: 45px; /* Give labels a fixed width to align values */
+  color: $color-light;
+  min-width: 40px;
 }
 
-.system-value {
-  font-size: 14px;
-  color: #9e9e9e;
-  margin-left: 5px;
+.sys-value {
+  font-size: 15px;
+  color: $color-dark;
 }
 
-.separator-line {
-  background-color: rgba(255, 255, 255, 0.2);
-  margin: 0 20px;
+/* ---------- Divider line (cwDraw image centered 415,110, 1x205) ---------- */
+
+.divider {
+  margin-left: 414px;
+  margin-top: 8px;
 }
 
-.weather-content {
-  padding-left: 10px;
+/* ---------- Weather ---------- */
+
+/* Weather icon (centered 470,45) */
+.weather-icon {
+  margin-left: 438px;
+  margin-top: 13px;
+}
+
+/* City: icon centered (440,100); text baseline (455,110) font 30 */
+.city-icon {
+  margin-left: 430px;
+  margin-top: 90px;
 }
 
 .city-label {
   font-size: 30px;
   font-weight: 100;
-  color: #9e9e9e;
-  margin-left: 5px;
+  color: $color-dark;
+  margin-left: 455px;
+  margin-top: 88px;
+}
+
+/* Temperature: same row as CPU/SWAP (row 2), vertically centered on it */
+.temp-icon {
+  margin-left: 425px;
+  margin-top: 214px;
 }
 
 .temp-label {
-  font-size: 40px;
+  font-size: 26px;
   font-weight: bold;
-  color: #ffffff;
-  margin-left: 10px;
+  color: $color-light;
+  margin-left: 460px;
+  margin-top: 206px;
+}
+
+/* Description: same row as HDD/RAM (row 1) */
+.details-icon {
+  margin-left: 430px;
+  margin-top: 202px;
 }
 
 .details-label {
   font-size: 15px;
-  color: #9e9e9e;
-  margin-left: 5px;
+  color: $color-dark;
+  margin-left: 445px;
+  margin-top: 194px;
+}
+
+/* MIN/MAX/Feels: bottom of widget */
+.stat-min-icon {
+  margin-left: 430px;
+  margin-top: 236px;
+}
+
+.stat-min-label {
+  margin-left: 445px;
+  margin-top: 234px;
+}
+
+.stat-max-icon {
+  margin-left: 490px;
+  margin-top: 236px;
+}
+
+.stat-max-label {
+  margin-left: 505px;
+  margin-top: 234px;
+}
+
+.stat-feels-icon {
+  margin-left: 553px;
+  margin-top: 236px;
+}
+
+.stat-feels-label {
+  margin-left: 565px;
+  margin-top: 234px;
+}
+
+.stat-icon {
+  min-width: 10px;
+  min-height: 10px;
 }
 
 .stat-label {
   font-size: 15px;
-  color: #9e9e9e;
-  margin-left: 5px;
+  color: $color-dark;
 }
 
-.temp-stats {
-  margin-top: 10px;
+/* ============================================================
+   System monitor panel - 250 wide, full height, panelDraw.lua
+   ============================================================ */
+
+.panel-container {
+  background-color: rgba($bg-color, $bg-alpha);
+  color: $color-light;
+}
+
+.panel-title {
+  font-size: 22px;
+  font-weight: bold;
+  color: rgba($color-light, 0.9);
+  margin-top: 6px;
+  margin-left: 10px;
+}
+
+.panel-status {
+  font-size: 14px;
+  color: rgba($color-light, 0.7);
+  margin-top: 2px;
+  margin-left: 10px;
+}
+
+.panel-chart {
+  margin-top: 4px;
+  margin-left: 10px;
 }

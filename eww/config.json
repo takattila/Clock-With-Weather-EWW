@@ -3,5 +3,6 @@
     "city": "Tatabánya",
     "lang": "hu",
     "units": "metric",
-    "appearance": "light"
+    "appearance": "light",
+    "hour_format": "24"
 }

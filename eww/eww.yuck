@@ -1,118 +1,205 @@
-(defpoll hour :interval "1s" `date +%H`)
+;; ===========================================================================
+;; Clock-With-Weather-Conky - eww (Wayland) migration
+;;
+;; Two windows mirror the original Conky setup:
+;;   1. main_window  -> Clock + Weather widget (745x250, centered)
+;;   2. panel_window -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
+;;
+;; All proportions and coordinates follow cwDraw.lua / panelDraw.lua.
+;; ===========================================================================
+
+;; --- Clock data ------------------------------------------------------------
+(defpoll hour :interval "1s"
+  `date +$(jq -r '.hour_format // "24"' config.json | sed 's/24/%H/; s/12/%I/')`)
+
 (defpoll minutes :interval "1s" `date +:%M`)
+
 (defpoll seconds :interval "1s" `date +%S`)
 
 (defpoll date_year :interval "1m"
   `date +%Y.`)
 
 (defpoll date_day :interval "1m"
-  `date "+| %B %d. | %A"`)
+  `LC_TIME=en_US.UTF-8 date "+| %B %d. | %A"`)
 
+;; --- System info (HDD / CPU / RAM / SWAP) -----------------------------------
 (defpoll system_info :interval "5s"
   `./scripts/system.py`)
 
+;; --- Weather ----------------------------------------------------------------
 (defpoll weather_info :interval "10m"
   `./scripts/weather.py $(jq -r '.api_key' config.json) $(jq -r '.city' config.json) $(jq -r '.lang' config.json) $(jq -r '.units' config.json)`)
 
+;; --- System monitor panel (CPU / MEMORY / NET UP / NET DOWN charts) ---------
+(defpoll panel :interval "1s"
+  `./scripts/panel.py`)
+
+;; --- Configuration / theme --------------------------------------------------
 (defpoll config :interval "1h" `cat config.json`)
 
-(defwindow main_window
-           :monitor 0
-           :geometry (geometry :x "0%"
-                               :y "0%"
-                               :width "820px"
-                               :height "250px"
-                               :anchor "center")
-           :stacking "bottom"
-           :windowtype "normal"
-           :wm-ignore true
-  (widget_clock_weather))
+(defpoll theme :interval "1h" `cat eww.theme.json`)
+
+;; ===========================================================================
+;; Image path helpers
+;; ===========================================================================
 
 (defwidget widget_clock_weather []
   (box :class "main-container" :orientation "h" :space-evenly false
-    
-    ;; LEFT SECTION: Clock and System Info
-    (box :class "clock-section" :orientation "v" :space-evenly false :width 450
-      
-      (box :class "date-box" :orientation "h" :space-evenly false
-        (label :class "year-label" :text date_year)
-        (label :class "date-label" :text date_day)
-      )
 
-      (box :class "time-box" :orientation "h" :space-evenly false
-        (label :class "hour-label" :text hour)
-        (label :class "minutes-label" :text minutes)
-        (label :class "seconds-label" :text ": ${seconds}")
-      )
+    ;; ------------------------------------------------------------------
+    ;; ABSOLUTE layout mirroring cwDraw.lua coordinates (745x250).
+    ;; cwDraw.text() = cairo baseline (pos_x, pos_y); image() = centered.
+    ;; CSS margin-top = baseline_y - 0.73*font_size (cap height).
+    ;; ------------------------------------------------------------------
+    (overlay :class "widget-overlay"
+      (box :class "section-sizer" :width 745 :height 250)
 
-      (box :class "system-info" :orientation "h" :space-evenly false :spacing 40
-        ;; HDD & CPU Column
-        (box :orientation "v" :space-evenly false :spacing 5
-          (box :orientation "h" :space-evenly false :spacing 10
-            (label :class "system-label" :text "HDD")
-            (label :class "system-value" :text {system_info.hdd})
-          )
-          (box :orientation "h" :space-evenly false :spacing 10
-            (label :class "system-label" :text "CPU")
-            (label :class "system-value" :text {system_info.cpu})
-          )
-        )
-        ;; RAM & SWAP Column
-        (box :orientation "v" :space-evenly false :spacing 5
-          (box :orientation "h" :space-evenly false :spacing 10
-            (label :class "system-label" :text "RAM")
-            (label :class "system-value" :text {system_info.ram})
-          )
-          (box :orientation "h" :space-evenly false :spacing 10
-            (label :class "system-label" :text "SWAP")
-            (label :class "system-value" :text {system_info.swap})
-          )
-        )
-      )
-    )
+      ;; Date / year --- cwDraw text(20,30) / text(70,30), font 20
+      (label :class "year-label" :text date_year
+             :halign "start" :valign "start")
+      (label :class "date-label" :text date_day
+             :halign "start" :valign "start")
 
-    ;; RIGHT SECTION: Weather
-    (box :class "weather-section" :orientation "h" :space-evenly false
-      
-      ;; Vertical line image
-      (image :path { "images/theme/" + config.appearance + "/elements/line.png" } :image-width 2 :image-height 200)
+      ;; Hour / minutes / seconds --- cwDraw text(10/170/370,155)
+      (label :class "hour-label" :text hour
+             :halign "start" :valign "start")
+      (label :class "minutes-label" :text minutes
+             :halign "start" :valign "start")
+      (label :class "seconds-label" :text {": " + seconds}
+             :halign "start" :valign "start")
 
-      (box :class "weather-content" :orientation "v" :space-evenly false :margin-left 20
-        
-        (box :class "weather-header" :orientation "h" :space-evenly false :halign "start"
-          (image :path { "images/theme/" + config.appearance + "/weather/dovora/" + weather_info.icon_path + ".png" } :image-width 80 :image-height 80)
-        )
+      ;; System info row 1 (HDD, RAM) --- cwDraw baseline y=180, font 15
+      (label :class "sys-label hdd-label" :text "HDD"
+             :halign "start" :valign "start")
+      (label :class "sys-value hdd-value" :text {system_info.hdd}
+             :halign "start" :valign "start")
+      (label :class "sys-label ram-label" :text "RAM"
+             :halign "start" :valign "start")
+      (label :class "sys-value ram-value" :text {system_info.ram}
+             :halign "start" :valign "start")
 
-        (box :class "city-box" :orientation "h" :space-evenly false :spacing 10
-          (image :path { "images/theme/" + config.appearance + "/elements/map-marker.png" } :image-width 20 :image-height 20)
-          (label :class "city-label" :text {weather_info.name})
-        )
+      ;; System info row 2 (CPU, SWAP) --- cwDraw baseline y=200, font 15
+      (label :class "sys-label cpu-label" :text "CPU"
+             :halign "start" :valign "start")
+      (label :class "sys-value cpu-value" :text {system_info.cpu}
+             :halign "start" :valign "start")
+      (label :class "sys-label swap-label" :text "SWAP"
+             :halign "start" :valign "start")
+      (label :class "sys-value swap-value" :text {system_info.swap}
+             :halign "start" :valign "start")
 
-        (box :class "temp-box" :orientation "h" :space-evenly false :spacing 10
-          (image :path { "images/theme/" + config.appearance + "/elements/temperature.png" } :image-width 30 :image-height 30)
-          (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol})
-        )
+      ;; Vertical divider line --- cwDraw image centered (415,110), 1x205
+      (image :class "divider"
+             :path { "images/theme/" + theme.theme + "/elements/line.png" }
+             :image-width 2 :image-height 205
+             :halign "start" :valign "start")
 
-        (box :class "details-box" :orientation "h" :space-evenly false :spacing 5
-          (image :path { "images/theme/" + config.appearance + "/elements/arrow-right.png" } :image-width 15 :image-height 15)
-          (label :class "details-label" :text {weather_info.weather[0].description})
-        )
+      ;; Weather icon --- cwDraw image centered (470,45), 64x64
+      (image :class "weather-icon"
+             :path { "images/theme/" + theme.theme + "/weather/" + theme.icon_set + "/" + weather_info.icon_path + ".png" }
+             :image-width 64 :image-height 64
+             :halign "start" :valign "start")
 
-        (box :class "temp-stats" :orientation "h" :space-evenly false :spacing 15
-          (box :orientation "h" :space-evenly false :spacing 5
-            (image :path { "images/theme/" + config.appearance + "/elements/arrow-down.png" } :image-width 15 :image-height 15)
-            (label :class "stat-label" :text {weather_info.temp_min_fmt + weather_info.unit_symbol})
-          )
-          (box :orientation "h" :space-evenly false :spacing 5
-            (image :path { "images/theme/" + config.appearance + "/elements/arrow-up.png" } :image-width 15 :image-height 15)
-            (label :class "stat-label" :text {weather_info.temp_max_fmt + weather_info.unit_symbol})
-          )
-          (box :orientation "h" :space-evenly false :spacing 5
-            (image :path { "images/theme/" + config.appearance + "/elements/white-man.png" } :image-width 15 :image-height 15)
-            (label :class "stat-label" :text {weather_info.feels_like_fmt + weather_info.unit_symbol})
-          )
-        )
-      )
-    )
-  )
-)
+      ;; City --- icon centered (440,100) 20x20; cwDraw text(455,110) font 30
+      (image :class "city-icon"
+             :path { "images/theme/" + theme.theme + "/elements/map-marker.png" }
+             :image-width 20 :image-height 20
+             :halign "start" :valign "start")
+      (label :class "city-label" :text {config.city}
+             :halign "start" :valign "start")
+
+      ;; Temperature --- thermometer icon beside celsius, same row as CPU/SWAP
+      (image :class "temp-icon"
+             :path { "images/theme/" + theme.theme + "/elements/temperature.png" }
+             :image-width 20 :image-height 20
+             :halign "start" :valign "start")
+      (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start")
+
+      ;; Description --- icon centered (435,175) 10x10; cwDraw text(445,180) font 15
+      (image :class "details-icon"
+             :path { "images/theme/" + theme.theme + "/elements/arrow-right.png" }
+             :image-width 10 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "details-label" :text {weather_info.weather[0].description}
+             :halign "start" :valign "start")
+
+      ;; MIN --- icon centered (435,195) 10x10; cwDraw text(445,200) font 15
+      (image :class "stat-icon stat-min-icon"
+             :path { "images/theme/" + theme.theme + "/elements/arrow-down.png" }
+             :image-width 10 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "stat-label stat-min-label" :text {weather_info.temp_min_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start")
+
+      ;; MAX --- icon centered (495,195) 10x10; cwDraw text(505,200) font 15
+      (image :class "stat-icon stat-max-icon"
+             :path { "images/theme/" + theme.theme + "/elements/arrow-up.png" }
+             :image-width 10 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "stat-label stat-max-label" :text {weather_info.temp_max_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start")
+
+      ;; FEELS LIKE --- icon centered (555,195) 4x10; cwDraw text(565,200) font 15
+      (image :class "stat-icon stat-feels-icon"
+             :path { "images/theme/" + theme.theme + "/elements/white-man.png" }
+             :image-width 4 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "stat-label stat-feels-label" :text {weather_info.feels_like_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start"))))
+
+
+;; ===========================================================================
+;; System monitor panel (mirrors panelDraw.lua)
+;; ===========================================================================
+
+(defwidget widget_panel []
+  (box :class "panel-container" :orientation "v" :space-evenly true
+
+    (box :class "panel-section" :orientation "v" :space-evenly false
+      (label :class "panel-title" :text "CPU")
+      (label :class "panel-status" :text {panel.cpu_txt})
+      (image :class "panel-chart" :path {panel.cpu_file}))
+
+    (box :class "panel-section" :orientation "v" :space-evenly false
+      (label :class "panel-title" :text "MEMORY")
+      (label :class "panel-status" :text {panel.mem_txt})
+      (image :class "panel-chart" :path {panel.mem_file}))
+
+    (box :class "panel-section" :orientation "v" :space-evenly false
+      (label :class "panel-title" :text "NET DOWN")
+      (label :class "panel-status" :text {panel.down_txt})
+      (image :class "panel-chart" :path {panel.down_file}))
+
+    (box :class "panel-section" :orientation "v" :space-evenly false
+      (label :class "panel-title" :text "NET UP")
+      (label :class "panel-status" :text {panel.up_txt})
+      (image :class "panel-chart" :path {panel.up_file}))))
+
+;; ===========================================================================
+;; Windows
+;; ===========================================================================
+
+(defwindow main_window
+  :monitor 0
+  :geometry (geometry :x "0%"
+                      :y "0%"
+                      :width "745px"
+                      :height "250px"
+                      :anchor "center")
+  :stacking "bottom"
+  :windowtype "normal"
+  :wm-ignore true
+  (widget_clock_weather))
+
+(defwindow panel_window
+  :monitor 0
+  :geometry (geometry :x "0%"
+                      :y "0px"
+                      :width "250px"
+                      :height "1034px"
+                      :anchor "top right")
+  :stacking "bottom"
+  :windowtype "normal"
+  :wm-ignore true
+  (widget_panel))

@@ -25,12 +25,12 @@ def get_system_info():
     mem = psutil.virtual_memory()
     ram_fmt = f"{format_bytes(mem.used)} / {format_bytes(mem.total)}"
 
-    # CPU info
-    cpu_usage = f"{psutil.cpu_percent()}%"
+    # CPU info (short sampling window, since every run is a fresh process)
+    cpu_usage = f"{int(psutil.cpu_percent(interval=0.2))}%"
 
     # SWAP info
     swap = psutil.swap_memory()
-    swap_fmt = f"{swap.percent}% (size: {format_bytes(swap.total)})"
+    swap_fmt = f"{int(swap.percent)}% (size: {format_bytes(swap.total)})"
 
     data = {
         "hdd": hdd_fmt,
@@ -38,7 +38,7 @@ def get_system_info():
         "cpu": cpu_usage,
         "swap": swap_fmt
     }
-    
+
     print(json.dumps(data))
 
 if __name__ == "__main__":
