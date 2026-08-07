@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 watch.log
 watch.pid
+.api_key

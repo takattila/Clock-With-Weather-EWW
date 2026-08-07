@@ -92,16 +92,19 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
 ### 3. `eww reload` viselkedés ellenőrzése
 - Újra-futtatja-e azonnal a defpoll-okat? (Az 5s interval biztosítékként van.)
 
-### 4. Commit / push döntés
-- A teljes YAML-migráció + ez a munka **commitolatlan** (git status):
-  `README.md`, `eww/README.md`, `eww/.gitignore`, `eww/eww.yuck`,
-  `eww/scripts/{panel,setup_test_env,start,stop,theme,workarea}.py`,
-  törölt `eww/config.json`, új: `eww/config.yaml`, `eww/fonts/`,
-  `eww/scripts/{config,watch}.py`, `eww/themes/`.
-- `eww/scripts/setup_test_env.sh`: kis indent-fix (2 sor) — a wallpaper-feladattal
-  együtt maradt, bevonható a commitba.
-- Korábbi commit: `ab439a3` (wallpaper), `4f7692f` (panel taskbar-igazítás).
-- Utasítás: commit csak kérésre.
+### 4. Commit / push
+- A YAML-migráció + gap-funkció **commitolva**: `9d7b78b` → történet-újraírás
+  után `be2d4ff` (`git filter-repo --replace-text`, kulcs → `REPLACE_API_KEY`).
+  Backup: `/tmp/opencode/cw-conky-backup.bundle`.
+- **API-kulcs biztonságos tárolása (kész)**: `config.yaml`-ból a kulcs KIVÉVE;
+  a `config.py` hybrid feloldás (env → gitignore-olt `.api_key` → `""`);
+  `.api_key` chmod 600 + `.gitignore`-ban; `start.sh` exportálja a kulcsot a
+  daemonnak. A kulcs a `.api_key`-ben van, a repó nem hordozza.
+- **Tennivaló (rotáció, felhasználó)**: új kulcs generálása az OpenWeatherMap
+  API Keys oldalán, majd `printf 'új' > .api_key` — a régi kulcs a GitHub
+  GC-ig a régi blobokban lehet, ezért érdemes érvényteleníteni.
+- **Push**: `git push --force-with-lease origin feature/wayland` (a rewrite
+  miatt force; a master nem érintett).
 
 ### 5. Eww config.yaml téma-számok
 - Az eww verzió `config.yaml` `appearance`/`weather` név-alapú; a Conky verzió

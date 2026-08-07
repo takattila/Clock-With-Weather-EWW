@@ -5,8 +5,11 @@
 # system.hour_format: "24" | "12"
 # panel.gap  symmetric spacing (px) between the panel and the taskbar on one
 #            side and the opposite screen edge on the other side (Req 2).
+#
+# The OpenWeatherMap API key is intentionally NOT here (it would land in git).
+# Provide it via the OPENWEATHER_API_KEY environment variable or the local,
+# git-ignored file ./.api_key (first line, chmod 600).
 
-api_key: "REPLACE_API_KEY"
 appearance: light
 weather: default
 system:

@@ -121,7 +121,6 @@ language and unit settings come from the selected
 
 ```yaml
 # eww/config.yaml
-api_key: "YOUR_OPENWEATHER_API_KEY"
 appearance: light       # -> themes/appearance/<name>/appearance.yaml
 weather: default        # -> themes/weather/<name>/weather.yaml
 system:
@@ -132,7 +131,6 @@ panel:
 
 | Field | Values | Effect |
 |---|---|---|
-| `api_key` | OpenWeatherMap key | required, no weather without a key |
 | `appearance` | `light`, `dark`, `light-bg`, ... | which `themes/appearance/<name>/appearance.yaml` colors to use |
 | `weather` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
@@ -141,6 +139,29 @@ panel:
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
 + the selected weather theme and prints the merged values as JSON for the
 `defpoll`s (see section 5). `jq` is no longer needed.
+
+#### API key (`OPENWEATHER_API_KEY`)
+
+The OpenWeatherMap key is **not** stored in `config.yaml` (that file is part of
+the repository). It is resolved by `scripts/config.py` in this order:
+
+1. the `OPENWEATHER_API_KEY` environment variable (same as the Conky side),
+2. a local, git-ignored file **`eww/.api_key`** (first line, `chmod 600`),
+3. empty string → the weather block falls back to an API error message.
+
+Setup (pick one):
+
+```sh
+# Option A - environment variable (start.sh also exports it if set)
+export OPENWEATHER_API_KEY="your_key"
+
+# Option B - local file (git-ignored), recommended for desktop use
+printf 'your_key\n' > .api_key && chmod 600 .api_key
+```
+
+`start.sh` exports `OPENWEATHER_API_KEY` from `.api_key` before starting the
+daemon, so both ways work no matter how the widget is launched. Editing
+`.api_key` takes effect within the next weather poll (10 minutes).
 
 ---
 

@@ -6,6 +6,12 @@ Read the central YAML config (config.yaml) and the selected weather theme
 The eww widget cannot parse YAML directly, so the defpoll commands call this
 bridge instead of reading a JSON config file.
 
+The OpenWeatherMap API key is NOT stored in config.yaml (so it never ends up
+in the repository). It is resolved in this order:
+  1. the OPENWEATHER_API_KEY environment variable (same as the Conky side),
+  2. a local, git-ignored file eww/.api_key (first line, chmod 600),
+  3. an empty string (weather falls back to an API error message).
+
 Usage:
   ./config.py             merged JSON (for the `config` defpoll)
   ./config.py --key NAME  a single value
@@ -23,6 +29,22 @@ import sys
 import yaml
 
 CONFIG_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+API_KEY_ENV = "OPENWEATHER_API_KEY"
+
+
+def resolve_api_key():
+    """Return the API key from the env var, the git-ignored .api_key file, or ''."""
+    env_key = os.environ.get(API_KEY_ENV, "").strip()
+    if env_key:
+        return env_key
+    try:
+        with open(os.path.join(CONFIG_DIR, ".api_key"), "r", encoding="utf-8") as f:
+            key = f.read().strip()
+            if key:
+                return key
+    except OSError:
+        pass
+    return ""
 
 
 def load_config():
@@ -38,7 +60,7 @@ def load_config():
         weather = (yaml.safe_load(f) or {}).get("weather", {})
 
     return {
-        "api_key": cfg.get("api_key", ""),
+        "api_key": resolve_api_key(),
         "appearance": appearance,
         "weather": weather_name,
         "hour_format": str(system.get("hour_format", "24")),

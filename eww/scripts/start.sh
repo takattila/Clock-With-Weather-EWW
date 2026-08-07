@@ -86,6 +86,13 @@ start_eww() {
   # Kill any existing eww daemon for this config directory
   eww --config "$DIR" kill 2>/dev/null
 
+  # Make the API key available to the eww daemon (and its defpoll children).
+  # config.py reads the same key from the git-ignored .api_key file, so this
+  # is just a convenience/consistency with the Conky side (OPENWEATHER_API_KEY).
+  if [ -z "${OPENWEATHER_API_KEY:-}" ] && [ -f "$DIR/.api_key" ]; then
+    export OPENWEATHER_API_KEY="$(head -n1 "$DIR/.api_key")"
+  fi
+
   # Start eww daemon
   eww --config "$DIR" daemon
 

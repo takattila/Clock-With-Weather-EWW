@@ -156,13 +156,17 @@ The project has been migrated to **eww** (ElKowar's Wacky Widgets).
 
 ### Configuration
 All settings live in `config.yaml` in the `eww` directory:
-- `api_key` — your OpenWeatherMap API key.
 - `appearance` — selects the appearance theme (colors, font, transparency) from `themes/appearance/<name>/appearance.yaml`.
 - `weather` — selects the weather theme (city, language, temperature unit) from `themes/weather/<name>/weather.yaml`. The weather icon set follows the selected appearance theme.
 - `system.hour_format` — `"24"` or `"12"` hour clock format.
 
 ### Auto-reload
 While the widget is running, a lightweight **inotify-based watcher** (`scripts/watch.py`) monitors `config.yaml` and all theme YAML files. Saving any of them regenerates the theme and reloads the widget immediately — no restart needed. The watcher is event-driven, so it uses almost no CPU while idle. Its log is written to `eww/watch.log`.
+
+### API key
+The OpenWeatherMap key is **not** committed — it is read from the
+`OPENWEATHER_API_KEY` environment variable or the git-ignored `eww/.api_key`
+file (first line, `chmod 600`). See `eww/README.md` → "API key".
 
 ### Panel alignment
 The system monitor panel automatically sizes itself to the taskbar-free work area (`_NET_WORKAREA`) for any taskbar position (top, bottom or side). The panel is inset from the taskbar and from the opposite screen edge by the **same gap** (`panel.gap`, default 16 px), so the free spacing stays symmetric no matter where the taskbar sits. The charts are laid out so the lowest section (NET UP) never extends past the panel edge.
