@@ -467,9 +467,19 @@ function setupEwwApiKey() {
 }
 
 function setupStartEwwWidget() {
+    local apiKey="${DEFAULT_OPENWEATHER_API_KEY:-}"
+
+    if [[ -z "${apiKey}" ]] && [[ -f "${EWW_DIR}/.api_key" ]]; then
+        apiKey="$(head -n 1 "${EWW_DIR}/.api_key")"
+    fi
+
     echo
     echo "- Starting the ${C_Y}eww widgets${C_D} ... "
-    bash "${EWW_DIR}/scripts/start.sh"
+    if [[ -n "${apiKey}" ]]; then
+        bash "${EWW_DIR}/scripts/start.sh" "${apiKey}"
+    else
+        bash "${EWW_DIR}/scripts/start.sh"
+    fi
     echo
     echo "- The ${C_Y}eww widgets${C_D} are running."
 }
