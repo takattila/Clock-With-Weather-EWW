@@ -1,38 +1,154 @@
 # Clock-With-Weather-EWW
 
-A clock + weather widget written in **EWW** (`ElKowar's Wacky Widgets`) for
-Wayland (it also runs on X11). Two windows:
+[![Version](https://img.shields.io/badge/dynamic/json.svg?label=version&url=https://api.github.com/repos/takattila/Clock-With-Weather-EWW/releases/latest&query=tag_name)](https://github.com/takattila/Clock-With-Weather-EWW/releases)
+[![Wiki](https://img.shields.io/badge/wiki-docs-orange)](https://github.com/takattila/Clock-With-Weather-EWW/wiki)
+[![Screenshots](https://img.shields.io/badge/view-screenshots-blue)](#screenshots)
 
-| Window | Size | Content |
-|---|---|---|
-| `main_window` | 745x250, center-aligned | clock + date + system info + weather |
-| `panel_window` | 250 wide, full height, top-right | CPU / MEMORY / NET DOWN / NET UP charts |
 
-> The non-Wayland → X11 specific widget is the **`Clock-With-Weather-Conky`**
-> project (a separate repository).
+- This widget uses [openweathermap.org](https://openweathermap.org) API, to get weather information.
+- Easy to customize, supports appearance on **light** and **dark** backgrounds. *(See: [Example Themes](./themes/themes.md))*.
+- Supports `12` and `24-hour` clock format.
+- **Wayland native**: runs via **EWW** (`ElKowar's Wacky Widgets`) + GTK layer-shell; it also works on X11.
+- **System Monitor Panel**: *(See: [Screenshots](#screenshots))*
+    - Real-time **CPU** and **Memory** usage charts.
+    - **Network Traffic** monitoring (Download/Upload).
+    - **Dynamic Scaling**: Network charts automatically adjust their scale and units (KiB/s to MiB/s) based on traffic.
+    - **Auto-detection**: Automatically identifies the active network interface (NIC).
+- **Taskbar-aware panel**: the panel aligns to the taskbar with a symmetric gap on both sides.
+- **Desktop Integration**: Automatic creation of Menu icons and optional Desktop shortcuts.
 
----
+<table>
+    <tr>
+        <th>
+            Dark text with light background
+        </th>
+        <th>
+            Light text with dark background
+        </th>
+    </tr>
+    <tr>
+        <td>
+            <img src="./images/screenshots/budapest-dark-blue.png">
+        </td>
+        <td>
+            <img src="./images/screenshots/new-york-light-bg.png">
+        </td>
+    </tr>
+</table>
+
+### How the Widget and Panel Work Together
+
+This EWW widget consists of two separate but perfectly synchronized windows designed to provide a unified visual experience:
+
+1.  **Clock & Weather Widget (`main_window`)**: The core component that displays the time, date, and current weather (temperature, icon, location).
+2.  **System Monitor Panel (`panel_window`)**: An optional side panel that sits directly next to the clock. It handles the real-time charts (CPU, Memory, Network).
+
+#### Key Features of the Integration:
+*   **Seamless Alignment**: The two components are designed to "snap" together. When the Panel is enabled in the settings, both windows are opened, and the Panel automatically positions itself adjacent to the clock widget, creating a single, cohesive interface.
+*   **Unified Styling**: Both units share the same theme configuration (`config.yaml` → `themes/appearance/<name>/appearance.yaml`). This ensures that colors, fonts, and transparency levels are perfectly matched, whether you choose a light or dark theme.
+*   **Taskbar-aware Panel**: The panel is aligned to the taskbar with a symmetric gap on the taskbar side and on the opposite screen edge (see the "Panel alignment" section).
+*   **Visual Hierarchy**: The panel uses alternating "light" and "dark" colors for the charts (e.g., CPU vs. Memory, Download vs. Upload). This intentional design choice provides better visual separation, making it easier to distinguish between different data streams at a glance.
+
+
+- A list of successful tests can be found [here](TESTS.md).
+
+
+## Get the OpenWeatherMap API key
+
+- Go to the [openweathermap.org/users/sign_up](https://home.openweathermap.org/users/sign_up) page and create your account.
+- After the registration, you should receive your API key **via e-mail**.
+- For easier installation, export this API key before running the script below:
+
+  ```bash
+  export OPENWEATHER_API_KEY=<YOUR-API-KEY>
+  ```
+
+[Back to top](#clock-with-weather-eww)
 
 ## Installation
 
-Install the eww widget via the command-line with either `wget` or `curl` (root
+You can install it via the command-line with either `wget` or `curl` (root
 privileges are needed; the script asks for them):
 
 ... via wget:
 
 ```bash
-bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/v1.0.0/scripts/install.sh)"
+bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/scripts/install.sh)"
 ```
 
 ... via curl:
 
 ```bash
-bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/v1.0.0/scripts/install.sh)"
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/scripts/install.sh)"
 ```
 
-The `scripts/install.sh` installer is **cross-distro**: it detects the package
-manager (`yum`, `apt`, `pacman`, `zypper`, `dnf`) and installs **eww + all of
-its dependencies**:
+[Back to top](#clock-with-weather-eww)
+
+## Start / stop the widget
+
+### 1. Start the widget
+
+```bash
+bash ~/.conky/Clock-With-Weather-EWW/scripts/start.sh
+```
+
+[Back to top](#clock-with-weather-eww)
+
+### 2. Stop the widget
+
+```bash
+bash ~/.conky/Clock-With-Weather-EWW/scripts/stop.sh
+```
+
+[Back to top](#clock-with-weather-eww)
+
+## Change settings after installation
+
+```bash
+bash ~/.conky/Clock-With-Weather-EWW/scripts/setup.sh
+```
+
+Use the above command to **change** the following **settings**:
+
+- OpenWeatherMap API key
+- appearance theme
+- weather theme (city)
+- hour format (12 or 24)
+- **Shortcuts**: enable/disable Desktop icon creation
+
+[Back to top](#clock-with-weather-eww)
+
+## Screenshots
+
+### With panel, theme: light-orange
+
+![](./images/screenshots/panel-light-orange.png)
+
+### With panel, theme: dark-orange-bg
+
+![](./images/screenshots/panel-dark-orange-bg.png)
+
+[Back to top](#clock-with-weather-eww)
+
+## Wiki
+
+For detailed documentation, please visit the [wiki](https://github.com/takattila/Clock-With-Weather-EWW/wiki) page.
+
+[Back to top](#clock-with-weather-eww)
+
+## Example Themes
+
+Click [here to see](./themes/themes.md) the available example themes!
+
+[Back to top](#clock-with-weather-eww)
+
+---
+
+# Detailed documentation
+
+The installer is **cross-distro**: it detects the package manager (`yum`,
+`apt`, `pacman`, `zypper`, `dnf`) and installs **eww + all of its
+dependencies**:
 
 | Distribution | eww install path |
 |---|---|
@@ -58,7 +174,7 @@ What the installer does, in order:
 
 > Tip: to skip the interactive API-key prompt, export
 > `DEFAULT_OPENWEATHER_API_KEY` before running the script (or set the
-> `OPENWEATHER_API_KEY` variable, see section 3, "API key").
+> `OPENWEATHER_API_KEY` variable, see the "API key" section).
 
 ---
 
@@ -87,8 +203,8 @@ What the installer does, in order:
 ### The X11 (non-Wayland) widget
 
 The non-Wayland → X11 specific widget is the **`Clock-With-Weather-Conky`**
-project (a separate repository). This directory does **not** depend on it: the
-theme settings are mirrored under `themes/` as **YAML**, so this widget works
+project (a separate repository). This repository does **not** depend on it: the
+theme settings are stored under `themes/` as **YAML**, so this widget works
 fully standalone.
 
 ---
@@ -108,7 +224,7 @@ terminal** (`eww` logs `defpoll` errors).
 | **`PyYAML` missing** | the clock and the `defpoll`s are empty | `config.py` / `theme.py` read the YAML configs via `import yaml` — without it nothing is read. Symptom: the whole widget is empty. |
 | **`xprop` missing** | the panel height is wrong | `workarea.py` falls into the fallback chain (`xrandr` → 1080). |
 | **`Noto Sans` not installed** | everything is shifted | `fc-match "Noto Sans"` → must be `NotoSans-Regular.ttf`. To switch fonts, change `$font-face` in `eww.theme.scss` and recalibrate the margins. |
-| **KDE/kwin version** | window offset | The window is centered relative to the workarea (see section 6, "Window geometry"). |
+| **KDE/kwin version** | window offset | The window is centered relative to the workarea (see the "Window geometry" section). |
 
 **Most important rule:** every value in the `defpoll`s is the output of an
 external command (`date`, `./scripts/*.py`). If any command fails or is
@@ -160,8 +276,7 @@ eww --config ~/.conky/Clock-With-Weather-EWW kill
 
 ### Setup and desktop / menu icons
 
-The installer and the widget create **`.desktop` launchers** (like the Conky
-widget does):
+The installer and the widget create **`.desktop` launchers**:
 
 - `start-clock-with-weather-eww.desktop` — starts the widget (`scripts/start.sh`).
 - `setup-clock-with-weather-eww.desktop` — opens the setup (terminal).
@@ -201,11 +316,11 @@ panel:
 | `weather` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
 | `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
-| `panel.gap` | integer px | the panel is inset from the taskbar and from the opposite screen edge by this same gap (see section 6, "Panel alignment") |
+| `panel.gap` | integer px | the panel is inset from the taskbar and from the opposite screen edge by this same gap (see the "Panel alignment" section) |
 
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
 + the selected weather theme and prints the merged values as JSON for the
-`defpoll`s (see section 5). `jq` is no longer needed.
+`defpoll`s (see the "Structure" section). `jq` is no longer needed.
 
 #### API key (`OPENWEATHER_API_KEY`)
 
@@ -315,9 +430,9 @@ The file has three main parts:
 
 2. **`defwidget widget_clock_weather`** — the main window. An `overlay` + fixed
    `745x250` sizer in which every element is **absolutely positioned** with
-   `margin-left`/`margin-top` (see section 6). The elements: year/date,
-   hour/minute/second, HDD/RAM, CPU/SWAP, divider line, weather icon, city,
-   temperature, description, MIN/MAX/Feels-like.
+   `margin-left`/`margin-top` (see the "Modifying how elements are displayed"
+   section). The elements: year/date, hour/minute/second, HDD/RAM, CPU/SWAP,
+   divider line, weather icon, city, temperature, description, MIN/MAX/Feels.
 
 3. **`defwidget widget_panel`** — the system monitor panel. Four
    `panel-section`s: `CPU`, `MEMORY`, `NET DOWN`, `NET UP`. Each has a title
@@ -427,7 +542,8 @@ $bg-alpha: 0.0;
 
 1. Modify `eww.scss`.
 2. `eww --config ~/.conky/Clock-With-Weather-EWW reload`
-3. `spectacle -b -o shot.png` and image measurement (PIL) — see section 7.
+3. `spectacle -b -o shot.png` and image measurement (PIL) — see the "Verified
+   facts" section.
 
 ### Panel alignment (taskbar-relative, "Req 2")
 
