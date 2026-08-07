@@ -7,8 +7,11 @@ REPO="Clock-With-Weather-Conky"
 # ----------------------------------------------------------------------------
 
 EWW_REPO="elkowar/eww"
-BASE_DIR="/home/$(whoami)/.eww"
-EWW_DIR="${BASE_DIR}/${REPO}"
+BASE_DIR="${HOME}/.eww"
+REPO_DIR="${BASE_DIR}/${REPO}"
+EWW_DIR="${REPO_DIR}"
+EWW_BUILD_DIR="${EWW_BUILD_DIR:-/tmp/eww-src}"
+EWW_INSTALL_BIN="${EWW_INSTALL_BIN:-/usr/local/bin/eww}"
 
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
 C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
@@ -56,7 +59,7 @@ function helperCheckout() {
     echo
 
     {
-        cd "${BASE_DIR}"/"${REPO}"
+        cd "${REPO_DIR}"
         git fetch --all --tags
         git checkout tags/"$(helperGetLatestRelease "${GITHUB_USER}/${REPO}")"
     } &> /dev/null
@@ -68,14 +71,14 @@ function helperCloneAndCheckout() {
 
     {
       git clone https://github.com/"${GITHUB_USER}"/"${REPO}".git \
-          "${BASE_DIR}"/"${REPO}"
+          "${REPO_DIR}"
     } &> /dev/null
 
     echo "done."
 
     helperCheckout
 
-    echo -e "- The ${C_Y}'${BASE_DIR}/${REPO}'${C_D} application installed."
+    echo -e "- The ${C_Y}'${REPO_DIR}'${C_D} application installed."
 }
 
 function helperInArray() {
@@ -197,7 +200,7 @@ function helperInstallEwwBuildDeps() {
 function helperBuildEwwFromSource() {
     local eww_features="x11"
     [[ -n "${WAYLAND_DISPLAY}" ]] && eww_features="wayland"
-    local eww_bin="/usr/local/bin/eww"
+    local eww_bin="${EWW_INSTALL_BIN}"
     local rebuild_eww="n"
 
     echo
@@ -217,25 +220,25 @@ function helperBuildEwwFromSource() {
     helperInstallRust
     helperInstallEwwBuildDeps
 
-    rm -rf /tmp/eww-src
+    rm -rf "${EWW_BUILD_DIR}"
 
     echo -n "  == Cloning: ${C_Y}https://github.com/${EWW_REPO}${C_D} ... "
-    git clone --depth 1 https://github.com/"${EWW_REPO}".git /tmp/eww-src &> /dev/null
+    git clone --depth 1 https://github.com/"${EWW_REPO}".git "${EWW_BUILD_DIR}" &> /dev/null
     echo "done."
 
     echo "  == Running ${C_Y}cargo build --release${C_D} (this can take a while, typically 5-10 minutes on this machine) ... "
     echo "     ${C_Y}Please wait${C_D}: the build is compiling eww from source."
-    ( cd /tmp/eww-src && cargo build --release --no-default-features --features "${eww_features}" ) &> /dev/null
+    ( cd "${EWW_BUILD_DIR}" && cargo build --release --no-default-features --features "${eww_features}" ) &> /dev/null
 
-    if [[ ! -f /tmp/eww-src/target/release/eww ]]; then
+    if [[ ! -f "${EWW_BUILD_DIR}/target/release/eww" ]]; then
         echo
         echo "${C_R}[ ERROR ]${C_D} eww build failed."
         echo
         exit 1;
     fi
 
-    sudo cp /tmp/eww-src/target/release/eww /usr/local/bin/eww
-    rm -rf /tmp/eww-src
+    sudo cp "${EWW_BUILD_DIR}/target/release/eww" "${EWW_INSTALL_BIN}"
+    rm -rf "${EWW_BUILD_DIR}"
 
     echo "  == The ${C_Y}eww${C_D} installation has been finished."
 }
@@ -410,7 +413,7 @@ function installEww() {
 }
 
 function installWidgetFromGitHub() {
-    local repo_dir="${BASE_DIR}/${REPO}"
+    local repo_dir="${REPO_DIR}"
     local delete_repo_dir
 
     if [[ "$(helperCheckDir "${repo_dir}")" = "0" ]]; then
@@ -469,6 +472,7 @@ function setupEwwApiKey() {
 
 function setupStartEwwWidget() {
     local apiKey="${DEFAULT_OPENWEATHER_API_KEY:-}"
+    local startLog="${EWW_DIR}/start.log"
 
     if [[ -z "${apiKey}" ]] && [[ -f "${EWW_DIR}/.api_key" ]]; then
         apiKey="$(head -n 1 "${EWW_DIR}/.api_key")"
@@ -477,9 +481,9 @@ function setupStartEwwWidget() {
     echo
     echo "- Starting the ${C_Y}eww widgets${C_D} ... "
     if [[ -n "${apiKey}" ]]; then
-        bash "${EWW_DIR}/scripts/start.sh" "${apiKey}"
+        nohup bash "${EWW_DIR}/scripts/start.sh" "${apiKey}" > "${startLog}" 2>&1 &
     else
-        bash "${EWW_DIR}/scripts/start.sh"
+        nohup bash "${EWW_DIR}/scripts/start.sh" > "${startLog}" 2>&1 &
     fi
     echo
     echo "- The ${C_Y}eww widgets${C_D} are running."
