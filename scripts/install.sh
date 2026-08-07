@@ -472,6 +472,70 @@ function setupEwwApiKey() {
     echo -e "- The ${C_Y}'${EWW_DIR}/.api_key'${C_D} file saved (chmod 600)."
 }
 
+function setupConfigDefaults() {
+    local appearances
+    local weathers
+    local appearance_choice
+    local weather_choice
+    local hour_format_choice
+
+    appearances="$(find "${EWW_DIR}/themes/appearance" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
+    weathers="$(find "${EWW_DIR}/themes/weather" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
+
+    echo
+    echo "- Choose the ${C_Y}appearance theme${C_D}:"
+    local i=1
+    local items=()
+    for name in ${appearances}; do
+        echo -e "  ${C_Y}${i}.${C_D} ${name}"
+        items+=("${name}")
+        i=$((i + 1))
+    done
+    appearance_choice="$(helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER")"
+    if [[ -z "${appearance_choice}" ]] || [[ ${appearance_choice} -lt 1 ]] || [[ ${appearance_choice} -gt ${#items[@]} ]]; then
+        appearance_choice=1
+    fi
+    local appearance_name="${items[$((appearance_choice - 1))]}"
+
+    echo
+    echo "- Choose the ${C_Y}weather theme${C_D}:"
+    i=1
+    items=()
+    for name in ${weathers}; do
+        echo -e "  ${C_Y}${i}.${C_D} ${name}"
+        items+=("${name}")
+        i=$((i + 1))
+    done
+    weather_choice="$(helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER")"
+    if [[ -z "${weather_choice}" ]] || [[ ${weather_choice} -lt 1 ]] || [[ ${weather_choice} -gt ${#items[@]} ]]; then
+        weather_choice=1
+    fi
+    local weather_name="${items[$((weather_choice - 1))]}"
+
+    echo
+    echo "- Choose the ${C_Y}hour format${C_D}:"
+    echo -e "  ${C_Y}1.${C_D} 24"
+    echo -e "  ${C_Y}2.${C_D} 12"
+    hour_format_choice="$(helperPrompt "  your choice ?: " "1" "1 2")"
+    if [[ "${hour_format_choice}" = "2" ]]; then
+        hour_format_choice="12"
+    else
+        hour_format_choice="24"
+    fi
+
+    cat > "${EWW_DIR}/config.yaml" <<EOF
+appearance: ${appearance_name}
+weather: ${weather_name}
+system:
+  hour_format: "${hour_format_choice}"
+  corner_radius: 10
+panel:
+  gap: 16
+EOF
+
+    echo -e "- The ${C_Y}'${EWW_DIR}/config.yaml'${C_D} file updated."
+}
+
 function setupStartEwwWidget() {
     local apiKey="${DEFAULT_OPENWEATHER_API_KEY:-}"
     local startLog="${EWW_DIR}/start.log"
