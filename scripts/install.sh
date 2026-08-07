@@ -20,8 +20,20 @@ echo -ne '\e]10;#ffffff\e\\' # set default background to #abcdef
 
 function helperExistsProgram() {
     local program=$1
-    sudo which ${program} &> /dev/null
-    echo $?
+
+    if command -v "${program}" &> /dev/null; then
+        echo 0
+        return 0
+    fi
+
+    if command -v sudo &> /dev/null; then
+        if sudo -n command -v "${program}" &> /dev/null; then
+            echo 0
+            return 0
+        fi
+    fi
+
+    echo 1
 }
 
 function helperCheckDir() {
