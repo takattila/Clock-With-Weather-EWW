@@ -81,7 +81,7 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
 `scripts/start.sh` does the following:
 
 0. **KDE Plasma check** — if `plasmashell` is not running,
-   `scripts/setup_test_env.sh restore` restores the normal desktop (and
+   `scripts/setup-test-env.sh restore` restores the normal desktop (and
    restarts plasmashell); if there is no backup, it starts `plasmashell`
    directly so the widget can be displayed.
 1. **`theme.py`** — generates the `eww.theme.scss` and `eww.theme.json` files
@@ -171,16 +171,16 @@ daemon, so both ways work no matter how the widget is launched. Editing
 
 Measuring the widget needs a clean desktop: no other widgets, no desktop icons,
 and a plain background (solid color or a wallpaper image). For this, the
-**`eww/scripts/setup_test_env.sh`** script:
+**`eww/scripts/setup-test-env.sh`** script:
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
 
-./scripts/setup_test_env.sh hide                # test mode: widgets + icons hidden, solid background
-./scripts/setup_test_env.sh hide "#112233"      # ... with a custom background color
-./scripts/setup_test_env.sh hide "/path/to/wallpaper.jpg"  # ... with a wallpaper image
-./scripts/setup_test_env.sh status              # current state
-./scripts/setup_test_env.sh restore             # restore the normal desktop
+./scripts/setup-test-env.sh hide                # test mode: widgets + icons hidden, solid background
+./scripts/setup-test-env.sh hide "#112233"      # ... with a custom background color
+./scripts/setup-test-env.sh hide "/path/to/wallpaper.jpg"  # ... with a wallpaper image
+./scripts/setup-test-env.sh status              # current state
+./scripts/setup-test-env.sh restore             # restore the normal desktop
 ```
 
 ### What does the script do?
@@ -276,7 +276,7 @@ The file has three main parts:
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; log: `eww/watch.log`, PID: `eww/watch.pid` |
 | `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
-| `setup_test_env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
+| `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
 ### `eww/charts/` — generated SVGs

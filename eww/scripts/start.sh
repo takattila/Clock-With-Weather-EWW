@@ -12,7 +12,7 @@ ensure_plasma_running() {
     return 0
   fi
   echo "KDE Plasma (plasmashell) is not running; restoring normal desktop..."
-  "$DIR/scripts/setup_test_env.sh" restore || {
+  "$DIR/scripts/setup-test-env.sh" restore || {
     echo "No restore backup found; starting plasmashell directly..."
     nohup plasmashell >/dev/null 2>&1 & disown
     sleep 2

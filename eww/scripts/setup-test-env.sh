@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# setup_test_env.sh - KDE Plasma test environment setup / restore
+# setup-test-env.sh - KDE Plasma test environment setup / restore
 #
 # Creates a clean desktop (solid color or wallpaper background, no desktop
 # widgets, no desktop icons) for screenshot-based verification of the eww
@@ -23,8 +23,8 @@ BACKUP="$APLETSRC.backup"
 BG_FILE="$HOME/.config/eww-test-background.png"
 BG_COLOR="${EWW_TEST_BG_COLOR:-#2d3034}"
 
-log() { echo "[setup_test_env] $*"; }
-die() { echo "[setup_test_env] ERROR: $*" >&2; exit 1; }
+log() { echo "[setup-test-env] $*"; }
+die() { echo "[setup-test-env] ERROR: $*" >&2; exit 1; }
 
 # ---------------------------------------------------------------- generate
 generate_background() {
