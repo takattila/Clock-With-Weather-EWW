@@ -275,6 +275,7 @@ The file has three main parts:
 | `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
 | `setup_test_env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
+| `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
 ### `eww/charts/` — generated SVGs
 
