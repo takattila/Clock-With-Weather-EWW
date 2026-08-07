@@ -10,7 +10,7 @@
 # Provide it via the OPENWEATHER_API_KEY environment variable or the local,
 # git-ignored file ./.api_key (first line, chmod 600).
 
-appearance: light
+appearance: light-bg
 weather: default
 system:
   hour_format: "24"
