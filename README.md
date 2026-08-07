@@ -73,13 +73,13 @@ privileges are needed; the script asks for them):
 ... via wget:
 
 ```bash
-bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/scripts/install.sh)"
+bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-Conky/refs/heads/feature/wayland/scripts/install.sh)"
 ```
 
 ... via curl:
 
 ```bash
-bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/scripts/install.sh)"
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-Conky/refs/heads/feature/wayland/scripts/install.sh)"
 ```
 
 [Back to top](#clock-with-weather-eww)
