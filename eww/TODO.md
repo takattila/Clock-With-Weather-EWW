@@ -89,8 +89,11 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
   élt, mert detachál). Megoldás: `setsid python3 …` → saját session,
   túléli (PID 552602).
 
-### 3. `eww reload` viselkedés ellenőrzése
-- Újra-futtatja-e azonnal a defpoll-okat? (Az 5s interval biztosítékként van.)
+### 3. ~~`eww reload` viselkedés ellenőrzése~~ → **KÉSZ** (2026-08-07)
+- Igen, az `eww reload` **azonnal újra-futtatja a defpoll-okat** (nem kell megvárni
+  az intervallumot). Teszt: a 10 perces `weather_info` pollnál a reload után
+  0.4–0.6s-mal elindult a `weather.py`, ~0.8s-nál befejeződött; reload előtt
+  nem futott. Az 5s `config`/`theme` intervalok így tényleg csak biztosítékok.
 
 ### 4. Commit / push
 - A YAML-migráció + gap-funkció **commitolva**: `9d7b78b` → történet-újraírás
@@ -104,6 +107,12 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
   (`.api_key`-be tette), a régi érvénytelen. `git push --force-with-lease
   origin feature/wayland` megtörtént (ab439a3 → 16f15d3), a remote-történet
   nem tartalmazza a régi kulcsot (pickaxe üres).
+- **Eszközök a repóban (kész)**: `git-filter-repo` vendorelve az
+  `eww/scripts/git-filter-repo.sh`-ba (3dbf1f6); a monitor-projekt
+  `tools/screenshots`-ja bemásolva az `eww/tools/screenshots/`-ba + README
+  újraírva a repóra (3bf258b, b8daa74).
+- **Téma-default (kész)**: a `light-blue` / `modern` ikonkészlet /
+  cián-színek lett az alapértelmezett `appearance` (037e9eb).
 
 ### 5. Eww config.yaml téma-számok
 - Az eww verzió `config.yaml` `appearance`/`weather` név-alapú; a Conky verzió
@@ -122,3 +131,5 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
 | `eww/eww.yuck` | defpoll-ok + `panel_window` (sor ~195-203) |
 | `eww/scripts/panel.py` | `get_screen_height()` (~47), `get_net_workarea_height()` (~47), chart geometria (~238) |
 | `eww/scripts/workarea.py` | `_NET_WORKAREA` → JSON (taskbar-pozíció + szimmetrikus panel-geometria `panel.gap`-pel) |
+| `eww/scripts/git-filter-repo.sh` | vendorelt git-history-tisztító (kulcs-s scrub) |
+| `eww/tools/screenshots/` | headless Chrome screenshot-generátor (webes dashboard; az eww widgetet nem tudja, ahhoz spectacle) |
