@@ -14,5 +14,5 @@ appearance:
       light: 1.0
       dark: 1.0
   background:
-    transparency: 0.6
+    transparency: 0.3
     color: '#ffffff'

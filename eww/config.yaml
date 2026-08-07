@@ -15,6 +15,6 @@ appearance: light-bg
 weather: default
 system:
   hour_format: "24"
-  corner_radius: 20
+  corner_radius: 10
 panel:
   gap: 16
