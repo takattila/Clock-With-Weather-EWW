@@ -114,7 +114,12 @@ start_watcher() {
 
 main() {
   "$DIR/scripts/stop.sh"
-  ensure_plasma_running
+  # KDE Plasma (plasmashell) is only relevant on Wayland: the widget does not
+  # need a desktop shell on X11 (e.g. Linux Mint / Cinnamon), where the GTK
+  # windows are positioned with absolute screen coordinates.
+  if [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    ensure_plasma_running
+  fi
   generate_theme
   align_panel_to_taskbar
   start_eww

@@ -26,8 +26,16 @@ Output (stdout, JSON):
     "real_workarea": bool   # False when the X display was unreachable
   }
 
-The panel x/y are the EWW :x / :y offsets (layer-shell margins) for the given
-:anchor, ready to be written into eww.yuck by start.sh.
+The panel x/y are the EWW :x / :y offsets for the given :anchor, ready to be
+written into eww.yuck by start.sh. The offsets are interpreted differently
+depending on the compositor:
+  - Wayland (gtk layer-shell): relative to the WORKAREA top-left (the taskbar
+    is an exclusive zone that shifts the window down/right).
+  - X11: ABSOLUTE screen coordinates (no layer-shell exclusive zone), so the
+    top-anchored y offset must include the workarea origin (wy). The horizontal
+    offset stays (ww - width)//2 because the "top right" anchor measures from
+    the screen right edge (== workarea right) and the "top left" anchor is only
+    used when workarea.x == 0.
 
 Usage: ./workarea.py [config_dir]
 """
@@ -98,17 +106,31 @@ def detect_taskbar(screen, workarea):
     return "none"
 
 
-def compute_panel(screen, workarea, taskbar, gap):
-    # NOTE: on KDE/wayland (gtk layer-shell) the :x/:y offsets are relative to
-    # the WORKAREA top-left (the taskbar is an exclusive zone that shifts the
-    # window down/right), i.e. screen_position = workarea_offset + offset.
+def detect_compositor():
+    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("SWAYSOCK"):
+        return "wayland"
+    return "x11"
+
+
+def compute_panel(screen, workarea, taskbar, gap, compositor):
+    # NOTE: on KDE/wayland (gtk layer-shell) the :x/:y offsets are margins
+    # measured relative to the WORKAREA (the taskbar is an exclusive zone that
+    # shifts the window down/right): screen_position = workarea_edge + offset.
     # So the top-anchored y offset is just `gap` (workarea top is the taskbar
-    # bottom), and a `taskbar_h + gap` bottom margin only applies when the
-    # taskbar sits on the bottom edge (workarea bottom == screen bottom).
+    # bottom), and a `taskbar_h + gap` bottom margin applies when the taskbar
+    # sits on the bottom edge (workarea bottom == screen bottom).
+    # On X11 (see eww display_backend.rs -> get_window_rectangle) there is no
+    # layer-shell: the :x/:y are ABSOLUTE offsets from the monitor edge given by
+    # the anchor, so a top-anchored panel must be offset below the taskbar by
+    # workarea.y (wy). The horizontal offset stays (ww - width)//2 because the
+    # "top right" anchor measures from the right edge (workarea right == screen
+    # right) and the "top left" anchor is used only when workarea.x == 0.
     sw, sh = screen
     wx, wy, ww, wh = workarea
     width = PANEL_WIDTH
     height = max(wh - 2 * gap, 100)
+    x11 = compositor == "x11"
+    top_origin = wy if x11 else 0
     if taskbar == "bottom":
         anchor = "bottom right"
         x = 0
@@ -116,20 +138,20 @@ def compute_panel(screen, workarea, taskbar, gap):
     elif taskbar == "right":
         anchor = "top left"
         x = max((ww - width) // 2, 0)
-        y = gap
+        y = top_origin + gap
     elif taskbar == "left":
         anchor = "top right"
         x = max((ww - width) // 2, 0)
-        y = gap
+        y = top_origin + gap
     elif taskbar == "none":
         anchor = "top right"
         x = 0
-        y = gap
+        y = top_origin + gap
         height = max(sh - 2 * gap, 100)
     else:  # taskbar == "top"
         anchor = "top right"
         x = 0
-        y = gap
+        y = top_origin + gap
     return {"x": x, "y": y, "width": width, "height": height, "anchor": anchor}
 
 
@@ -145,8 +167,9 @@ def main():
     if workarea is None:
         workarea = (0, 0, screen[0], screen[1])
 
+    compositor = detect_compositor()
     taskbar = detect_taskbar(screen, workarea)
-    panel = compute_panel(screen, workarea, taskbar, gap)
+    panel = compute_panel(screen, workarea, taskbar, gap, compositor)
 
     # PANEL_HEIGHT env override still wins (used by panel.py to size the charts).
     env_override = os.environ.get("PANEL_HEIGHT") or os.environ.get("EWW_PANEL_HEIGHT")
@@ -164,6 +187,7 @@ def main():
         "taskbar": taskbar,
         "panel": panel,
         "panel_gap": gap,
+        "compositor": compositor,
         "real_workarea": real,
     }
     print(json.dumps(result))

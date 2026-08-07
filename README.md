@@ -200,12 +200,21 @@ What the installer does, in order:
 | `spectacle` | taking screenshots for verification |
 | `PIL` (pillow) | image measurement / comparison (development aid) |
 
-### The X11 (non-Wayland) widget
+### X11 support
 
-The non-Wayland → X11 specific widget is the **`Clock-With-Weather-Conky`**
-project (a separate repository). This repository does **not** depend on it: the
-theme settings are stored under `themes/` as **YAML**, so this widget works
-fully standalone.
+This widget runs natively on **Wayland** (EWW + GTK layer-shell) and also on
+**X11**. On X11 (e.g. Linux Mint / Cinnamon) there is no layer-shell, so EWW
+places the windows with absolute screen coordinates:
+
+- the installer builds EWW with the X11 feature when `WAYLAND_DISPLAY` is not
+  set (see the dependency table above),
+- `start.sh` skips the KDE Plasma check (there is no `plasmashell` on X11),
+- `workarea.py` detects the compositor and computes the panel offsets for
+  absolute X11 coordinates (see the "Panel alignment" section).
+
+The separate **`Clock-With-Weather-Conky`** project (a repository for the X11
+Conky widget) is **not** required by this widget: the theme settings are stored
+under `themes/` as **YAML**, so this widget works fully standalone.
 
 ---
 
@@ -242,10 +251,12 @@ cd ~/.conky/Clock-With-Weather-EWW
 
 `scripts/start.sh` does the following:
 
-0. **KDE Plasma check** — if `plasmashell` is not running,
-   `scripts/setup-test-env.sh restore` restores the normal desktop (and
-   restarts plasmashell); if there is no backup, it starts `plasmashell`
-   directly so the widget can be displayed.
+0. **KDE Plasma check** *(Wayland only)* — on a Wayland session, if
+   `plasmashell` is not running, `scripts/setup-test-env.sh restore` restores
+   the normal desktop (and restarts plasmashell); if there is no backup, it
+   starts `plasmashell` directly so the widget can be displayed. On X11 (e.g.
+   Linux Mint/Cinnamon) this step is skipped, because the widget does not need a
+   desktop shell there.
 1. **`theme.py`** — generates the `eww.theme.scss` and `eww.theme.json` files
    from the `appearance` field of `config.yaml` +
    `themes/appearance/<name>/appearance.yaml` (colors, font, icon set,
@@ -253,7 +264,9 @@ cd ~/.conky/Clock-With-Weather-EWW
 2. **`workarea.py`** — reads `_NET_WORKAREA` and the `panel.gap` value from
    `config.yaml`, then computes the `panel_window` geometry (anchor + offsets
    + height) so the panel is inset from the taskbar **and** from the opposite
-   screen edge by the **same gap** (Req 2). The computed values override the
+   screen edge by the **same gap** (Req 2). The offsets are interpreted for
+   the current compositor (Wayland layer-shell vs. absolute X11 coordinates,
+   see the "Panel alignment" section). The computed values override the
    `panel_window` geometry in `eww.yuck` at runtime. If the X display is
    unreachable, the committed geometry is kept (no clobbering with a
    fallback).
@@ -348,6 +361,10 @@ daemon, so both ways work no matter how the widget is launched. Editing
 ---
 
 ## 4. Setting up a test environment (KDE Plasma)
+
+> This section is **KDE/Plasma-specific** and only applies to a Wayland session.
+> On X11 (Linux Mint / Cinnamon) there is no `plasmashell`; `start.sh` skips the
+> Plasma check there and the widget renders on the normal desktop.
 
 Measuring the widget needs a clean desktop: no other widgets, no desktop icons,
 and a plain background (solid color or a wallpaper image). For this, the
@@ -451,9 +468,9 @@ The file has three main parts:
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme |
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` → the values for the `defpoll`s |
-| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`); also logs a human-readable summary to stderr |
+| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`); detects Wayland vs. X11 and computes the offsets for the current compositor; also logs a human-readable summary to stderr |
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; log: `watch.log`, PID: `watch.pid` |
-| `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
+| `start.sh` | — | starting the widget (section 3): Plasma check (Wayland only), theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
 | `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key, creates the desktop/menu icons and starts the widgets |
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
@@ -554,15 +571,24 @@ this from `_NET_WORKAREA` + `config.yaml → panel.gap` (default **16 px**) via
 
 | Taskbar position | Panel geometry result |
 |---|---|
-| **top** | `anchor "top right"`, `y = gap` (workarea-relative offset), height `= workarea_h − 2·gap` → gap(panel→taskbar) = gap(panel→screen bottom) |
+| **top** | `anchor "top right"`, `y = gap` (Wayland) / `y = workarea.y + gap` (X11), height `= workarea_h − 2·gap` → gap(panel→taskbar) = gap(panel→screen bottom) |
 | **bottom** | `anchor "bottom right"`, `y = taskbar_h + gap` (bottom margin), height `= workarea_h − 2·gap` → gap(panel→taskbar) = gap(panel→screen top) |
 | **right** | the panel moves to the **left** edge: `anchor "top left"`, `x = (workarea_w − 250)/2` → gap(panel→taskbar) = gap(panel→left screen edge) |
 | **left** | `anchor "top right"`, `x = (workarea_w − 250)/2` → gap(panel→taskbar) = gap(panel→right screen edge) |
 | **none** | `anchor "top right"`, flush right, inset top/bottom by `gap` |
 
-> Note: on KDE (gtk layer-shell) the `:x`/`:y` offsets are interpreted relative to
-> the **workarea** top-left (the taskbar is an exclusive zone that shifts the
-> window), so for a top taskbar `:y` equals the gap itself.
+> Note: the `:x`/`:y` offsets are interpreted differently depending on the
+> compositor, and `workarea.py` (via `detect_compositor()`) switches between the
+> two modes automatically:
+>
+> - **Wayland** (KDE/gtk layer-shell): the offsets are relative to the
+>   **workarea** top-left — the taskbar is an exclusive zone that shifts the
+>   window — so for a top taskbar `:y` equals the gap itself.
+> - **X11** (e.g. Linux Mint/Cinnamon): there is no layer-shell, so EWW places
+>   the window with **absolute screen coordinates**. The top-anchored `:y` must
+>   include the taskbar height (`workarea.y + gap`); the bottom case is measured
+>   from the screen bottom and the horizontal offsets from the screen's right
+>   edge, so they already match the workarea.
 
 The values are written into the `panel_window` geometry of `eww.yuck` at
 startup (the committed default reflects the current machine: 30 px taskbar,
