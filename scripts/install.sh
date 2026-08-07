@@ -472,45 +472,56 @@ function setupEwwApiKey() {
     echo -e "- The ${C_Y}'${EWW_DIR}/.api_key'${C_D} file saved (chmod 600)."
 }
 
-function setupConfigDefaults() {
+function setupAppearance() {
     local appearances
-    local weathers
     local appearance_choice
-    local weather_choice
-    local hour_format_choice
+    local items=()
 
     appearances="$(find "${EWW_DIR}/themes/appearance" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
-    weathers="$(find "${EWW_DIR}/themes/weather" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
 
     echo
     echo "- Choose the ${C_Y}appearance theme${C_D}:"
     local i=1
-    local items=()
     for name in ${appearances}; do
         echo -e "  ${C_Y}${i}.${C_D} ${name}"
         items+=("${name}")
         i=$((i + 1))
     done
+
     appearance_choice="$(helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER")"
     if [[ -z "${appearance_choice}" ]] || [[ ${appearance_choice} -lt 1 ]] || [[ ${appearance_choice} -gt ${#items[@]} ]]; then
         appearance_choice=1
     fi
-    local appearance_name="${items[$((appearance_choice - 1))]}"
+
+    DEFAULT_APPEARANCE="${items[$((appearance_choice - 1))]}"
+}
+
+function setupWeather() {
+    local weathers
+    local weather_choice
+    local items=()
+
+    weathers="$(find "${EWW_DIR}/themes/weather" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)"
 
     echo
     echo "- Choose the ${C_Y}weather theme${C_D}:"
-    i=1
-    items=()
+    local i=1
     for name in ${weathers}; do
         echo -e "  ${C_Y}${i}.${C_D} ${name}"
         items+=("${name}")
         i=$((i + 1))
     done
+
     weather_choice="$(helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER")"
     if [[ -z "${weather_choice}" ]] || [[ ${weather_choice} -lt 1 ]] || [[ ${weather_choice} -gt ${#items[@]} ]]; then
         weather_choice=1
     fi
-    local weather_name="${items[$((weather_choice - 1))]}"
+
+    DEFAULT_WEATHER="${items[$((weather_choice - 1))]}"
+}
+
+function setupHourFormat() {
+    local hour_format_choice
 
     echo
     echo "- Choose the ${C_Y}hour format${C_D}:"
@@ -518,22 +529,131 @@ function setupConfigDefaults() {
     echo -e "  ${C_Y}2.${C_D} 12"
     hour_format_choice="$(helperPrompt "  your choice ?: " "1" "1 2")"
     if [[ "${hour_format_choice}" = "2" ]]; then
-        hour_format_choice="12"
+        DEFAULT_HOUR_FORMAT="12"
     else
-        hour_format_choice="24"
+        DEFAULT_HOUR_FORMAT="24"
     fi
+}
 
+function setupWriteConfig() {
     cat > "${EWW_DIR}/config.yaml" <<EOF
-appearance: ${appearance_name}
-weather: ${weather_name}
+appearance: ${DEFAULT_APPEARANCE:-light}
+weather: ${DEFAULT_WEATHER:-default}
 system:
-  hour_format: "${hour_format_choice}"
+  hour_format: "${DEFAULT_HOUR_FORMAT:-24}"
   corner_radius: 10
 panel:
   gap: 16
 EOF
 
     echo -e "- The ${C_Y}'${EWW_DIR}/config.yaml'${C_D} file updated."
+}
+
+function setupConfigDefaults() {
+    DEFAULT_APPEARANCE="light"
+    DEFAULT_WEATHER="default"
+    DEFAULT_HOUR_FORMAT="24"
+
+    setupAppearance
+    setupWeather
+    setupHourFormat
+    setupWriteConfig
+}
+
+function setupIconSettings() {
+    echo
+    echo "- Do you want to create ${C_Y}Desktop icons${C_D} for starting/setup?"
+    echo "  (Menu icons will be created automatically)"
+    echo -e "  ${C_Y}1.${C_D} Yes"
+    echo -e "  ${C_Y}2.${C_D} No"
+    echo
+    DEFAULT_CREATE_DESKTOP_ICONS="$(
+        helperPrompt "  your choice ?: " "1" "1 2"
+    )"
+}
+
+function setupCreateStartIcons() {
+    local launcherPath
+    local launcherMenuPath
+    local launcher
+    local menuDir="${HOME}/.local/share/applications"
+    local desktopDir
+
+    mkdir -p "${menuDir}"
+
+    desktopDir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+    if [[ -z "${desktopDir}" ]]; then
+        desktopDir="${HOME}/Desktop"
+    fi
+
+    launcherPath="${desktopDir}/start-clock-with-weather-conky-widget.desktop"
+    launcherMenuPath="${menuDir}/start-clock-with-weather-conky-widget.desktop"
+
+    launcher=$(cat <<EOF2
+[Desktop Entry]
+Comment=Start - Clock with Weather EWW widget
+Terminal=false
+Name=[ Start ] Clock with Weather widget
+Exec=bash -c "${EWW_DIR}/scripts/start.sh"
+Type=Application
+Categories=Utility;
+GenericName[en_GB.UTF-8]=Clock with Weather EWW widget
+Icon=${EWW_DIR}/images/theme/light/weather/dovora/01d.png
+EOF2
+)
+
+    echo "${launcher}" > "${launcherMenuPath}"
+    chmod 755 "${launcherMenuPath}"
+    echo "- Menu icon created: ${C_Y}${launcherMenuPath}${C_D}"
+
+    if [[ "${DEFAULT_CREATE_DESKTOP_ICONS}" = "1" ]]; then
+        mkdir -p "${desktopDir}"
+        echo "${launcher}" > "${launcherPath}"
+        chmod 755 "${launcherPath}"
+        echo "- Desktop icon created: ${C_Y}${launcherPath}${C_D}"
+    fi
+}
+
+function setupCreateSetupIcons() {
+    local launcherPath
+    local launcherMenuPath
+    local launcher
+    local menuDir="${HOME}/.local/share/applications"
+    local desktopDir
+
+    mkdir -p "${menuDir}"
+
+    desktopDir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+    if [[ -z "${desktopDir}" ]]; then
+        desktopDir="${HOME}/Desktop"
+    fi
+
+    launcherPath="${desktopDir}/setup-clock-with-weather-conky-widget.desktop"
+    launcherMenuPath="${menuDir}/setup-clock-with-weather-conky-widget.desktop"
+
+    launcher=$(cat <<EOF3
+[Desktop Entry]
+Comment=Setup - Clock with Weather EWW widget
+Terminal=true
+Name=[ Setup ] Clock with Weather widget
+Exec=bash -c "${EWW_DIR}/scripts/setup.sh"
+Type=Application
+Categories=Settings;Utility;
+GenericName[en_GB.UTF-8]=Clock with Weather EWW widget setup
+Icon=${EWW_DIR}/images/theme/light/elements/temperature.png
+EOF3
+)
+
+    echo "${launcher}" > "${launcherMenuPath}"
+    chmod 755 "${launcherMenuPath}"
+    echo "- Menu icon created: ${C_Y}${launcherMenuPath}${C_D}"
+
+    if [[ "${DEFAULT_CREATE_DESKTOP_ICONS}" = "1" ]]; then
+        mkdir -p "${desktopDir}"
+        echo "${launcher}" > "${launcherPath}"
+        chmod 755 "${launcherPath}"
+        echo "- Desktop icon created: ${C_Y}${launcherPath}${C_D}"
+    fi
 }
 
 function setupStartEwwWidget() {
@@ -558,19 +678,8 @@ function setupStartEwwWidget() {
 function setupDesktopAndMenuIcons() {
     echo
     echo "- Creating ${C_Y}menu / desktop icons${C_D} ... "
-    source "${EWW_DIR}/scripts/setup.sh" --from-install true
 
-    # Ask whether to also place icons on the desktop (menu icons are automatic).
-    echo
-    echo "- Do you want to create ${C_Y}Desktop icons${C_D} for starting/setup?"
-    echo "  (Menu icons will be created automatically)"
-    echo -e "  ${C_Y}1.${C_D} Yes"
-    echo -e "  ${C_Y}2.${C_D} No"
-    echo
-    DEFAULT_CREATE_DESKTOP_ICONS="$(
-        helperPrompt "  your choice ?: " "1" "1 2"
-    )"
-
+    setupIconSettings
     setupCreateStartIcons
     setupCreateSetupIcons
 }
