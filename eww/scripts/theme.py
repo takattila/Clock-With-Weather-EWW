@@ -53,6 +53,9 @@ def main():
 
     data = parse_appearance(themes_dir)
 
+    system = config.get("system", {}) or {}
+    data["bg_radius"] = int(system.get("corner_radius", 20))
+
     with open(os.path.join(config_dir, "eww.theme.json"), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
@@ -64,6 +67,7 @@ def main():
         f.write("$color-dark: %s;\n" % data["color_dark"])
         f.write("$bg-color: %s;\n" % data["bg_color"])
         f.write("$bg-alpha: %s;\n" % data["bg_alpha"])
+        f.write("$bg-radius: %spx;\n" % data["bg_radius"])
 
     print("-> appearance --------- : %s" % appearance)
     print("-> theme --------------- : %s" % data["theme"])
@@ -73,6 +77,7 @@ def main():
     print("-> font color dark ----- : %s" % data["color_dark"])
     print("-> background color ----- : %s" % data["bg_color"])
     print("-> background opacity --- : %s" % data["bg_alpha"])
+    print("-> bg corner radius ----- : %spx" % data["bg_radius"])
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 # appearance selects the theme under  themes/appearance/<name>/appearance.yaml
 # weather    selects the city settings under themes/weather/<name>/weather.yaml
 # system.hour_format: "24" | "12"
+# system.corner_radius  bg corner rounding (px) for both widgets; 0 = square.
 # panel.gap  symmetric spacing (px) between the panel and the taskbar on one
 #            side and the opposite screen edge on the other side (Req 2).
 #
@@ -14,5 +15,6 @@ appearance: light-bg
 weather: default
 system:
   hour_format: "24"
+  corner_radius: 20
 panel:
   gap: 16

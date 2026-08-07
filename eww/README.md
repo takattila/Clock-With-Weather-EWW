@@ -125,6 +125,7 @@ appearance: light       # -> themes/appearance/<name>/appearance.yaml
 weather: default        # -> themes/weather/<name>/weather.yaml
 system:
   hour_format: "24"     # "24" | "12"
+  corner_radius: 20     # bg corner rounding (px) for BOTH widgets; 0 = square
 panel:
   gap: 16               # symmetric spacing (px) around the panel (Req 2)
 ```
@@ -134,6 +135,7 @@ panel:
 | `appearance` | `light`, `dark`, `light-bg`, ... | which `themes/appearance/<name>/appearance.yaml` colors to use |
 | `weather` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
+| `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
 | `panel.gap` | integer px | the panel is inset from the taskbar and from the opposite screen edge by this same gap (see section 6, "Panel alignment") |
 
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`

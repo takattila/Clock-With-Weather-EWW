@@ -56,6 +56,10 @@
     (overlay :class "widget-overlay"
       (box :class "section-sizer" :width 745 :height 250)
 
+      ;; Background hugging the content with an inner gap (térköz); the
+      ;; window canvas (745x250) stays transparent around it.
+      (box :class "widget-bg" :halign "start" :valign "start")
+
       ;; Date / year --- cwDraw text(20,30) / text(70,30), font 20
       (label :class "year-label" :text date_year
              :halign "start" :valign "start")

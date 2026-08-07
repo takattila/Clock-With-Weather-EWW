@@ -10,14 +10,21 @@
    ============================================================ */
 
 .main-container {
-  background-color: rgba($bg-color, $bg-alpha);
-  border-radius: 20px;
   color: $color-light;
 }
 
 .widget-overlay {
   min-width: 745px;
   min-height: 250px;
+}
+
+/* Background hugging the clock/weather content with an inner gap;
+   the radius comes from config.yaml system.corner_radius. */
+.widget-bg {
+  min-width: 630px;
+  min-height: 247px;
+  background-color: rgba($bg-color, $bg-alpha);
+  border-radius: $bg-radius;
 }
 
 .section-sizer {
@@ -222,7 +229,7 @@
 
 .panel-container {
   background-color: rgba($bg-color, $bg-alpha);
-  border-radius: 20px;
+  border-radius: $bg-radius;
   color: $color-light;
 }
 

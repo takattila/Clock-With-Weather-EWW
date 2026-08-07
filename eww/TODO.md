@@ -50,6 +50,15 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
   gap, taskbar-pozíciók táblázata); changes.
 - `eww/README.md`: defpoll tábla → 5s + `watch.py` sor + `panel.gap` a config
   táblában + "Panel alignment (Req 2)" szekció + megjegyzés.
+- **Bg a tartalomra simul + config-ozható sarok-lekerekítés**: az óra/idojárás
+  widget bg-ja már NEM a teljes 745px-es vászon; egy `.widget-bg` box simul a
+  tartalomhoz (mért: content 602..1196 → bg 588..1217, 630x247) belső térközzel.
+  Új konfig-kulcs: `system.corner_radius` (px, `0` = szögletes) → a `theme.py`
+  írja ki `$bg-radius`-ként az `eww.theme.scss`-be; **mindkét** widget
+  (`widget-bg` + `panel-container`) `border-radius`-ja ezt használja. Élő teszt:
+  radius 20 → sarkok átlátszóak; radius 0 → szögletesek (watcher reload).
+  Bug közben javítva: nem-ASCII karakter az `eww.scss` kommentben →
+  `@charset "UTF-8"` a CSS-kimenetben → "unknown @ rule" → ASCII-ra cserélve.
 
 ## Verifikáció (elvégzett)
 
