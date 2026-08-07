@@ -223,7 +223,8 @@ function helperBuildEwwFromSource() {
     git clone --depth 1 https://github.com/"${EWW_REPO}".git /tmp/eww-src &> /dev/null
     echo "done."
 
-    echo "  == Running ${C_Y}cargo build --release${C_D} (this can take a while) ... "
+    echo "  == Running ${C_Y}cargo build --release${C_D} (this can take a while, typically 5-10 minutes on this machine) ... "
+    echo "     ${C_Y}Please wait${C_D}: the build is compiling eww from source."
     ( cd /tmp/eww-src && cargo build --release --no-default-features --features "${eww_features}" ) &> /dev/null
 
     if [[ ! -f /tmp/eww-src/target/release/eww ]]; then
