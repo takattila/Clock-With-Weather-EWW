@@ -100,11 +100,10 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
   a `config.py` hybrid feloldás (env → gitignore-olt `.api_key` → `""`);
   `.api_key` chmod 600 + `.gitignore`-ban; `start.sh` exportálja a kulcsot a
   daemonnak. A kulcs a `.api_key`-ben van, a repó nem hordozza.
-- **Tennivaló (rotáció, felhasználó)**: új kulcs generálása az OpenWeatherMap
-  API Keys oldalán, majd `printf 'új' > .api_key` — a régi kulcs a GitHub
-  GC-ig a régi blobokban lehet, ezért érdemes érvényteleníteni.
-- **Push**: `git push --force-with-lease origin feature/wayland` (a rewrite
-  miatt force; a master nem érintett).
+- **Push + rotáció (kész)**: a kulcsot a felhasználó **újra-generálta**
+  (`.api_key`-be tette), a régi érvénytelen. `git push --force-with-lease
+  origin feature/wayland` megtörtént (ab439a3 → 16f15d3), a remote-történet
+  nem tartalmazza a régi kulcsot (pickaxe üres).
 
 ### 5. Eww config.yaml téma-számok
 - Az eww verzió `config.yaml` `appearance`/`weather` név-alapú; a Conky verzió
