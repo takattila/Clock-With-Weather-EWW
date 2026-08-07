@@ -590,6 +590,7 @@ function main() {
     installFont
 
     setupEwwApiKey
+    setupConfigDefaults
     setupDesktopAndMenuIcons
     setupStartEwwWidget
 }
