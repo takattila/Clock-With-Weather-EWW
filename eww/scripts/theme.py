@@ -1,52 +1,37 @@
 #!/usr/bin/env python3
 """
-Generate eww theme files (eww.theme.scss + eww.theme.json) from config.json
-and the corresponding Conky appearance theme (../themes/appearance/<name>/appearance.lua).
+Generate eww theme files (eww.theme.scss + eww.theme.json) from config.yaml
+and the corresponding YAML appearance theme (themes/appearance/<name>/appearance.yaml).
 
 Usage: ./theme.py [config_dir]
 """
 
 import json
 import os
-import re
 import sys
+
+import yaml
 
 
 def load_config(config_dir):
-    with open(os.path.join(config_dir, "config.json"), "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def parse_lua_value(content, key):
-    match = re.search(
-        r"^\s*" + re.escape(key) + r"\s*=\s*\"([^\"]+)\"",
-        content,
-        re.MULTILINE,
-    )
-    if match:
-        return match.group(1)
-    match = re.search(
-        r"^\s*" + re.escape(key) + r"\s*=\s*([0-9.]+)",
-        content,
-        re.MULTILINE,
-    )
-    if match:
-        return float(match.group(1))
-    return None
+    with open(os.path.join(config_dir, "config.yaml"), "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 def parse_appearance(appearance_dir):
-    with open(os.path.join(appearance_dir, "appearance.lua"), "r", encoding="utf-8") as f:
-        content = f.read()
-
+    with open(os.path.join(appearance_dir, "appearance.yaml"), "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    a = data.get("appearance", {})
+    font = a.get("font", {}) or {}
+    background = a.get("background", {}) or {}
     return {
-        "theme": parse_lua_value(content, "theme") or "light",
-        "icon_set": parse_lua_value(content, "set") or "dovora",
-        "font_face": parse_lua_value(content, "face") or "Noto Sans",
-        "color_light": parse_lua_value(content, "light") or "#ffffff",
-        "color_dark": parse_lua_value(content, "dark") or "#9e9e9e",
-        "bg_color": parse_lua_value(content, "color") or "#000000",
-        "bg_alpha": parse_lua_value(content, "transparency") or 0.0,
+        "theme": a.get("theme", "light"),
+        "icon_set": (a.get("icon", {}) or {}).get("set", "dovora"),
+        "font_face": font.get("face", "Noto Sans"),
+        "color_light": (font.get("color", {}) or {}).get("light", "#ffffff"),
+        "color_dark": (font.get("color", {}) or {}).get("dark", "#9e9e9e"),
+        "bg_color": background.get("color", "#000000"),
+        "bg_alpha": background.get("transparency", 0.0),
     }
 
 
@@ -57,7 +42,7 @@ def main():
     appearance = config.get("appearance", "light")
 
     themes_dir = os.path.normpath(
-        os.path.join(config_dir, "..", "themes", "appearance", appearance)
+        os.path.join(config_dir, "themes", "appearance", appearance)
     )
     if not os.path.isdir(themes_dir):
         print(

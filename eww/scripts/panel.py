@@ -44,10 +44,33 @@ def format_bytes(n):
     return "%.1f PB" % n
 
 
+def get_net_workarea_height():
+    try:
+        out = subprocess.check_output(
+            ["xprop", "-root", "_NET_WORKAREA"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=3,
+        )
+        match = re.search(r"=\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)", out)
+        if match:
+            h = int(match.group(4))
+            if h > 0:
+                return h
+    except Exception:
+        pass
+    return None
+
+
 def get_screen_height():
     override = os.environ.get("PANEL_HEIGHT") or os.environ.get("EWW_PANEL_HEIGHT")
     if override:
         return int(override)
+    # Prefer the taskbar-free workarea height so the lowest chart (NET UP)
+    # never extends past the panel edge, even when started without start.sh.
+    workarea_h = get_net_workarea_height()
+    if workarea_h:
+        return workarea_h
     try:
         out = subprocess.check_output(
             ["xrandr"], stderr=subprocess.DEVNULL, text=True, timeout=3

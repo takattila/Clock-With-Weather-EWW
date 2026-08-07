@@ -1,0 +1,15 @@
+# Central configuration for the eww widget (mirrors the Conky cwTheme.lua).
+#
+# appearance selects the theme under  themes/appearance/<name>/appearance.yaml
+# weather    selects the city settings under themes/weather/<name>/weather.yaml
+# system.hour_format: "24" | "12"
+# panel.gap  symmetric spacing (px) between the panel and the taskbar on one
+#            side and the opposite screen edge on the other side (Req 2).
+
+api_key: "REPLACE_API_KEY"
+appearance: light
+weather: default
+system:
+  hour_format: "24"
+panel:
+  gap: 16

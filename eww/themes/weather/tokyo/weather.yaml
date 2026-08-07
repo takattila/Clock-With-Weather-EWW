@@ -1,0 +1,6 @@
+weather:
+  city: Tokyo
+  language_code: jp
+  lang: jp
+  units: metric
+  api_url: https://api.openweathermap.org/data/2.5/weather

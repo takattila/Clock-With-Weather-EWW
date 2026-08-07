@@ -128,28 +128,49 @@ The project has been migrated to **eww** (ElKowar's Wacky Widgets).
 
 ### Prerequisites
 - [eww](https://github.com/elkowar/eww) (0.4.0+)
-- [jq](https://stedolan.github.io/jq/)
-- Python 3 with `requests` and `psutil` libraries
+- Python 3 with the `requests`, `psutil` and `PyYAML` libraries
+- `xprop` and `xrandr` (provided by the standard X11 utilities)
+- The auto-reload watcher uses the Linux **inotify** API directly via `ctypes` — no extra package is needed.
 
 ### How to use
 1. Go to the `eww` directory:
    ```bash
    cd eww
    ```
-2. Open `config.json` and set your OpenWeatherMap API key:
-   ```json
-   {
-       "api_key": "YOUR_API_KEY",
-       "city": "Your City",
-       "lang": "en",
-       "units": "metric",
-       "appearance": "light"
-   }
+2. Open `config.yaml` and set your OpenWeatherMap API key:
+   ```yaml
+   api_key: "YOUR_API_KEY"
+   appearance: "light"     # appearance theme: themes/appearance/<name>/appearance.yaml
+   weather: "default"      # weather theme:   themes/weather/<name>/weather.yaml
+   system:
+     hour_format: "24"     # "24" or "12"
    ```
 3. Start the widget:
    ```bash
    ./start.sh
    ```
+4. Stop the widget:
+   ```bash
+   ./stop.sh
+   ```
+
+### Configuration
+All settings live in `config.yaml` in the `eww` directory:
+- `api_key` — your OpenWeatherMap API key.
+- `appearance` — selects the appearance theme (colors, font, transparency) from `themes/appearance/<name>/appearance.yaml`.
+- `weather` — selects the weather theme (city, language, temperature unit) from `themes/weather/<name>/weather.yaml`. The weather icon set follows the selected appearance theme.
+- `system.hour_format` — `"24"` or `"12"` hour clock format.
+
+### Auto-reload
+While the widget is running, a lightweight **inotify-based watcher** (`scripts/watch.py`) monitors `config.yaml` and all theme YAML files. Saving any of them regenerates the theme and reloads the widget immediately — no restart needed. The watcher is event-driven, so it uses almost no CPU while idle. Its log is written to `eww/watch.log`.
+
+### Panel alignment
+The system monitor panel automatically sizes itself to the taskbar-free work area (`_NET_WORKAREA`) for any taskbar position (top, bottom or side). The panel is inset from the taskbar and from the opposite screen edge by the **same gap** (`panel.gap`, default 16 px), so the free spacing stays symmetric no matter where the taskbar sits. The charts are laid out so the lowest section (NET UP) never extends past the panel edge.
+
+### Changes in the eww version
+- `config.json` was replaced by `config.yaml` (see above); the theme data moved to `themes/appearance/*` and `themes/weather/*` as YAML.
+- The `jq` dependency was removed — the widget now reads YAML through `scripts/config.py`.
+- Added `scripts/watch.py` for automatic reload on config/theme changes (log: `watch.log`).
 
 ---
 

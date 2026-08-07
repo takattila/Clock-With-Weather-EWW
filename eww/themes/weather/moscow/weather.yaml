@@ -1,0 +1,6 @@
+weather:
+  city: Moscow
+  language_code: ru
+  lang: ru
+  units: metric
+  api_url: https://api.openweathermap.org/data/2.5/weather

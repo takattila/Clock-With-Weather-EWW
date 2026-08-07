@@ -10,7 +10,7 @@
 
 ;; --- Clock data ------------------------------------------------------------
 (defpoll hour :interval "1s"
-  `date +$(jq -r '.hour_format // "24"' config.json | sed 's/24/%H/; s/12/%I/')`)
+  `date +$(./scripts/config.py --key hour_format | sed 's/24/%H/; s/12/%I/')`)
 
 (defpoll minutes :interval "1s" `date +:%M`)
 
@@ -28,16 +28,18 @@
 
 ;; --- Weather ----------------------------------------------------------------
 (defpoll weather_info :interval "10m"
-  `./scripts/weather.py $(jq -r '.api_key' config.json) $(jq -r '.city' config.json) $(jq -r '.lang' config.json) $(jq -r '.units' config.json)`)
+  `./scripts/weather.py $(./scripts/config.py --key api_key) $(./scripts/config.py --key city) $(./scripts/config.py --key lang) $(./scripts/config.py --key units)`)
 
 ;; --- System monitor panel (CPU / MEMORY / NET UP / NET DOWN charts) ---------
 (defpoll panel :interval "1s"
   `./scripts/panel.py`)
 
 ;; --- Configuration / theme --------------------------------------------------
-(defpoll config :interval "1h" `cat config.json`)
+;; The inotify watcher (scripts/watch.py) already reloads the widget on YAML
+;; changes; these short intervals are a safety net for external edits.
+(defpoll config :interval "5s" `./scripts/config.py`)
 
-(defpoll theme :interval "1h" `cat eww.theme.json`)
+(defpoll theme :interval "5s" `cat eww.theme.json`)
 
 ;; ===========================================================================
 ;; Image path helpers
@@ -194,10 +196,10 @@
 
 (defwindow panel_window
   :monitor 0
-  :geometry (geometry :x "0%"
-                      :y "30px"
+  :geometry (geometry :x "0px"
+                      :y "16px"
                       :width "250px"
-                      :height "1050px"
+                      :height "1018px"
                       :anchor "top right")
   :stacking "bottom"
   :windowtype "normal"

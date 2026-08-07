@@ -53,8 +53,8 @@ try:
 except Exception:
     pass
 
-  Image.new("RGB", (w, h), rgb).save(bg_file)
-  print("  background: %s (%dx%d) %s" % (bg_file, w, h, "#%02x%02x%02x" % rgb))
+Image.new("RGB", (w, h), rgb).save(bg_file)
+print("  background: %s (%dx%d) %s" % (bg_file, w, h, "#%02x%02x%02x" % rgb))
 PY
 }
 

@@ -1,0 +1,6 @@
+weather:
+  city: Paris
+  language_code: fr
+  lang: fr
+  units: metric
+  api_url: https://api.openweathermap.org/data/2.5/weather

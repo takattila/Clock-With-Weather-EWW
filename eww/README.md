@@ -24,7 +24,7 @@ values pixel-exactly.
 | `python3` | 3.14+ (tested: 3.14.6) | the data-producing scripts |
 | `python3-requests` | 2.x (tested: 2.34.2) | OpenWeatherMap API call (`weather.py`) |
 | `python3-psutil` | 5.x–7.x (tested: 7.2.2) | CPU/RAM/SWAP/HDD/network (`system.py`, `panel.py`) |
-| `jq` | 1.6+ (tested: 1.8.2) | reading `config.json` values in the `defpoll` commands |
+| `python3-yaml` | 6.x (tested: 6.0.3) | reading the YAML configs (`config.py`, `theme.py`) |
 | `xprop` | any | reading `_NET_WORKAREA` (panel height) |
 | `xrandr` | any | resolution / workarea fallback |
 | `Noto Sans` font | any | the only font family used |
@@ -41,7 +41,9 @@ values pixel-exactly.
 The original Lua version in `../` requires a **separate** Conky
 (`conky`, `lua-cairo`, `lua-json`, `curl`, `OPENWEATHER_API_KEY` environment
 variable). The `eww/` directory does **not** depend on it — the Lua files are
-only the source of the coordinates and the `themes/` directory.
+only the source of the coordinates. The theme settings are mirrored under
+`eww/themes/` as **YAML**, so `eww/` works standalone (even without the
+`../themes` directory).
 
 ---
 
@@ -57,13 +59,13 @@ terminal** (`eww` logs `defpoll` errors).
 | **`eww` minor/patch** | rarely a problem | If the `daemon` reports `Error while forwarding command` after the config loads, it can happen, but the widget still renders — don't panic, measure the screen. |
 | **`python` major** (3.x → 4.x) | `system.py` / `panel.py` errors | Depends on the availability of `psutil`/`requests` binary wheels. |
 | **`psutil` major** | `panel.py` produces no JSON | API differences (e.g. `cpu_times` order, `net_io_counters`). Symptom: the panel window is empty. |
-| **`jq` missing / old** | the clock and the `defpoll`s are empty | Reading `config.json` via `$(jq -r ...)` is used in every `defpoll` — without `jq` the whole widget is empty. |
+| **`PyYAML` missing** | the clock and the `defpoll`s are empty | `config.py` / `theme.py` read the YAML configs via `import yaml` — without it nothing is read. Symptom: the whole widget is empty. |
 | **`xprop` missing** | the panel height is wrong | `workarea.py` falls into the fallback chain (`xrandr` → 1080). |
 | **`Noto Sans` not installed** | everything is shifted | `fc-match "Noto Sans"` → must be `NotoSans-Regular.ttf`. To switch fonts, change `$font-face` in `eww.theme.scss` and recalibrate the margins. |
 | **KDE/kwin version** | window offset | The window is centered relative to the workarea (see section 6, "Window geometry"). |
 
 **Most important rule:** every value in the `defpoll`s is the output of an
-external command (`date`, `jq`, `./scripts/*.py`). If any command fails or is
+external command (`date`, `./scripts/*.py`). If any command fails or is
 missing, an **empty/raw `null`** value goes into the widget, which is often an
 "invisible" error.
 
@@ -83,12 +85,16 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
    restarts plasmashell); if there is no backup, it starts `plasmashell`
    directly so the widget can be displayed.
 1. **`theme.py`** — generates the `eww.theme.scss` and `eww.theme.json` files
-   from the `appearance` field of `config.json` +
-   `../themes/appearance/<name>/appearance.lua` (colors, font, icon set,
+   from the `appearance` field of `config.yaml` +
+   `themes/appearance/<name>/appearance.yaml` (colors, font, icon set,
    background transparency).
-2. **`workarea.py`** — reads `_NET_WORKAREA` and aligns the `panel_window`
-   height to the taskbar-free area (overrides the `panel_window` geometry in
-   `eww.yuck` at runtime).
+2. **`workarea.py`** — reads `_NET_WORKAREA` and the `panel.gap` value from
+   `config.yaml`, then computes the `panel_window` geometry (anchor + offsets
+   + height) so the panel is inset from the taskbar **and** from the opposite
+   screen edge by the **same gap** (Req 2). The computed values override the
+   `panel_window` geometry in `eww.yuck` at runtime. If the X display is
+   unreachable, the committed geometry is kept (no clobbering with a
+   fallback).
 3. Kills the old daemon: `eww --config . kill`
 4. `eww --config . daemon` + `eww --config . open main_window` + `eww --config . open panel_window`
 
@@ -106,27 +112,35 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
 eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
 ```
 
-### Configuration (`eww/config.json`)
+### Configuration (`eww/config.yaml`)
 
-```json
-{
-    "api_key": "YOUR_OPENWEATHER_API_KEY",
-    "city": "Tatabánya",
-    "lang": "hu",
-    "units": "metric",
-    "appearance": "light",
-    "hour_format": "24"
-}
+The central config is **YAML** (the eww counterpart of the Conky
+`cwTheme.lua`). It selects the active appearance and weather theme; the city,
+language and unit settings come from the selected
+`themes/weather/<name>/weather.yaml`:
+
+```yaml
+# eww/config.yaml
+api_key: "YOUR_OPENWEATHER_API_KEY"
+appearance: light       # -> themes/appearance/<name>/appearance.yaml
+weather: default        # -> themes/weather/<name>/weather.yaml
+system:
+  hour_format: "24"     # "24" | "12"
+panel:
+  gap: 16               # symmetric spacing (px) around the panel (Req 2)
 ```
 
 | Field | Values | Effect |
 |---|---|---|
 | `api_key` | OpenWeatherMap key | required, no weather without a key |
-| `city` | any city | the city name on the widget + the API query |
-| `lang` | `hu`, `en`, ... | the language of the weather description |
-| `units` | `metric` / `imperial` | °C / °F, `weather.py` controls the `°C`/`°F` suffix |
-| `appearance` | `light`, `dark`, `light-bg`, ... | which `../themes/appearance/<name>/appearance.lua` colors to use |
-| `hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
+| `appearance` | `light`, `dark`, `light-bg`, ... | which `themes/appearance/<name>/appearance.yaml` colors to use |
+| `weather` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
+| `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
+| `panel.gap` | integer px | the panel is inset from the taskbar and from the opposite screen edge by this same gap (see section 6, "Panel alignment") |
+
+The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
++ the selected weather theme and prints the merged values as JSON for the
+`defpoll`s (see section 5). `jq` is no longer needed.
 
 ---
 
@@ -204,8 +218,12 @@ The file has three main parts:
    | `system_info` | 5s | `./scripts/system.py` (JSON) |
    | `weather_info` | 10m | `./scripts/weather.py <key> <city> <lang> <units>` (JSON) |
    | `panel` | 1s | `./scripts/panel.py` (JSON + SVG charts) |
-   | `config` | 1h | `cat config.json` |
-   | `theme` | 1h | `cat eww.theme.json` |
+   | `config` | 5s | `./scripts/config.py` (merged JSON from `config.yaml` + weather theme) |
+   | `theme` | 5s | `cat eww.theme.json` |
+
+   > The `config`/`theme` intervals are only a **safety net**. In normal use the
+   > inotify watcher (`scripts/watch.py`, see below) reloads the widget the
+   > moment a YAML config/theme file is saved, so changes appear instantly.
 
 2. **`defwidget widget_clock_weather`** — the main window. An `overlay` + fixed
    `745x250` sizer in which every element is **absolutely positioned** with
@@ -229,9 +247,11 @@ The file has three main parts:
 | `system.py` | `{hdd, ram, cpu, swap}` | `psutil`/`shutil`-based system info, dynamic `format_bytes` (B/KB/MB/GB/TB) |
 | `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call, rounding, °C/°F |
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
-| `theme.py` | `eww.theme.scss` + `eww.theme.json` | `config.json` `appearance` + `../themes/appearance/<name>/appearance.lua` → EWW theme |
-| `workarea.py` | `"Y HEIGHT"` | reading `_NET_WORKAREA` for the panel height |
-| `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows |
+| `theme.py` | `eww.theme.scss` + `eww.theme.json` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme |
+| `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` → the values for the `defpoll`s |
+| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`); also logs a human-readable summary to stderr |
+| `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; log: `eww/watch.log`, PID: `eww/watch.pid` |
+| `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
 | `setup_test_env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 
@@ -242,12 +262,21 @@ The file has three main parts:
 Old ones are deleted automatically (it keeps 3 per type). **Don't commit
 them** — gitignored (`.gitignore`).
 
-### `eww/images/`, `../images/`
+### `eww/images/`, `eww/themes/`, `eww/fonts/`
 
-- `../images/theme/<theme>/elements/` — line, location icon, thermometer, arrows.
-- `../images/theme/<theme>/weather/<icon-set>/` — weather icons
-  (`01d.png`, `02d`, ...). `theme.py` takes the `icon_set` from the
-  `appearance` field of `config.json`.
+The `eww/` directory is **self-contained** (ready for a standalone repo): the
+shared assets of the original Conky widget are copied here.
+
+- `images/theme/<theme>/elements/` — line, location icon, thermometer, arrows.
+- `images/theme/<theme>/weather/<icon-set>/` — weather icons
+  (`01d.png`, `02d`, ...). `theme.py` takes the `icon_set` from the selected
+  `themes/appearance/<name>/appearance.yaml`.
+- `themes/appearance/<name>/appearance.yaml` — the appearance themes, converted
+  from the Conky `appearance.lua` files.
+- `themes/weather/<name>/weather.yaml` — the city settings (`city`,
+  `language_code`, `lang`, `units`), converted from `weather.lua`.
+- `fonts/NotoSans-Regular.ttf` — the bundled font (the GTK side still needs the
+  `Noto Sans` family installed via fontconfig).
 
 ---
 
@@ -300,7 +329,7 @@ Example: the temperature text in `cwDraw.lua` is
 ### Theme variables (`eww.theme.scss`)
 
 The file is generated by `theme.py`; don't edit it by hand (it is lost on the
-next start). Instead modify `../themes/appearance/<name>/appearance.lua`:
+next start). Instead modify `themes/appearance/<name>/appearance.yaml`:
 
 ```scss
 $theme: "light";
@@ -317,6 +346,31 @@ $bg-alpha: 0.0;
 1. Modify `eww.scss`.
 2. `eww --config ~/.conky/Clock-With-Weather-Conky/eww reload`
 3. `spectacle -b -o shot.png` and image measurement (PIL) — see section 7.
+
+### Panel alignment (taskbar-relative, "Req 2")
+
+The `panel_window` (250 px wide) is positioned so that the free spacing on the
+**taskbar side and on the opposite screen edge is equal**. `start.sh` computes
+this from `_NET_WORKAREA` + `config.yaml → panel.gap` (default **16 px**) via
+`scripts/workarea.py`, which detects the taskbar position:
+
+| Taskbar position | Panel geometry result |
+|---|---|
+| **top** | `anchor "top right"`, `y = gap` (workarea-relative offset), height `= workarea_h − 2·gap` → gap(panel→taskbar) = gap(panel→screen bottom) |
+| **bottom** | `anchor "bottom right"`, `y = taskbar_h + gap` (bottom margin), height `= workarea_h − 2·gap` → gap(panel→taskbar) = gap(panel→screen top) |
+| **right** | the panel moves to the **left** edge: `anchor "top left"`, `x = (workarea_w − 250)/2` → gap(panel→taskbar) = gap(panel→left screen edge) |
+| **left** | `anchor "top right"`, `x = (workarea_w − 250)/2` → gap(panel→taskbar) = gap(panel→right screen edge) |
+| **none** | `anchor "top right"`, flush right, inset top/bottom by `gap` |
+
+> Note: on KDE (gtk layer-shell) the `:x`/`:y` offsets are interpreted relative to
+> the **workarea** top-left (the taskbar is an exclusive zone that shifts the
+> window), so for a top taskbar `:y` equals the gap itself.
+
+The values are written into the `panel_window` geometry of `eww.yuck` at
+startup (the committed default reflects the current machine: 30 px taskbar,
+`gap=16` → `:y "16px" :height "1018px"`, verified to render at screen
+`y=46..1063`, i.e. a 16 px gap on both sides). `PANEL_HEIGHT` is exported for
+`panel.py` so the chart heights match the inset panel.
 
 ---
 
@@ -365,8 +419,13 @@ print('content:', (rows.min()+392, rows.max()+392), (cols.min()+587, cols.max()+
 
 ## 8. The original Lua configuration — options
 
-The `eww/` version uses the Lua config as a **source**: `theme.py` generates
-the EWW theme from the `../themes/` Lua files. If you also run the original
+> **Note:** the `eww/` widget reads its own **YAML copies** under
+> `eww/themes/` (see section 5) — it does **not** read these Lua files. This
+> section documents the original Conky configuration, which the YAML files are
+> a direct conversion of.
+
+The `eww/` version uses the Lua config as a **source**: the YAML files were
+converted from the `../themes/` Lua files. If you also run the original
 Conky, these are the configurable options.
 
 ### `cwTheme.lua` — the main switches
