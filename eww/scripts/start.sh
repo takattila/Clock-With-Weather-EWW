@@ -113,6 +113,7 @@ start_watcher() {
 }
 
 main() {
+  "$DIR/scripts/stop.sh"
   ensure_plasma_running
   generate_theme
   align_panel_to_taskbar
