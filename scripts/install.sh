@@ -4,6 +4,7 @@
 # The eww widget is its own repository; the repo root IS the widget directory.
 GITHUB_USER="takattila"
 REPO="Clock-With-Weather-Conky"
+REPO_BRANCH="${REPO_BRANCH:-feature/wayland}"
 # ----------------------------------------------------------------------------
 
 EWW_REPO="elkowar/eww"
@@ -60,8 +61,9 @@ function helperCheckout() {
 
     {
         cd "${REPO_DIR}"
-        git fetch --all --tags
-        git checkout tags/"$(helperGetLatestRelease "${GITHUB_USER}/${REPO}")"
+        git fetch --all --tags --prune
+        git checkout "${REPO_BRANCH}" 2>/dev/null || git checkout -B "${REPO_BRANCH}" "origin/${REPO_BRANCH}"
+        git pull --ff-only origin "${REPO_BRANCH}" 2>/dev/null || true
     } &> /dev/null
 }
 
@@ -70,7 +72,7 @@ function helperCloneAndCheckout() {
     echo -n "- Downloading ${C_Y}${REPO}${C_D} ... "
 
     {
-      git clone https://github.com/"${GITHUB_USER}"/"${REPO}".git \
+      git clone --branch "${REPO_BRANCH}" https://github.com/"${GITHUB_USER}"/"${REPO}".git \
           "${REPO_DIR}"
     } &> /dev/null
 
