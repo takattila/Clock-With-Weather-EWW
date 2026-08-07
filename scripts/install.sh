@@ -198,13 +198,20 @@ function helperBuildEwwFromSource() {
     local eww_features="x11"
     [[ -n "${WAYLAND_DISPLAY}" ]] && eww_features="wayland"
     local eww_bin="/usr/local/bin/eww"
+    local rebuild_eww="n"
 
     echo
     echo "- Building ${C_Y}eww${C_D} from source (feature: ${eww_features}) ... "
 
     if [[ -x "${eww_bin}" ]]; then
-        echo "  == ${C_Y}eww${C_D} is already installed at ${C_Y}${eww_bin}${C_D}; skipping build."
-        return 0
+        rebuild_eww="$(
+            helperPrompt "  == ${C_Y}eww${C_D} is already installed at ${C_Y}${eww_bin}${C_D}. Rebuild it from source? ${C_Y}[y or n]${C_D}: " "n" "y n"
+        )"
+
+        if [[ "${rebuild_eww}" != "y" ]]; then
+            echo "  == Skipping build."
+            return 0
+        fi
     fi
 
     helperInstallRust
