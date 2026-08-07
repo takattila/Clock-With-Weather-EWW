@@ -1,16 +1,15 @@
-# Clock-With-Weather-Conky — EWW (Wayland) version
+# Clock-With-Weather-EWW (Wayland) version
 
-The original Lua/Cairo-based Conky clock + weather widget rewritten in **EWW**
-(`ElKowar's Wacky Widgets`) for Wayland. Two windows mirror the original Conky
-layout:
+A clock + weather widget written in **EWW** (`ElKowar's Wacky Widgets`) for
+Wayland. Two windows:
 
 | Window | Size | Content |
 |---|---|---|
 | `main_window` | 745x250, center-aligned | clock + date + system info + weather |
 | `panel_window` | 250 wide, full height, top-right | CPU / MEMORY / NET DOWN / NET UP charts |
 
-The coordinates, font sizes and colors follow the `cwDraw.lua` / `panelDraw.lua`
-values pixel-exactly.
+> The non-Wayland → X11 specific widget is the **`Clock-With-Weather-Conky`**
+> project (the parent repository).
 
 ---
 
@@ -33,7 +32,7 @@ bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-We
 
 The `scripts/install.sh` installer is **cross-distro**: it detects the package
 manager (`yum`, `apt`, `pacman`, `zypper`, `dnf`) and installs **eww + all of
-its dependencies** instead of Conky:
+its dependencies**:
 
 | Distribution | eww install path |
 |---|---|
@@ -85,14 +84,12 @@ What the installer does, in order:
 | `spectacle` | taking screenshots for verification |
 | `PIL` (pillow) | image measurement / comparison (development aid) |
 
-### Separate requirements of the Lua (Conky) version
+### The X11 (non-Wayland) widget
 
-The original Lua version in `../` requires a **separate** Conky
-(`conky`, `lua-cairo`, `lua-json`, `curl`, `OPENWEATHER_API_KEY` environment
-variable). The `eww/` directory does **not** depend on it — the Lua files are
-only the source of the coordinates. The theme settings are mirrored under
-`eww/themes/` as **YAML**, so `eww/` works standalone (even without the
-`../themes` directory).
+The non-Wayland → X11 specific widget is the **`Clock-With-Weather-Conky`**
+project (`../`). The `eww/` directory does **not** depend on it: the theme
+settings are mirrored under `eww/themes/` as **YAML**, so `eww/` works
+standalone (even without the `../themes` directory).
 
 ---
 
@@ -163,9 +160,8 @@ eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
 
 ### Configuration (`eww/config.yaml`)
 
-The central config is **YAML** (the eww counterpart of the Conky
-`cwTheme.lua`). It selects the active appearance and weather theme; the city,
-language and unit settings come from the selected
+The central config is **YAML**. It selects the active appearance and weather
+theme; the city, language and unit settings come from the selected
 `themes/weather/<name>/weather.yaml`:
 
 ```yaml
@@ -196,7 +192,7 @@ The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
 The OpenWeatherMap key is **not** stored in `config.yaml` (that file is part of
 the repository). It is resolved by `scripts/config.py` in this order:
 
-1. the `OPENWEATHER_API_KEY` environment variable (same as the Conky side),
+1. the `OPENWEATHER_API_KEY` environment variable,
 2. a local, git-ignored file **`eww/.api_key`** (first line, `chmod 600`),
 3. empty string → the weather block falls back to an API error message.
 
@@ -299,10 +295,9 @@ The file has three main parts:
 
 2. **`defwidget widget_clock_weather`** — the main window. An `overlay` + fixed
    `745x250` sizer in which every element is **absolutely positioned** with
-   `margin-left`/`margin-top` (see section 6). The elements mirror the
-   `cwDraw.lua` coordinates: year/date, hour/minute/second, HDD/RAM, CPU/SWAP,
-   divider line, weather icon, city, temperature, description,
-   MIN/MAX/Feels-like.
+   `margin-left`/`margin-top` (see section 6). The elements: year/date,
+   hour/minute/second, HDD/RAM, CPU/SWAP, divider line, weather icon, city,
+   temperature, description, MIN/MAX/Feels-like.
 
 3. **`defwidget widget_panel`** — the system monitor panel. Four
    `panel-section`s: `CPU`, `MEMORY`, `NET DOWN`, `NET UP`. Each has a title
@@ -339,16 +334,15 @@ them** — gitignored (`.gitignore`).
 ### `eww/images/`, `eww/themes/`, `eww/fonts/`
 
 The `eww/` directory is **self-contained** (ready for a standalone repo): the
-shared assets of the original Conky widget are copied here.
+shared assets of the widget are copied here.
 
 - `images/theme/<theme>/elements/` — line, location icon, thermometer, arrows.
 - `images/theme/<theme>/weather/<icon-set>/` — weather icons
   (`01d.png`, `02d`, ...). `theme.py` takes the `icon_set` from the selected
   `themes/appearance/<name>/appearance.yaml`.
-- `themes/appearance/<name>/appearance.yaml` — the appearance themes, converted
-  from the Conky `appearance.lua` files.
+- `themes/appearance/<name>/appearance.yaml` — the appearance themes.
 - `themes/weather/<name>/weather.yaml` — the city settings (`city`,
-  `language_code`, `lang`, `units`), converted from `weather.lua`.
+  `language_code`, `lang`, `units`).
 - `fonts/NotoSans-Regular.ttf` — the bundled font (the GTK side still needs the
   `Noto Sans` family installed via fontconfig).
 
@@ -364,15 +358,8 @@ All formatting is in the **`eww/eww.scss`** file. `eww.yuck` only provides the
 - Every element in the `745x250` overlay is **absolutely positioned**:
   `margin-left` = X coordinate, `margin-top` = Y coordinate (positions the top
   of the label).
-- `cwDraw.lua` uses **baseline** coordinates (`text(x, y)` aligns to the
-  baseline of the letters). Conversion:
-  `margin-top = baseline_y − 0.73 × font_size` (approx. the cap height).
-- Images (`image`) are **center-aligned** in `cwDraw.lua` (`pos - size/2`),
-  but in EWW they are anchored to the top-left corner → therefore
-  `margin-left = pos_x − width/2`, `margin-top = pos_y − height/2`.
 
-Example: the temperature text in `cwDraw.lua` is
-`text(460, 155, ..., 40, BOLD, light)`, in the EWW CSS:
+Example, the temperature label:
 
 ```scss
 .temp-label {
@@ -380,7 +367,7 @@ Example: the temperature text in `cwDraw.lua` is
   font-weight: bold;
   color: $color-light;
   margin-left: 460px;   /* X position */
-  margin-top: 128px;    /* Y position (baseline → top) */
+  margin-top: 128px;    /* Y position */
 }
 ```
 
@@ -491,106 +478,7 @@ print('content:', (rows.min()+392, rows.max()+392), (cols.min()+587, cols.max()+
 
 ---
 
-## 8. The original Lua configuration — options
-
-> **Note:** the `eww/` widget reads its own **YAML copies** under
-> `eww/themes/` (see section 5) — it does **not** read these Lua files. This
-> section documents the original Conky configuration, which the YAML files are
-> a direct conversion of.
-
-The `eww/` version uses the Lua config as a **source**: the YAML files were
-converted from the `../themes/` Lua files. If you also run the original
-Conky, these are the configurable options.
-
-### `cwTheme.lua` — the main switches
-
-```lua
-settings = {
-    appearance = { name = "light" },   -- selects the ../themes/appearance/<name>/ folder
-    weather    = { name = "default" }, -- selects the ../themes/weather/<name>/ folder
-    system = {
-        hour_format_12 = false,        -- true = 12-hour (%I) + AM/PM display
-        locale = "en_US.UTF-8",        -- the locale used for the date
-    },
-}
-```
-
-### `themes/appearance/<name>/appearance.lua` — appearance
-
-```lua
-settings.appearance = {
-    theme = "light",                       -- folder: ../images/theme/<theme>/
-    icon = {
-        set = "dovora",                    -- icon set: ../images/theme/<theme>/weather/<set>/
-        transparency = { light = 1.0, dark = 0.5 },
-    },
-    font = {
-        face = "Noto Sans",                -- font family
-        color = { light = "#ffffff", dark = "#9e9e9e" },
-        transparency = { light = 1.0, dark = 1.0 },
-    },
-    background = {
-        transparency = 0.0,                -- 0 = transparent, 1 = fully covering
-        color = "#000000",
-    },
-}
-```
-
-Available appearance themes (`themes/appearance/`): `light`, `dark`,
-`light-bg`, `dark-bg`, `light-blue`, `dark-blue`, `light-blue-bg`,
-`dark-blue-bg`, `light-green`, ..., `light-orange`, `dark-orange`, etc.
-The `-bg` suffixed ones also have a background.
-
-### `themes/weather/<city>/weather.lua` — weather settings
-
-```lua
-settings.weather = {
-    city = "Tatabánya",
-    language_code = "hu",                  -- the city/country in the query
-    lang = "hu",                           -- the description language (hu, en, de, ...)
-    units = "metric",                      -- metric = °C, imperial = °F
-    api_key = os.getenv("OPENWEATHER_API_KEY"),
-    api_url = "https://api.openweathermap.org/data/2.5/weather",
-}
-```
-
-Available cities (`themes/weather/`): `default`, `berlin`, `budapest`,
-`delhi`, `london`, `moscow`, `new-york`, `paris`, `sidney`, `tokyo`, `wien`.
-
-### `cwDraw.lua` — the drawing (source of the positions)
-
-Every function draws in `text(cr, x, y, trans, str, font, size, weight, color)`
-or `image(cr, x, y, trans, path)` form, with `abs_pos_x=70`, `abs_pos_y=25`
-added to the coordinates.
-
-| Function | What it draws | Key positions |
-|---|---|---|
-| `background(cr)` | rounded (r=20) background | color/transparency from the appearance |
-| `element_clock` | year(20,30), date(70,30), hour(10,155), minute(170,155), seconds(370,155) | font 20/145/20 |
-| `element_system` | HDD/RAM (y180), CPU/SWAP (y200) | font 15 |
-| `element_weather` | line(415,110), icon(470,45), city-icon(440,100)+name(455,110), thermometer(440,140)+temp(460,155), description(435,175), MIN/MAX/Feels(y195) | |
-
-The `eww/eww.scss` margins derive from these coordinates (the conversion rule
-of section 6).
-
-### `cwApp.lua`, `panelApp.lua` — Conky window settings
-
-- `cwApp.lua`: `minimum_width=745`, `minimum_height=250`,
-  `alignment="middle_middle"`, `own_window_transparent=true`,
-  `lua_draw_hook_pre="cwMain"`.
-- `panelApp.lua`: `minimum_width=250`, height = workarea height,
-  `alignment="top_right"`, `START_PANEL_ENABLED=true`.
-
-### `cwUtils.lua` — API error handling
-
-- If there is no `OPENWEATHER_API_KEY`, the widget draws an error message on
-  the screen (see `is_set_api_key`).
-- `check_api_response_status` — if the API returns `cod != 200`, it draws the
-  response message (e.g. wrong key, unknown city).
-
----
-
-## 9. Known issues / TODO (from the port process)
+## 8. Known issues / TODO (from the port process)
 
 - [ ] The `stats-row` did not render earlier (diagnostic debugging finished
       with the layout commits; in `eww.yuck` the stats elements are in
@@ -598,14 +486,12 @@ of section 6).
 - [ ] The `time-row` label-clipping bug (t13/t14/t15 matrix) **solved** in the
       current layout; the `eww.scss` margins described here are the final,
       verified values.
-- [ ] Final visual comparison with the
-      `../images/screenshots/new-york-light.png` reference image using the
-      measurement method of section 7.
 
 ---
 
 ## Related documentation
 
-- `../README.md` — description of the whole project (Conky version, install, setup).
+- `../README.md` — description of the whole project (the X11 widget
+  `Clock-With-Weather-Conky`).
 - `../TESTS.md` — the list of successful tests.
 - `../themes/themes.md` — the example themes.

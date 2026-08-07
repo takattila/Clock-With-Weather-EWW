@@ -122,7 +122,10 @@ Use the above command to **change** the following **settings**:
 
 [Back to top](#conky-widget-with-clock-and-current-weather-report)
 
-## Eww Version (Migration)
+## Eww Version (Wayland)
+
+For **Wayland**, the **`Clock-With-Weather-EWW`** widget is recommended (see
+[`eww/README.md`](eww/README.md)). This Conky version is for X11.
 
 The project has been migrated to **eww** (ElKowar's Wacky Widgets).
 
