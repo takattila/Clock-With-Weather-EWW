@@ -47,6 +47,49 @@ only the source of the coordinates. The theme settings are mirrored under
 
 ---
 
+## 1.1 Installation (`scripts/install.sh`)
+
+The eww widget has its own cross-distro installer, modeled on the Conky one
+(`../scripts/install.sh`): instead of installing Conky it installs **eww + all
+of its dependencies** and starts the widgets at the end.
+
+It supports the same package managers as the Conky installer:
+
+| Distribution | eww install path |
+|---|---|
+| Arch Linux / EndeavourOS / Manjaro | `pacman -S eww` (official `extra` repo); falls back to a source build if unavailable |
+| Debian / Ubuntu | **source build** (`cargo`, rustup) + `libgtk-3-dev`, `libgtk-layer-shell-dev`, `pango`, `gdk-pixbuf2`, `cairo`, `glib2`, `libdbusmenu-gtk3` dev packages |
+| Fedora / RHEL / CentOS (`dnf`/`yum`) | **source build** + `gtk3-devel`, `gtk-layer-shell-devel`, `pango-devel`, `gdk-pixbuf2-devel`, `cairo-devel`, `glib2-devel`, `libdbusmenu-gtk3-devel` |
+| openSUSE (`zypper`) | **source build** + the equivalent `-devel` packages |
+
+The source build automatically picks the Wayland feature when
+`WAYLAND_DISPLAY` is set, otherwise the X11 feature. Python runtime
+dependencies (`requests`, `psutil`, `yaml`), `xprop`, `xrandr` and the
+`Noto Sans` fonts are installed through the detected package manager.
+
+Run it (from the repo, or directly from GitHub):
+
+```sh
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-Conky/<tag>/eww/scripts/install.sh)"
+```
+
+What it does, in order:
+
+1. base tools (`curl`, `gawk`, `git`),
+2. eww runtime dependencies (Python modules, `xprop`, `xrandr`, Noto fonts),
+3. `eww` itself (package or source build),
+4. clones `Clock-With-Weather-Conky` to `~/.conky/` and checks out the latest
+   release tag,
+5. installs the `NotoSans-Regular.ttf` font,
+6. asks for the **OpenWeatherMap API key** → saves it to `eww/.api_key`
+   (chmod 600, git-ignored),
+7. starts the widgets (`scripts/start.sh`): daemon + both windows + watcher.
+
+> Tip: to skip the interactive API-key prompt, export
+> `DEFAULT_OPENWEATHER_API_KEY` before running the script.
+
+---
+
 ## 2. Version-change risks ("widget does not start")
 
 The widget is sensitive to the following version changes. Most failure symptoms
@@ -276,6 +319,7 @@ The file has three main parts:
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; log: `eww/watch.log`, PID: `eww/watch.pid` |
 | `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
+| `install.sh` | — | cross-distro installer (section 1.1): installs eww + all dependencies, clones the repo, sets the API key and starts the widgets |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 

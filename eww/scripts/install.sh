@@ -1,0 +1,463 @@
+#!/bin/bash
+
+REPO="Clock-With-Weather-Conky"
+EWW_REPO="elkowar/eww"
+BASE_DIR="/home/$(whoami)/.conky"
+EWW_DIR="${BASE_DIR}/${REPO}/eww"
+
+C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
+C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
+C_R=$(echo -en "\e[1;31m") # COLOR: RED
+C_U=$(echo -en "\e[1;4m")  # UNDERLINED
+
+echo -ne '\e]11;#000000\e\\' # set default foreground to black
+echo -ne '\e]10;#ffffff\e\\' # set default background to #abcdef
+
+function helperExistsProgram() {
+    local program=$1
+    sudo which ${program} &> /dev/null
+    echo $?
+}
+
+function helperCheckDir() {
+    local dir=$1
+
+    if [[ -d "${dir}" ]]; then
+        echo 0
+    else
+        echo 1
+    fi
+}
+
+function helperGetLatestRelease() {
+  curl --silent "https://api.github.com/repos/$1/releases/latest" |
+    grep '"tag_name":' |
+    sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+function helperCheckout() {
+    echo
+
+    {
+        cd "${BASE_DIR}"/"${REPO}"
+        git fetch --all --tags
+        git checkout tags/"$(helperGetLatestRelease takattila/"${REPO}")"
+    } &> /dev/null
+}
+
+function helperCloneAndCheckout() {
+    echo
+    echo -n "- Downloading ${C_Y}${REPO}${C_D} ... "
+
+    {
+      git clone https://github.com/takattila/"${REPO}".git \
+          "${BASE_DIR}"/"${REPO}"
+    } &> /dev/null
+
+    echo "done."
+
+    helperCheckout
+
+    echo -e "- The ${C_Y}'${BASE_DIR}/${REPO}'${C_D} application installed."
+}
+
+function helperInArray() {
+    local what=$1
+    shift
+
+    local validAnswersArray=($@)
+    local match=false
+
+    for str in "${validAnswersArray[@]}" ; do
+        if [[ "${str}" = "${what}" ]]; then
+            match=true
+            break
+        fi
+    done
+
+    echo ${match}
+}
+
+function helperPrompt() {
+    local printHelperText=$1
+    local defaultAnswer=$2
+    shift
+
+    local validAnswersArray=("${@:2}")
+
+    read -p "${printHelperText}" answer
+
+    if [[ -z "${answer}" ]]; then
+        if [[ "${defaultAnswer}" = "EMPTY_ANSWER_NOT_ALLOWED" ]]; then
+            helperPrompt "${printHelperText}" "${defaultAnswer}" "${validAnswersArray[@]}"
+            return
+        fi
+        echo "${defaultAnswer}"
+        return
+    fi
+
+    if [[ "${validAnswersArray}" = "VALIDATE_NUMBER" ]]; then
+        if ! [[ ${answer} =~ ^[-0-9]+$ ]]; then
+            helperPrompt "${printHelperText}" "${defaultAnswer}" "${validAnswersArray[@]}"
+            return
+        fi
+        echo "${answer}"
+        return
+    fi
+
+    if [[ "${validAnswersArray}" != "NO_VALIDATE" ]]; then
+        if [[ "$(helperInArray "${answer}" "${validAnswersArray[@]}")" = "false" ]]; then
+            helperPrompt "${printHelperText}" "${defaultAnswer}" "${validAnswersArray[@]}"
+            return
+        fi
+    fi
+
+    echo "${answer}"
+}
+
+function helperInstall() {
+    local cmd=$1
+    shift
+
+    local packages=$@
+
+    if [[ "${packages}" = "UPDATE" ]]; then
+        echo -n "  == Running ${C_Y}${cmd}${C_D} ... "
+        eval "sudo ${cmd}" &> /dev/null
+        echo "done."
+        return
+    fi
+
+    for package in $(echo ${packages}) ; do
+        echo -n "  == Installing ${C_Y}${package}${C_D} ... "
+        eval "sudo ${cmd} ${package}" &> /dev/null
+        echo "done."
+    done
+}
+
+function helperInstallRust() {
+    if [[ "$(helperExistsProgram cargo)" = "0" ]]; then
+        return 0
+    fi
+
+    echo
+    echo "- Installing ${C_Y}Rust${C_D} (rustup) ... "
+
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
+    source "${HOME}/.cargo/env"
+
+    if [[ "$(helperExistsProgram cargo)" = "1" ]]; then
+        echo
+        echo "${C_R}[ ERROR ]${C_D} Rust (cargo) installation failed."
+        echo
+        exit 1;
+    fi
+
+    echo "done."
+}
+
+function helperInstallEwwBuildDeps() {
+    echo
+    echo "- Installing ${C_Y}eww build dependencies${C_D} ... "
+    if [[ "$(helperExistsProgram yum)" = "0" ]]; then
+        helperInstall "yum install -y" "epel-release"
+        helperInstall "yum install -y" "gcc make pkgconfig gtk3-devel gtk-layer-shell-devel pango-devel gdk-pixbuf2-devel cairo-devel glib2-devel libdbusmenu-gtk3-devel"
+    elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
+        helperInstall "apt update -y" "UPDATE"
+        helperInstall "apt install -y" "build-essential pkg-config libgtk-3-dev libgtk-layer-shell-dev libpango1.0-dev libgdk-pixbuf2.0-dev libcairo2-dev libglib2.0-dev libdbusmenu-gtk3-dev"
+    elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
+        helperInstall "zypper -n in" "gcc make pkgconf-pkg-config gtk3-devel gtk-layer-shell-devel pango-devel gdk-pixbuf-devel cairo-devel glib2-devel libdbusmenu-gtk3-devel"
+    elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
+        helperInstall "dnf install -y" "gcc make pkgconf-pkg-config gtk3-devel gtk-layer-shell-devel pango-devel gdk-pixbuf2-devel cairo-devel glib2-devel libdbusmenu-gtk3-devel"
+    else
+        echo
+        echo "${C_R}[ ERROR ]${C_D} Can't install eww build dependencies: ${C_Y}install system not known${C_D}"
+        echo
+        exit 1;
+    fi
+}
+
+function helperBuildEwwFromSource() {
+    local eww_features="x11"
+    [[ -n "${WAYLAND_DISPLAY}" ]] && eww_features="wayland"
+
+    echo
+    echo "- Building ${C_Y}eww${C_D} from source (feature: ${eww_features}) ... "
+
+    helperInstallRust
+    helperInstallEwwBuildDeps
+
+    rm -rf /tmp/eww-src
+
+    echo -n "  == Cloning: ${C_Y}https://github.com/${EWW_REPO}${C_D} ... "
+    git clone --depth 1 https://github.com/"${EWW_REPO}".git /tmp/eww-src &> /dev/null
+    echo "done."
+
+    echo "  == Running ${C_Y}cargo build --release${C_D} (this can take a while) ... "
+    ( cd /tmp/eww-src && cargo build --release --no-default-features --features "${eww_features}" ) &> /dev/null
+
+    if [[ ! -f /tmp/eww-src/target/release/eww ]]; then
+        echo
+        echo "${C_R}[ ERROR ]${C_D} eww build failed."
+        echo
+        exit 1;
+    fi
+
+    sudo cp /tmp/eww-src/target/release/eww /usr/local/bin/eww
+    rm -rf /tmp/eww-src
+
+    echo "  == The ${C_Y}eww${C_D} installation has been finished."
+}
+
+function installProceed() {
+    local proceed="$(
+            helperPrompt "- Do you ${C_Y}want to start${C_D} the installation? ${C_Y}[y or n]${C_D}: " "y" "y n"
+    )"
+
+    if [[ "${proceed}" = "n" ]]; then
+        exit
+    fi
+}
+
+function installPrintLogo() {
+    printf "${C_Y}"
+cat <<-'EOF'
+  ______          __        __        __        __
+ |   _  \.----.  |  |_.----|__|.----.|  |.--.--.----.
+ |   |  <|  __|  |   _|  __|  ||  __||  ||  |  |  __|
+ |______/|____|  |____|____|__||____||__| \___/|____|
+  ______  __      __        __        __        __
+ |   _  \|  |    |__|.----. |  |_.----|  |_|  |_|  |_
+ |.  |   <|  |____|  ||  __| |   _|  __|    |   _|   _|
+ |. ____/|______|__||____| |____|____|__|__|____|____|
+ |_|                      ... EWW Widget ....
+
+EOF
+    printf "${C_D}\n"
+
+}
+
+function installCheckOS() {
+    local os="$(uname -s)"
+    if [[ "${os}" != "Linux" ]]; then
+        echo "${C_R}[ ERROR ]${C_D} The ${C_Y}${os}${C_D} OS is not supported by this script."
+        echo
+        echo "          eww (ElKowar's Wacky Widgets) is ${C_Y}Linux only${C_D}."
+        echo
+        exit 1
+    fi
+}
+
+function installSetRootPassword() {
+    sudo -p "$(
+        echo
+        echo "- A password is required for installation."
+        echo "  Please enter the ${C_Y}root password${C_D}: "
+    )" echo -n "" 2> /dev/null
+}
+
+function installUsLocale() {
+        local en="en_US"
+        local utf8="UTF-8"
+        local usLocale="${en}.${utf8}"
+        local dpkgReCfg="dpkg-reconfigure"
+        local localeGenCmd="$(
+            if [[ "$(helperExistsProgram "${dpkgReCfg}")" = "0" ]]; then
+                echo "${dpkgReCfg} locales --frontend noninteractive"
+            else
+                echo "locale-gen"
+            fi
+        )"
+
+        if [[ "$(locale -a | grep -q "${en}.utf8" ; echo $?)" = "1" ]]; then
+            echo
+            echo -en "- Generating ${C_Y}${usLocale}${C_D} locale, this might take a while ... "
+
+            {
+                sudo cp /etc/locale.gen .
+                sudo chown $(whoami) locale.gen
+                echo "${usLocale} ${utf8}" >> locale.gen
+                sudo chown root locale.gen
+                sudo mv -f locale.gen /etc
+                sudo ${localeGenCmd}
+            } &> /dev/null
+
+            echo "done."
+        fi
+}
+
+function installDependencies() {
+    local packages="curl gawk git"
+    local packagesToInstall=""
+
+    for package in $(echo ${packages}) ; do
+        if [[ "$(helperExistsProgram "${package}")" = "1" ]]; then
+            packagesToInstall="${packagesToInstall}${package} "
+        fi
+    done
+
+    if [[ ! -z "${packagesToInstall}" ]]; then
+        echo
+        echo "- Installing dependencies: ${C_Y}${packagesToInstall}${C_D} ... "
+        if [[ "$(helperExistsProgram yum)" = "0" ]]; then
+            helperInstall "yum install -y" "epel-release"
+            helperInstall "yum install -y" "${packagesToInstall}"
+        elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
+            helperInstall "apt update -y" "UPDATE"
+            helperInstall "apt install -y" "${packagesToInstall}"
+        elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
+            helperInstall "pacman -Sy --noconfirm" "${packagesToInstall}"
+        elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
+            helperInstall "zypper -n in" "${packagesToInstall}"
+        elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
+            helperInstall "dnf install -y" "${packagesToInstall}"
+        else
+            echo
+            echo "${C_R}[ ERROR ]${C_D} Can't install dependencies: ${C_Y}install system not known${C_D}"
+            echo
+            exit 1;
+        fi
+    fi
+}
+
+function installEwwDependencies() {
+    local packages=""
+
+    if [[ "$(helperExistsProgram yum)" = "0" ]]; then
+        packages="python3 python3-requests python3-psutil python3-yaml xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts"
+    elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
+        packages="python3 python3-requests python3-psutil python3-yaml x11-utils x11-xserver-utils fonts-noto-core"
+    elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
+        packages="python python-requests python-psutil python-yaml xorg-xprop xorg-xrandr noto-fonts"
+    elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
+        packages="python3 python3-requests python3-psutil python3-PyYAML xprop xrandr google-noto-sans-fonts"
+    elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
+        packages="python3 python3-requests python3-psutil python3-yaml xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts"
+    else
+        echo
+        echo "${C_R}[ ERROR ]${C_D} Can't install eww dependencies: ${C_Y}install system not known${C_D}"
+        echo
+        exit 1;
+    fi
+
+    echo
+    echo "- Installing eww dependencies: ${C_Y}${packages}${C_D} ... "
+    if [[ "$(helperExistsProgram yum)" = "0" ]]; then
+        helperInstall "yum install -y" "${packages}"
+    elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
+        helperInstall "apt update -y" "UPDATE"
+        helperInstall "apt install -y" "${packages}"
+    elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
+        helperInstall "pacman -Sy --noconfirm" "${packages}"
+    elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
+        helperInstall "zypper -n in" "${packages}"
+    elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
+        helperInstall "dnf install -y" "${packages}"
+    fi
+}
+
+function installEww() {
+    echo
+    echo "- Installing: ${C_Y}eww${C_D} ... "
+
+    if [[ "$(helperExistsProgram pacman)" = "0" ]]; then
+        echo -n "  == Installing ${C_Y}eww${C_D} ... "
+        sudo pacman -Sy --noconfirm eww &> /dev/null
+
+        if [[ "$(helperExistsProgram eww)" = "0" ]]; then
+            echo "done."
+            return
+        fi
+
+        echo "not found in the official repos;"
+        helperBuildEwwFromSource
+    else
+        helperBuildEwwFromSource
+    fi
+}
+
+function installWidgetFromGitHub() {
+    local repo_dir="${BASE_DIR}/${REPO}"
+    local delete_repo_dir
+
+    if [[ "$(helperCheckDir "${repo_dir}")" = "0" ]]; then
+        echo
+        echo "- The ${C_Y}'${repo_dir}'${C_D} already exists."
+        delete_repo_dir="$(
+            helperPrompt "  Do you want to delete it? ${C_Y}[y or n]${C_D}: " "n" "y n"
+        )"
+
+        if [[ "${delete_repo_dir}" = "y" ]]; then
+            killall eww &> /dev/null
+            rm -rf "${repo_dir}"
+            helperCloneAndCheckout
+
+            return
+        fi
+
+        helperCheckout
+
+        return
+    fi
+
+    helperCloneAndCheckout
+}
+
+function installFont() {
+    local font="NotoSans-Regular.ttf"
+
+    mkdir -p /home/"$(whoami)"/.local/share/fonts
+    cp "${BASE_DIR}"/"${REPO}"/fonts/"${font}" /home/"$(whoami)"/.local/share/fonts
+
+    echo -e "- The ${C_Y}'${font}'${C_D} font installed."
+}
+
+function setupEwwApiKey() {
+    local apiKey="${DEFAULT_OPENWEATHER_API_KEY:-}"
+
+    if [[ -z "${apiKey}" ]]; then
+        echo
+        echo "- Please enter your ${C_Y}OpenWeatherMap API key${C_D}."
+        echo "  If you don't have it yet, ${C_Y}you can get it from here${C_D}:"
+        echo
+        echo "  ${C_U}https://home.openweathermap.org/users/sign_up${C_D}"
+        echo
+
+        apiKey="$(
+            helperPrompt "  your ${C_Y}API key${C_D}: " "EMPTY_ANSWER_NOT_ALLOWED" "NO_VALIDATE"
+        )"
+    fi
+
+    echo "${apiKey}" > "${EWW_DIR}/.api_key"
+    chmod 600 "${EWW_DIR}/.api_key"
+
+    echo -e "- The ${C_Y}'${EWW_DIR}/.api_key'${C_D} file saved (chmod 600)."
+}
+
+function setupStartEwwWidget() {
+    echo
+    echo "- Starting the ${C_Y}eww widgets${C_D} ... "
+    bash "${EWW_DIR}/scripts/start.sh"
+    echo
+    echo "- The ${C_Y}eww widgets${C_D} are running."
+}
+
+function main() {
+    clear
+
+    installPrintLogo
+    installProceed
+    installCheckOS
+    installSetRootPassword
+    installUsLocale
+    installDependencies
+    installEwwDependencies
+    installEww
+    installWidgetFromGitHub
+    installFont
+
+    setupEwwApiKey
+    setupStartEwwWidget
+}
+
+main
