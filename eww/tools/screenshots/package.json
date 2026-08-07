@@ -1,0 +1,13 @@
+{
+  "name": "monitor-screenshots",
+  "version": "1.0.0",
+  "description": "Headless Chrome screenshot generator for the monitor dashboard skins",
+  "private": true,
+  "main": "capture.js",
+  "scripts": {
+    "capture": "node capture.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.4.0"
+  }
+}
