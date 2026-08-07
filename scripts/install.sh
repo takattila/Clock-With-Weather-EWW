@@ -3,11 +3,11 @@
 # --- Standalone widget repo -------------------------------------------------
 # The eww widget is its own repository; the repo root IS the widget directory.
 GITHUB_USER="takattila"
-REPO="Clock-With-Weather-EWW"
+REPO="Clock-With-Weather-Conky"
 # ----------------------------------------------------------------------------
 
 EWW_REPO="elkowar/eww"
-BASE_DIR="/home/$(whoami)/.conky"
+BASE_DIR="/home/$(whoami)/.eww"
 EWW_DIR="${BASE_DIR}/${REPO}"
 
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
