@@ -5,3 +5,5 @@ __pycache__/
 watch.log
 watch.pid
 .api_key
+eww.theme.json
+eww.theme.scss
