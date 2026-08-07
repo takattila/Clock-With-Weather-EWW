@@ -3,7 +3,7 @@
 # Arguments
 while [[ ! $# -eq 0 ]]; do
     case "$1" in
-    	# Optional parameters
+        # Optional parameters
         --from-install | -f)
             shift
             FROM_INSTALL=$1
@@ -12,192 +12,59 @@ while [[ ! $# -eq 0 ]]; do
             shift
             ARG_API_KEY=$1
             ;;
-        --city | -c)
+        --appearance | -ap)
             shift
-            ARG_CITY=$1
+            ARG_APPEARANCE=$1
             ;;
-        --language-code | -lc)
+        --weather | -w)
             shift
-            ARG_LANGUAGE_CODE=$1
+            ARG_WEATHER=$1
             ;;
-        --lang | -la)
+        --hour-format | -hf)
             shift
-            ARG_LANG=$1
-            ;;
-        --units-number | -u)
-            shift
-            ARG_UNITS_NUMBER=$1
-            ;;
-        --theme-number | -t)
-            shift
-            ARG_THEME_NUMBER=$1
-            ;;
-        --hour-format-12-number | -hf)
-            shift
-            ARG_HOUR_FORMAT_12_NUMBER=$1
-            ;;
-        --window-alignment-number | -wa)
-            shift
-            ARG_WINDOW_ALIGMENT_NUMBER=$1
-            ;;
-        --window-position-x-number | -wx)
-            shift
-            ARG_WINDOW_POSITION_X=$1
-            ;;
-        --window-position-y-number | -wy)
-            shift
-            ARG_WINDOW_POSITION_Y=$1
-            ;;
-        --start-panel | -sp)
-            shift
-            ARG_START_PANEL=$1
+            ARG_HOUR_FORMAT=$1
             ;;
         --create-desktop-icons | -cdi)
             shift
             ARG_CREATE_DESKTOP_ICONS=$1
             ;;
-	esac
-	shift
+    esac
+    shift
 done
 
-DEFAULT_OPENWEATHER_API_KEY="$(    [[ -n "${ARG_API_KEY}" ]]                 && echo "${ARG_API_KEY}"                || echo "${OPENWEATHER_API_KEY}" )"
-DEFAULT_CITY="$(                   [[ -n "${ARG_CITY}" ]]                    && echo "${ARG_CITY}"                   || echo "budapest" )"
-DEFAULT_LANGUAGE_CODE="$(          [[ -n "${ARG_LANGUAGE_CODE}" ]]           && echo "${ARG_LANGUAGE_CODE}"          || echo "hu" )"
-DEFAULT_LANG="$(                   [[ -n "${ARG_LANG}" ]]                    && echo "${ARG_LANG}"                   || echo "hu" )"
-DEFAULT_UNITS_NUMBER="$(           [[ -n "${ARG_UNITS_NUMBER}" ]]            && echo "${ARG_UNITS_NUMBER}"           || echo "1" )"
-DEFAULT_THEME_NUMBER="$(           [[ -n "${ARG_THEME_NUMBER}" ]]            && echo "${ARG_THEME_NUMBER}"           || echo "11" )"
-DEFAULT_HOUR_FORMAT_12_NUMBER="$(  [[ -n "${ARG_HOUR_FORMAT_12_NUMBER}" ]]   && echo "${ARG_HOUR_FORMAT_12_NUMBER}"  || echo "24" )"
-DEFAULT_WINDOW_ALIGMENT_NUMBER="$( [[ -n "${ARG_WINDOW_ALIGMENT_NUMBER}" ]]  && echo "${ARG_WINDOW_ALIGMENT_NUMBER}" || echo "9" )"
-DEFAULT_WINDOW_POSITION_X="$(      [[ -n "${ARG_WINDOW_POSITION_X}" ]]       && echo "${ARG_WINDOW_POSITION_X}"      || echo "0" )"
-DEFAULT_WINDOW_POSITION_Y="$(      [[ -n "${ARG_WINDOW_POSITION_Y}" ]]       && echo "${ARG_WINDOW_POSITION_Y}"      || echo "0" )"
-DEFAULT_START_PANEL="$(            [[ -n "${ARG_START_PANEL}" ]]             && echo "${ARG_START_PANEL}"            || echo "1" )"
-DEFAULT_CREATE_DESKTOP_ICONS="$(   [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]]    && echo "${ARG_CREATE_DESKTOP_ICONS}"   || echo "1" )"
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." >/dev/null 2>&1 && pwd )"
+API_KEY_FILE="${DIR}/.api_key"
+CONFIG_FILE="${DIR}/config.yaml"
 
-REPO="Clock-With-Weather-Conky"
-BASE_DIR="/home/$(whoami)/.conky"
-API_KEY_FILE="${BASE_DIR}/${REPO}/.api_key"
-
-DEFAULT_THEME_LUA='
-local settings = {}
-
-settings = {
-    appearance = { 
-        name = "REPLACE_APPEARANCE",
-    },
-    weather = {
-        name = "REPLACE_WEATHER",
-    },
-    system = {
-        hour_format_12 = REPLACE_HOUR_FORMAT_12,
-        locale = "en_US.UTF-8",
-    },
-}
-
-return settings
-'
-
-DEFAULT_WEATHER_LUA='
-local settings = {}
-
-settings.weather = {
-    city = "REPLACE_CITY",
-    language_code = "REPLACE_LANGUAGE_CODE",
-    lang = "REPLACE_LANG",
-    units = "REPLACE_UNITS",
-    api_key = utils.resolve_api_key(),
-    api_url = "https://api.openweathermap.org/data/2.5/weather",
-}
-
-return settings
-'
-
-DEFAULT_CONKY_CONFIG='
-	conky.config = {
-	update_interval = 1,
-
-	background = false,
-	alignment = "REPLACE_CONFIG_ALIGNMENT",
-
-	border_width = 10,
-	border_inner_margin = 0,
-	border_outer_margin = 0,
-
-	draw_borders = false,
-	draw_graph_borders = false,
-
-	minimum_width = 745,
-	minimum_height = 250,
-
-	gap_x = REPLACE_CONFIG_POSITION_X,
-	gap_y = REPLACE_CONFIG_POSITION_Y,
-
-	override_utf8_locale = true,
-
-	double_buffer = true,
-	no_buffers = true,
-
-	text_buffer_size = 2048,
-	imlib_cache_size = 0,
-
-	own_window = true,
-	own_window_type = "normal",
-	own_window_transparent = true,
-	own_window_argb_visual = true,
-	own_window_hints = "undecorated,below,sticky,skip_taskbar,skip_pager",
-
-	draw_shades = true,
-	draw_outline = false,
-
-	use_xft = true,
-	xftalpha = 0.5,
-
-	uppercase = false,
-
-	lua_load = "cwMain.lua",
-	lua_draw_hook_pre = "cwMain",
-};
-
-conky.text = [[ ]];
-'
+DEFAULT_OPENWEATHER_API_KEY="$( [[ -n "${ARG_API_KEY}" ]]      && echo "${ARG_API_KEY}"      || echo "${OPENWEATHER_API_KEY}" )"
+DEFAULT_APPEARANCE="$(          [[ -n "${ARG_APPEARANCE}" ]]   && echo "${ARG_APPEARANCE}"   || echo "light" )"
+DEFAULT_WEATHER="$(             [[ -n "${ARG_WEATHER}" ]]      && echo "${ARG_WEATHER}"      || echo "default" )"
+DEFAULT_HOUR_FORMAT="$(         [[ -n "${ARG_HOUR_FORMAT}" ]]  && echo "${ARG_HOUR_FORMAT}"  || echo "24" )"
+DEFAULT_CREATE_DESKTOP_ICONS="$( [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]] && echo "${ARG_CREATE_DESKTOP_ICONS}" || echo "1" )"
 
 DESKTOP_LAUNCHER='
 [Desktop Entry]
-Comment=Start - Clock with Weather Conky widget
+Comment=Start - Clock with Weather EWW widget
 Terminal=false
 Name=[ Start ] Clock with Weather widget
-Exec=bash -c "REPLACE_APP_DIR/scripts/start.sh REPLACE_API_KEY"
+Exec=bash -c "REPLACE_APP_DIR/scripts/start.sh"
 Type=Application
 Categories=Utility;
-GenericName[en_GB.UTF-8]=Clock with Weather Conky widget
+GenericName[en_GB.UTF-8]=Clock with Weather EWW widget
 Icon=REPLACE_APP_DIR/images/theme/light/weather/dovora/01d.png
 '
 
 DESKTOP_LAUNCHER_SETUP='
 [Desktop Entry]
-Comment=Setup - Clock with Weather Conky widget
+Comment=Setup - Clock with Weather EWW widget
 Terminal=true
 Name=[ Setup ] Clock with Weather widget
-Exec=bash -c "REPLACE_APP_DIR/scripts/setup.sh -a REPLACE_API_KEY -c REPLACE_CITY -lc REPLACE_LANGUAGE_CODE -la REPLACE_LANG -u REPLACE_UNITS_NUMBER -t REPLACE_THEME_NUMBER -hf REPLACE_HOUR_FORMAT_12_NUMBER -wa REPLACE_CONFIG_ALIGNMENT -wx REPLACE_CONFIG_POSITION_X -wy REPLACE_CONFIG_POSITION_Y -sp REPLACE_START_PANEL -cdi REPLACE_CREATE_DESKTOP_ICONS"
+Exec=bash -c "REPLACE_APP_DIR/scripts/setup.sh"
 Type=Application
 Categories=Settings;Utility;
-GenericName[en_GB.UTF-8]=Clock with Weather Conky widget setup
-Icon=REPLACE_APP_DIR/images/setup.png
+GenericName[en_GB.UTF-8]=Clock with Weather EWW widget setup
+Icon=REPLACE_APP_DIR/images/theme/light/elements/temperature.png
 '
-
-LANGUAGE_CODES="af al ar az bg ca cz da de el en eu fa fi fr gl he hi hr hu id it ja kr la lt mk no nl pl pt pt_br ro ru sv sk sl sp sr th tr ua vi zh_cn zh_tw zu"
-COUNTRY_CODES="ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug um us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw"
-
-ALIGNMENTS_ARRAY=(
-    "top_left"
-    "top_right"
-    "top_middle"
-    "bottom_left"
-    "bottom_right"
-    "bottom_middle"
-    "middle_left"
-    "middle_right"
-    "middle_middle"
-)
 
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
 C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
@@ -269,31 +136,6 @@ function helperPrompt() {
     echo "${answer}"
 }
 
-function setupPrintLogo() {
-    clear
-
-    printf "${C_Y}"
-cat <<-'EOF'
-  ____ _            _               _ _   _     
- / ___| | ___   ___| | __ __      _(_) |_| |__  
-| |   | |/ _ \ / __| |/ / \ \ /\ / / | __| '_ \ 
-| |___| | (_) | (__|   <   \ V  V /| | |_| | | |
- \____|_|\___/ \___|_|\_\   \_/\_/ |_|\__|_| |_|
-   __        __         _   _               
-   \ \      / /__  __ _| |_| |__   ___ _ __ 
-    \ \ /\ / / _ \/ _` | __| '_ \ / _ \ '__|
-     \ V  V /  __/ (_| | |_| | | |  __/ |   
-      \_/\_/ \___|\__,_|\__|_| |_|\___|_|   
-
-             ... Conky Widget ....
-EOF
-    printf "${C_D}\n"
-}
-
-function setupChDir() {
-    cd ${BASE_DIR}/${REPO}
-}
-
 function setupApiKey() {
     local apiKey="${DEFAULT_OPENWEATHER_API_KEY}"
 
@@ -310,238 +152,79 @@ function setupApiKey() {
         )"
     fi
 
-    export DEFAULT_OPENWEATHER_API_KEY="${apiKey}"
-
-    mkdir -p "$(dirname "${API_KEY_FILE}")"
     echo "${apiKey}" > "${API_KEY_FILE}"
     chmod 600 "${API_KEY_FILE}"
 
     echo -e "- The ${C_Y}'${API_KEY_FILE}'${C_D} file saved (chmod 600)."
 }
 
-function setupListThemes() {
-    local printWithoutNames=$1
-    local i=0 
+function setupAppearance() {
+    local appearances
+    appearances="$(ls "${DIR}/themes/appearance")"
 
-    for t in $(ls -A themes/appearance) ; do 
-        i=$(( i + 1 ))
-        if [[ "${printWithoutNames}" ]]; then
-            echo "${i} "
-        else
-            echo "  ${C_Y}${i}.${C_D} ${t}"
-        fi
+    echo
+    echo "- Choose the ${C_Y}appearance theme${C_D}:"
+    local i=1
+    local items=()
+    for name in ${appearances} ; do
+        echo -e "  ${C_Y}${i}.${C_D} ${name}"
+        items+=("${name}")
+        i=$((i + 1))
     done
-}
 
-function setupGetThemeNameByNumber() {
-    local number=$1
-    local i=0
+    local number="$(
+        helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER"
+    )"
 
-    for t in $(ls -A ${BASE_DIR}/"${REPO}"/themes/appearance) ; do
-        i=$(( i + 1 ))
-        if [[ "$i" = "$number" ]]; then
-            echo $t
-            break
-        fi
-    done
-}
-
-function setupListUnits() {
-    echo -e "  ${C_Y}1.${C_D} metric (for displaying ${C_Y}Celsius${C_D})"
-    echo -e "  ${C_Y}2.${C_D} imperial (for displaying ${C_Y}Fahrenheit${C_D})"
-}
-
-function setupGetUnitByNumber() {
-    local number=$1
-    
-    if [[ "$number" = "1" ]]; then
-        echo "metric"
-        return
+    if [[ -z "${number}" ]] || [[ ${number} -lt 1 ]] || [[ ${number} -gt ${#items[@]} ]]; then
+        number=1
     fi
 
-    echo "imperial"
+    DEFAULT_APPEARANCE="${items[$((number - 1))]}"
 }
 
-function setupListConfigAlignments() {
-    local printWithoutNames=$1
-    local i=0
+function setupWeather() {
+    local weathers
+    weathers="$(ls "${DIR}/themes/weather")"
 
-    for a in "${ALIGNMENTS_ARRAY[@]}" ; do
-        i=$(( i + 1 ))
-        if [[ "${printWithoutNames}" ]]; then
-            echo "${i} "
-        else
-            echo -e "  ${C_Y}${i}.${C_D} ${a}"
-        fi
+    echo
+    echo "- Choose the ${C_Y}weather theme${C_D} (city / language / units):"
+    local i=1
+    local items=()
+    for name in ${weathers} ; do
+        echo -e "  ${C_Y}${i}.${C_D} ${name}"
+        items+=("${name}")
+        i=$((i + 1))
     done
-}
 
-function setupGetConfigAlignmentByNumber() {
-    local number=$1
-    local i=0 
+    local number="$(
+        helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER"
+    )"
 
-    for a in "${ALIGNMENTS_ARRAY[@]}" ; do
-        i=$(( i + 1 ))
-        if [[ "$i" = "$number" ]]; then
-            echo $a
-            break
-        fi
-    done
-}
-
-function setupHourFormatByNumber() {
-    local number=$1
-    
-    if [[ "$number" = "12" ]]; then
-        echo "true"
-        return
+    if [[ -z "${number}" ]] || [[ ${number} -lt 1 ]] || [[ ${number} -gt ${#items[@]} ]]; then
+        number=1
     fi
 
-    echo "false"
+    DEFAULT_WEATHER="${items[$((number - 1))]}"
 }
 
-function setupSetWeatherApiVariables() {
-    local city
-    local languageCode
-    local lang
-    local unitsNumber
-    local units
-    local themeNumber
-    local theme
-    local hourFormat_12_number
-    local hourFormat_12
-    local themeLua
-    local weatherLua
-
-    local themeFile="${BASE_DIR}/${REPO}/cwTheme.lua"
-    local weatherFile="${BASE_DIR}/${REPO}/themes/weather/default/weather.lua"
-
+function setupHourFormat() {
     echo
-    city="$(
-        helperPrompt "- Please enter your ${C_Y}city${C_D} name ${C_Y}[e.g.: budapest, wien or london]${C_D}: " "${DEFAULT_CITY}" "NO_VALIDATE"
+    echo "- Choose the ${C_Y}hour format${C_D}:"
+    echo -e "  ${C_Y}1.${C_D} 24 (e.g. 14:05)"
+    echo -e "  ${C_Y}2.${C_D} 12 (e.g. 02:05 PM)"
+    echo
+    DEFAULT_HOUR_FORMAT="$(
+        helperPrompt "  your choice ?: " "1" "1 2"
     )"
-    city="$(gawk '{print tolower($0);}' <<< "${city}")"
-    city="$(gawk '{print toupper($0);}' <<< "${city:0:1}")${city:1}"
-    DEFAULT_CITY="${city}"
-
-    echo
-    echo "- Please enter your ${C_Y}country code${C_D}."
-    echo "  This one is to specify in which country the given ${C_Y}city is located${C_D}."
-    echo "  Check your country code here: ${C_U}https://www.iban.com/country-codes${C_D}"
-    echo
-    languageCode="$(
-        helperPrompt "  ${C_Y}[e.g.: hu, gb, us]${C_D}: " "${DEFAULT_LANGUAGE_CODE}" "${COUNTRY_CODES}"
-    )"
-    DEFAULT_LANGUAGE_CODE="${languageCode}"
-
-    echo
-    echo "- Please enter your ${C_Y}language code${C_D}."
-    echo "  In what language do you want to ${C_Y}display the weather details?${C_D}"
-    echo "  Check your language code here: ${C_U}https://openweathermap.org/current#multi${C_D}"
-    echo
-    lang="$(
-        helperPrompt "  ${C_Y}[e.g.: hu, en, fr]${C_D}: " "${DEFAULT_LANG}" "${LANGUAGE_CODES}"
-    )"
-    DEFAULT_LANG="${lang}"
-
-    echo
-    echo "- Please enter which temperature unit do you want to use: "
-    setupListUnits
-    echo
-    unitsNumber="$(
-        helperPrompt "  ${C_Y}[1 or 2]${C_D} ?: " "${DEFAULT_UNITS_NUMBER}" "1 2"
-    )"
-    units=$(setupGetUnitByNumber "${unitsNumber}")
-    DEFAULT_UNITS_NUMBER="${unitsNumber}"
-
-    echo
-    setupListThemes
-    echo
-    themeNumber="$(
-        helperPrompt "- Enter choosen ${C_Y}theme${C_D} number ${C_Y}[e.g.: 11]${C_D}: " "${DEFAULT_THEME_NUMBER}" "$(setupListThemes 1)"
-    )"
-    theme=$(setupGetThemeNameByNumber "${themeNumber}")
-    DEFAULT_THEME_NUMBER="${themeNumber}"
-
-    echo
-    hourFormat_12_number="$(
-        helperPrompt "- What type of ${C_Y}hour format${C_D} do you want to use ${C_Y}[12 or 24]${C_D} ?: " "${DEFAULT_HOUR_FORMAT_12_NUMBER}" "12 24"
-    )"
-    hourFormat_12=$(setupHourFormatByNumber "${hourFormat_12_number}")
-    DEFAULT_HOUR_FORMAT_12_NUMBER="${hourFormat_12_number}"
-
-    themeLua=$(helperReplace "${DEFAULT_THEME_LUA}" "REPLACE_APPEARANCE" "${theme}")
-    themeLua=$(helperReplace "${themeLua}" "REPLACE_WEATHER" "default")
-    themeLua=$(helperReplace "${themeLua}" "REPLACE_HOUR_FORMAT_12" "${hourFormat_12}")
-
-    weatherLua=$(helperReplace "${DEFAULT_WEATHER_LUA}" "REPLACE_CITY" "${city}")
-    weatherLua=$(helperReplace "${weatherLua}" "REPLACE_LANGUAGE_CODE" "${languageCode}")
-    weatherLua=$(helperReplace "${weatherLua}" "REPLACE_LANG" "${lang}")
-    weatherLua=$(helperReplace "${weatherLua}" "REPLACE_UNITS" "${units}")
-
-    echo "${themeLua}" > "${themeFile}"
-    echo "${weatherLua}" > "${weatherFile}"
+    [[ "${DEFAULT_HOUR_FORMAT}" = "2" ]] && DEFAULT_HOUR_FORMAT="12" || DEFAULT_HOUR_FORMAT="24"
 }
 
-function setupWindowSettings() {
-    local alignmentNumber
-    local alignment
-    local cfgFile="${BASE_DIR}/${REPO}/cwApp.lua"
-    local panelCfgFile="${BASE_DIR}/${REPO}/panelApp.lua"
-    local appCfg
-
-    echo
-    echo "- Please enter the ${C_Y}number${C_D} of the choosen ${C_Y}window alignment${C_D}."
-    echo
-    setupListConfigAlignments
-    echo
-    alignmentNumber="$(
-        helperPrompt "  ${C_Y}[e.g.: 9]${C_D} ?: " "${DEFAULT_WINDOW_ALIGMENT_NUMBER}" "$(setupListConfigAlignments 1)"
-    )"
-    alignment=$(setupGetConfigAlignmentByNumber "${alignmentNumber}")
-    DEFAULT_WINDOW_ALIGMENT_NUMBER="${alignmentNumber}"
-
-    echo
-    positionX="$(
-        helperPrompt "- Please enter the '${C_Y}X${C_D}' position of the widget's window ${C_Y}[e.g.: 0]${C_D}: " "${DEFAULT_WINDOW_POSITION_X}" "VALIDATE_NUMBER"
-    )"
-    DEFAULT_WINDOW_POSITION_X="${positionX}"
-
-    echo
-    positionY="$(
-        helperPrompt "- Please enter the '${C_Y}Y${C_D}' position of the widget's window ${C_Y}[e.g.: 0]${C_D}: " "${DEFAULT_WINDOW_POSITION_Y}" "VALIDATE_NUMBER"
-    )"
-    DEFAULT_WINDOW_POSITION_Y="${positionY}"
-
-    echo
-    echo "- Do you want to start the ${C_Y}System Monitor Panel${C_D} as well?"
-    echo -e "  ${C_Y}1.${C_D} Yes (Recommended)"
-    echo -e "  ${C_Y}2.${C_D} No"
-    echo
-    CURRENT_START_PANEL="$(
-        helperPrompt "  your choice ?: " "${DEFAULT_START_PANEL}" "1 2"
-    )"
-
-    appCfg=$(helperReplace "${DEFAULT_CONKY_CONFIG}" "REPLACE_CONFIG_ALIGNMENT" "${alignment}")
-    appCfg=$(helperReplace "${appCfg}" "REPLACE_CONFIG_POSITION_X" "${positionX}")
-    appCfg=$(helperReplace "${appCfg}" "REPLACE_CONFIG_POSITION_Y" "${positionY}")
-
-    echo "${appCfg}" > "${cfgFile}"
-
-    # Update the start status in panelApp.lua
-    if grep -q "START_PANEL_ENABLED =" "$panelCfgFile"; then
-        if [[ "$CURRENT_START_PANEL" == "1" ]]; then
-            sed -i 's/START_PANEL_ENABLED = .*/START_PANEL_ENABLED = true/' "$panelCfgFile"
-        else
-            sed -i 's/START_PANEL_ENABLED = .*/START_PANEL_ENABLED = false/' "$panelCfgFile"
-        fi
-    else
-        if [[ "$CURRENT_START_PANEL" == "1" ]]; then
-            sed -i '1iSTART_PANEL_ENABLED = true\n' "$panelCfgFile"
-        else
-            sed -i '1iSTART_PANEL_ENABLED = false\n' "$panelCfgFile"
-        fi
-    fi
+function setupWriteConfig() {
+    sed -i "s/^appearance: .*/appearance: ${DEFAULT_APPEARANCE}/" "${CONFIG_FILE}"
+    sed -i "s/^weather: .*/weather: ${DEFAULT_WEATHER}/" "${CONFIG_FILE}"
+    sed -i "s/^  hour_format: .*/  hour_format: \"${DEFAULT_HOUR_FORMAT}\"/" "${CONFIG_FILE}"
+    echo "- ${C_Y}'${CONFIG_FILE}'${C_D} updated (appearance: ${DEFAULT_APPEARANCE}, weather: ${DEFAULT_WEATHER}, hour_format: ${DEFAULT_HOUR_FORMAT})."
 }
 
 function setupIconSettings() {
@@ -551,7 +234,7 @@ function setupIconSettings() {
     echo -e "  ${C_Y}1.${C_D} Yes"
     echo -e "  ${C_Y}2.${C_D} No"
     echo
-    CURRENT_CREATE_DESKTOP_ICONS="$(
+    DEFAULT_CREATE_DESKTOP_ICONS="$(
         helperPrompt "  your choice ?: " "${DEFAULT_CREATE_DESKTOP_ICONS}" "1 2"
     )"
 }
@@ -560,14 +243,13 @@ function setupCreateStartIcons() {
     local launcherPath
     local launcher
     local menuDir="${HOME}/.local/share/applications"
-    
+
     mkdir -p "${menuDir}"
 
-    launcherPath="$(xdg-user-dir DESKTOP)/start-clock-with-weather-conky-widget.desktop"
-    launcherMenuPath="${menuDir}/start-clock-with-weather-conky-widget.desktop"
+    launcherPath="$(xdg-user-dir DESKTOP)/start-clock-with-weather-eww.desktop"
+    launcherMenuPath="${menuDir}/start-clock-with-weather-eww.desktop"
 
-    launcher=$(helperReplace "${DESKTOP_LAUNCHER}" "REPLACE_APP_DIR" "${BASE_DIR}/${REPO}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_API_KEY" "${DEFAULT_OPENWEATHER_API_KEY}")
+    launcher=$(helperReplace "${DESKTOP_LAUNCHER}" "REPLACE_APP_DIR" "${DIR}")
 
     # Always create menu icon
     echo "${launcher}" > "${launcherMenuPath}"
@@ -575,7 +257,7 @@ function setupCreateStartIcons() {
     echo "- Menu icon created: ${C_Y}${launcherMenuPath}${C_D}"
 
     # Conditionally create desktop icon
-    if [[ "$CURRENT_CREATE_DESKTOP_ICONS" == "1" ]]; then
+    if [[ "${DEFAULT_CREATE_DESKTOP_ICONS}" = "1" ]]; then
         echo "${launcher}" > "${launcherPath}"
         chmod 755 "${launcherPath}"
         echo "- Desktop icon created: ${C_Y}${launcherPath}${C_D}"
@@ -586,29 +268,13 @@ function setupCreateSetupIcons() {
     local launcherPath
     local launcher
     local menuDir="${HOME}/.local/share/applications"
-    
+
     mkdir -p "${menuDir}"
 
-    launcherPath="$(xdg-user-dir DESKTOP)/setup-clock-with-weather-conky-widget.desktop"
-    launcherMenuPath="${menuDir}/setup-clock-with-weather-conky-widget.desktop"
+    launcherPath="$(xdg-user-dir DESKTOP)/setup-clock-with-weather-eww.desktop"
+    launcherMenuPath="${menuDir}/setup-clock-with-weather-eww.desktop"
 
-    launcher=$(helperReplace "${DESKTOP_LAUNCHER_SETUP}" "REPLACE_APP_DIR" "${BASE_DIR}/${REPO}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_API_KEY" "${DEFAULT_OPENWEATHER_API_KEY}")
-
-    launcher=$(helperReplace "${launcher}" "REPLACE_CITY" "${DEFAULT_CITY}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_LANGUAGE_CODE" "${DEFAULT_LANGUAGE_CODE}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_LANG" "${DEFAULT_LANG}")
-
-    launcher=$(helperReplace "${launcher}" "REPLACE_UNITS_NUMBER" "${DEFAULT_UNITS_NUMBER}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_THEME_NUMBER" "${DEFAULT_THEME_NUMBER}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_HOUR_FORMAT_12_NUMBER" "${DEFAULT_HOUR_FORMAT_12_NUMBER}")
-
-    launcher=$(helperReplace "${launcher}" "REPLACE_CONFIG_ALIGNMENT" "${DEFAULT_WINDOW_ALIGMENT_NUMBER}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_CONFIG_POSITION_X" "${DEFAULT_WINDOW_POSITION_X}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_CONFIG_POSITION_Y" "${DEFAULT_WINDOW_POSITION_Y}")
-    
-    launcher=$(helperReplace "${launcher}" "REPLACE_START_PANEL" "${CURRENT_START_PANEL}")
-    launcher=$(helperReplace "${launcher}" "REPLACE_CREATE_DESKTOP_ICONS" "${CURRENT_CREATE_DESKTOP_ICONS}")
+    launcher=$(helperReplace "${DESKTOP_LAUNCHER_SETUP}" "REPLACE_APP_DIR" "${DIR}")
 
     # Always create menu icon
     echo "${launcher}" > "${launcherMenuPath}"
@@ -616,36 +282,11 @@ function setupCreateSetupIcons() {
     echo "- Menu icon created: ${C_Y}${launcherMenuPath}${C_D}"
 
     # Conditionally create desktop icon
-    if [[ "$CURRENT_CREATE_DESKTOP_ICONS" == "1" ]]; then
+    if [[ "${DEFAULT_CREATE_DESKTOP_ICONS}" = "1" ]]; then
         echo "${launcher}" > "${launcherPath}"
         chmod 755 "${launcherPath}"
         echo "- Desktop icon created: ${C_Y}${launcherPath}${C_D}"
     fi
-}
-
-function setupStartApplication() {
-    echo
-    echo -n "- Starting widgets ... "
-    
-    # Start the start.sh script in a new session and background it
-    setsid bash "${BASE_DIR}"/"${REPO}"/scripts/start.sh "${DEFAULT_OPENWEATHER_API_KEY}" &> /dev/null &
-    
-    # Wait a bit for conky processes to appear
-    sleep 2
-    local count=$(pgrep -x conky | wc -l)
-    
-    if [[ $count -gt 0 ]]; then
-        echo -e "${C_Y}done${C_D} ($count conky instances detected)."
-    else
-        echo -e "${C_R}failed or still starting...${C_D}"
-    fi
-
-    echo
-    echo -e "- Conky widgets started. - ${C_Y}Bye! :-)${C_D}"
-    echo
-    echo "-------------------------------------------------------"
-    read -n 1 -s -p "  Press any key to close this window..."
-    echo
 }
 
 function main() {
@@ -653,15 +294,14 @@ function main() {
         return
     fi
 
-    setupPrintLogo
-    setupChDir
     setupApiKey
-    setupSetWeatherApiVariables
-    setupWindowSettings
+    setupAppearance
+    setupWeather
+    setupHourFormat
+    setupWriteConfig
     setupIconSettings
     setupCreateStartIcons
     setupCreateSetupIcons
-    setupStartApplication
 }
 
 main

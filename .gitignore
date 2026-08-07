@@ -1,1 +1,9 @@
+charts/*.svg
+charts/state.json
+__pycache__/
+*.pyc
+watch.log
+watch.pid
 .api_key
+eww.theme.json
+eww.theme.scss

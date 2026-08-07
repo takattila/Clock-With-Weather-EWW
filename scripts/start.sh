@@ -1,101 +1,125 @@
 #!/bin/bash
+# Start the eww widget.
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." >/dev/null 2>&1 && pwd )"
 
-API_KEY=$1
-
-# If no key was passed as an argument, fall back to the git-ignored .api_key
-# file in the widget folder (first line).
-if [[ -z "${API_KEY}" ]]; then
-    WIDGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-    if [[ -f "${WIDGET_DIR}/.api_key" ]]; then
-        API_KEY="$(head -n1 "${WIDGET_DIR}/.api_key")"
-    fi
-fi
-
-function checkAPIkey() {
-    if [[ -z "${API_KEY}" ]]; then
-        echo " ERROR :("
-        echo
-        echo " Missing API key!"
-        echo " - You have to pass the key as an argument:"
-        echo "   ..."
-        echo "   bash start.sh <YOUR-API-KEY>"
-        echo "   ..."
-        echo " - Or create the git-ignored file .api_key in the widget folder:"
-        echo "   ..."
-        echo "   printf '<YOUR-API-KEY>\n' > .api_key && chmod 600 .api_key"
-        echo "   ..."
-        echo
-        exit 1
-    fi
+# --- KDE Plasma check -----------------------------------------------------
+# The widget needs a running desktop shell to be displayed. If KDE Plasma
+# (plasmashell) is not running, restore the normal desktop first (this also
+# (re)starts plasmashell). If there is no restore backup, start plasmashell
+# directly as a fallback.
+ensure_plasma_running() {
+  if pgrep -x plasmashell >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "KDE Plasma (plasmashell) is not running; restoring normal desktop..."
+  "$DIR/scripts/setup-test-env.sh" restore || {
+    echo "No restore backup found; starting plasmashell directly..."
+    nohup plasmashell >/dev/null 2>&1 & disown
+    sleep 2
+  }
 }
 
-function get_monitor_count() {
-    local count=0
-    for status_file in /sys/class/drm/card*-*/status; do
-        if [[ -f "$status_file" && $(cat "$status_file") == "connected" ]]; then
-            ((count++))
-        fi
-    done
-    # Fallback to xrandr if /sys/class/drm is empty or not accessible
-    if [[ $count -eq 0 ]]; then
-        count=$(xrandr --listmonitors | grep -c "^\s*[0-9]\+:")
-    fi
-    echo "$count"
+# Generate the theme (SCSS variables + JSON) from config.yaml + appearance.yaml
+generate_theme() {
+  python3 "$DIR/scripts/theme.py" "$DIR" || { echo "ERROR: theme generation failed"; exit 1; }
 }
 
-function start() {
-    export OPENWEATHER_API_KEY=${API_KEY}
+# --- WM-independent taskbar alignment -------------------------------------
+# Read the EWMH _NET_WORKAREA (usable area outside the taskbar) and the
+# symmetric gap (config.yaml -> panel.gap), compute the panel geometry
+# (anchor + x/y offsets + height, see workarea.py) and bake it into the
+# panel_window geometry so the panel is inset from the taskbar and from the
+# opposite screen edge by the SAME gap, for any taskbar position. The actual
+# panel height is also exported as PANEL_HEIGHT for panel.py (chart sizing).
+# If the X display is unreachable (no real workarea), the committed geometry
+# is kept instead of being clobbered with a fallback.
+align_panel_to_taskbar() {
+  local json
+  json="$(python3 "$DIR/scripts/workarea.py" "$DIR")" || json=""
+  if [ -z "$json" ]; then
+    echo "WARNING: workarea.py failed; keeping panel geometry in eww.yuck"
+    return 1
+  fi
+  if [ "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["real_workarea"])' "$json")" != "True" ]; then
+    echo "WARNING: no X display / workarea; keeping panel geometry in eww.yuck"
+    return 1
+  fi
 
-    killall conky &> /dev/null
-    sleep 1 # Wait for old processes to clean up
-    
-    cd /home/$(whoami)/.conky/Clock-With-Weather-Conky || true
+  local ANCHOR PANEL_X PANEL_Y PANEL_W PANEL_H GAP
+  ANCHOR="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["anchor"])' "$json")"
+  PANEL_X="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["x"])' "$json")"
+  PANEL_Y="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["y"])' "$json")"
+  PANEL_W="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["width"])' "$json")"
+  PANEL_H="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["height"])' "$json")"
+  GAP="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel_gap"])' "$json")"
+  export PANEL_HEIGHT="$PANEL_H"
 
-    # Detect monitors
-    MONITORS=$(get_monitor_count)
-    
-    # Check if panel is enabled in configuration
-    local panel_enabled=$(grep -c "START_PANEL_ENABLED = true" panelApp.lua)
+  python3 - "$DIR/eww.yuck" "$ANCHOR" "$PANEL_X" "$PANEL_Y" "$PANEL_W" "$PANEL_H" <<'PYEOF'
+import re
+import sys
 
-    if [[ "$MONITORS" -le 1 ]]; then
-        nohup /usr/bin/conky -c cwApp.lua >/dev/null 2>&1 </dev/null &
-        if [[ $panel_enabled -gt 0 ]]; then
-            sleep 0.5
-            nohup /usr/bin/conky -c panelApp.lua -m 0 >/dev/null 2>&1 </dev/null &
-        fi
-    else
-        for (( i=0; i<$MONITORS; i++ )); do
-            nohup /usr/bin/conky -c cwApp.lua -m $i >/dev/null 2>&1 </dev/null &
-            if [[ $panel_enabled -gt 0 ]]; then
-                sleep 0.5
-                nohup /usr/bin/conky -c panelApp.lua -m $i >/dev/null 2>&1 </dev/null &
-            fi
-            sleep 0.5
-        done
-    fi
-
-    cd - > /dev/null || true
-    echo "$MONITORS"
+path, anchor, x, y, w, h = (
+    sys.argv[1],
+    sys.argv[2],
+    int(sys.argv[3]),
+    int(sys.argv[4]),
+    int(sys.argv[5]),
+    int(sys.argv[6]),
+)
+text = open(path, encoding="utf-8").read()
+start = text.index("(defwindow panel_window")
+end = text.index("(widget_panel)", start)
+block = text[start:end]
+block = re.sub(r'(:x ")[^"]*(")', r"\g<1>%dpx\g<2>" % x, block)
+block = re.sub(r'(:y ")[^"]*(")', r"\g<1>%dpx\g<2>" % y, block)
+block = re.sub(r'(:width ")[^"]*(")', r"\g<1>%dpx\g<2>" % w, block)
+block = re.sub(r'(:height ")[^"]*(")', r"\g<1>%dpx\g<2>" % h, block)
+block = re.sub(r'(:anchor ")[^"]*(")', r"\g<1>%s\g<2>" % anchor, block)
+text = text[:start] + block + text[end:]
+open(path, "w", encoding="utf-8").write(text)
+PYEOF
+  echo "panel aligned to taskbar: anchor=${ANCHOR} x=${PANEL_X}px y=${PANEL_Y}px width=${PANEL_W}px height=${PANEL_H}px (gap=${GAP}px)"
 }
 
-function monitor_changes() {
-    local last_monitors="$1"
-    # Note: avoid killing the current script if running
-    while true; do
-        sleep 5
-        local current_monitors=$(get_monitor_count)
-        if [[ "$current_monitors" -ne "$last_monitors" ]]; then
-            start > /dev/null
-            last_monitors="$current_monitors"
-            echo "Monitor change detected. Updated to $current_monitors monitor(s)."
-        fi
-    done
+# Start the eww daemon and open both windows
+start_eww() {
+  # Kill any existing eww daemon for this config directory
+  eww --config "$DIR" kill 2>/dev/null
+
+  # Make the API key available to the eww daemon (and its defpoll children).
+  # config.py reads the same key from the git-ignored .api_key file, so this
+  # is just a convenience/consistency for the OPENWEATHER_API_KEY handling.
+  if [ -z "${OPENWEATHER_API_KEY:-}" ] && [ -f "$DIR/.api_key" ]; then
+    export OPENWEATHER_API_KEY="$(head -n1 "$DIR/.api_key")"
+  fi
+
+  # Start eww daemon
+  eww --config "$DIR" daemon
+
+  # Open the clock/weather widget and the system monitor panel
+  eww --config "$DIR" open main_window
+  eww --config "$DIR" open panel_window
 }
 
-function main() {
-    checkAPIkey
-    local initial_monitors=$(start)
-    monitor_changes "$initial_monitors"
+# Start the inotify-based watcher so config.yaml / theme YAML edits take effect
+# immediately (event-driven, ~0 CPU while idle). Log goes to eww/watch.log.
+# setsid detaches it into its own session so it survives the caller's shell /
+# process-group cleanup (nohup alone is not enough here).
+start_watcher() {
+  setsid python3 "$DIR/scripts/watch.py" "$DIR" >> "$DIR/watch.log" 2>&1 &
+  echo $! > "$DIR/watch.pid"
+  disown 2>/dev/null || true
+  echo "config watcher started (PID $(cat "$DIR/watch.pid"))"
+}
+
+main() {
+  "$DIR/scripts/stop.sh"
+  ensure_plasma_running
+  generate_theme
+  align_panel_to_taskbar
+  start_eww
+  start_watcher
+  echo "Clock + weather widget and system monitor panel are running (eww)."
 }
 
 main

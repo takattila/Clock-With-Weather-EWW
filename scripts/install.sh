@@ -1,7 +1,14 @@
 #!/bin/bash
 
-REPO="Clock-With-Weather-Conky"
+# --- Standalone widget repo -------------------------------------------------
+# The eww widget is its own repository; the repo root IS the widget directory.
+GITHUB_USER="takattila"
+REPO="Clock-With-Weather-EWW"
+# ----------------------------------------------------------------------------
+
+EWW_REPO="elkowar/eww"
 BASE_DIR="/home/$(whoami)/.conky"
+EWW_DIR="${BASE_DIR}/${REPO}"
 
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
 C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
@@ -39,7 +46,7 @@ function helperCheckout() {
     {
         cd "${BASE_DIR}"/"${REPO}"
         git fetch --all --tags
-        git checkout tags/"$(helperGetLatestRelease takattila/"${REPO}")"
+        git checkout tags/"$(helperGetLatestRelease "${GITHUB_USER}/${REPO}")"
     } &> /dev/null
 }
 
@@ -48,7 +55,7 @@ function helperCloneAndCheckout() {
     echo -n "- Downloading ${C_Y}${REPO}${C_D} ... "
 
     {
-      git clone https://github.com/takattila/"${REPO}".git \
+      git clone https://github.com/"${GITHUB_USER}"/"${REPO}".git \
           "${BASE_DIR}"/"${REPO}"
     } &> /dev/null
 
@@ -133,61 +140,78 @@ function helperInstall() {
     done
 }
 
-function helperInstallConkyByPackman() {
-    local error="/tmp/helperInstallConkyByPackman.error"
-    local package="conky-lua"
-    local makePkg="makepkg -si --noconfirm PKGBUILD"
-
-    local c_e="$(echo -en "\e[2K")" # Cursor move: erase to end of line
-    local c_s="$(echo -en "\e[s")"  # Cursor move: save cursor position
-    local c_r="$(echo -en "\e[u")"  # Cursor move: restore cursor position
-    local c_c="$(tput ed)"          # Cursor move: clear everything after position
-
-    local aurConkyLua="https://aur.archlinux.org/conky-lua.git"
-
-    echo -n "  == Installing ${C_Y}${package}${C_D} ... "
-    sudo pacman -Sy --noconfirm "${package}-nv" &> /dev/null ; echo $? > "${error}"
-
-    if [[ "$(< ${error})" = "0" ]]; then
-        echo "done."
-        return
+function helperInstallRust() {
+    if [[ "$(helperExistsProgram cargo)" = "0" ]]; then
+        return 0
     fi
 
-    if [[ "$(conky -v 2> /dev/null | grep -q Lua ; echo $?)" = "0" ]]; then
-        echo "done."
-        return
-    fi
-    
     echo
+    echo "- Installing ${C_Y}Rust${C_D} (rustup) ... "
 
-    helperInstall "pacman -Sy --noconfirm" "tolua++"
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
+    source "${HOME}/.cargo/env"
 
-    rm -rf conky-lua
+    if [[ "$(helperExistsProgram cargo)" = "1" ]]; then
+        echo
+        echo "${C_R}[ ERROR ]${C_D} Rust (cargo) installation failed."
+        echo
+        exit 1;
+    fi
 
-    echo -n "  == Cloning: ${C_Y}${aurConkyLua}${C_D} ... "
-    git clone ${aurConkyLua} &> /dev/null
+    echo "done."
+}
+
+function helperInstallEwwBuildDeps() {
+    echo
+    echo "- Installing ${C_Y}eww build dependencies${C_D} ... "
+    if [[ "$(helperExistsProgram yum)" = "0" ]]; then
+        helperInstall "yum install -y" "epel-release"
+        helperInstall "yum install -y" "gcc make pkgconfig gtk3-devel gtk-layer-shell-devel pango-devel gdk-pixbuf2-devel cairo-devel glib2-devel libdbusmenu-gtk3-devel"
+    elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
+        helperInstall "apt update -y" "UPDATE"
+        helperInstall "apt install -y" "build-essential pkg-config libgtk-3-dev libgtk-layer-shell-dev libpango1.0-dev libgdk-pixbuf2.0-dev libcairo2-dev libglib2.0-dev libdbusmenu-gtk3-dev"
+    elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
+        helperInstall "zypper -n in" "gcc make pkgconf-pkg-config gtk3-devel gtk-layer-shell-devel pango-devel gdk-pixbuf-devel cairo-devel glib2-devel libdbusmenu-gtk3-devel"
+    elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
+        helperInstall "dnf install -y" "gcc make pkgconf-pkg-config gtk3-devel gtk-layer-shell-devel pango-devel gdk-pixbuf2-devel cairo-devel glib2-devel libdbusmenu-gtk3-devel"
+    else
+        echo
+        echo "${C_R}[ ERROR ]${C_D} Can't install eww build dependencies: ${C_Y}install system not known${C_D}"
+        echo
+        exit 1;
+    fi
+}
+
+function helperBuildEwwFromSource() {
+    local eww_features="x11"
+    [[ -n "${WAYLAND_DISPLAY}" ]] && eww_features="wayland"
+
+    echo
+    echo "- Building ${C_Y}eww${C_D} from source (feature: ${eww_features}) ... "
+
+    helperInstallRust
+    helperInstallEwwBuildDeps
+
+    rm -rf /tmp/eww-src
+
+    echo -n "  == Cloning: ${C_Y}https://github.com/${EWW_REPO}${C_D} ... "
+    git clone --depth 1 https://github.com/"${EWW_REPO}".git /tmp/eww-src &> /dev/null
     echo "done."
 
-    echo "  == Running ${C_Y}${makePkg}${C_D} ... "
+    echo "  == Running ${C_Y}cargo build --release${C_D} (this can take a while) ... "
+    ( cd /tmp/eww-src && cargo build --release --no-default-features --features "${eww_features}" ) &> /dev/null
 
-    cd conky-lua
+    if [[ ! -f /tmp/eww-src/target/release/eww ]]; then
+        echo
+        echo "${C_R}[ ERROR ]${C_D} eww build failed."
+        echo
+        exit 1;
+    fi
 
-    ( nohup ${makePkg} && echo EXIT_PKGBUILD > nohup.out & ) 2> /dev/null
+    sudo cp /tmp/eww-src/target/release/eww /usr/local/bin/eww
+    rm -rf /tmp/eww-src
 
-    sleep 1
-
-    tail -n 1 -f nohup.out -s 0.1 2> /dev/null | while read -r line; do
-        echo -en "\r${c_s}${c_e}  == ${line} ${c_c}${c_r}" 2> /dev/null
-        if [[ "${line}" = "EXIT_PKGBUILD" ]]; then
-            break
-        fi
-    done
-
-    cd - > /dev/null
-
-    rm -rf conky-lua
-
-    echo "  == The ${C_Y}conky-lua${C_D} installation has been finished."
+    echo "  == The ${C_Y}eww${C_D} installation has been finished."
 }
 
 function installProceed() {
@@ -214,7 +238,7 @@ cat <<-'EOF'
      \ V  V /  __/ (_| | |_| | | |  __/ |   
       \_/\_/ \___|\__,_|\__|_| |_|\___|_|   
 
-             ... Conky Widget ....
+               ... EWW Widget ....
 EOF
     printf "${C_D}\n"
 
@@ -225,8 +249,7 @@ function installCheckOS() {
     if [[ "${os}" != "Linux" ]]; then
         echo "${C_R}[ ERROR ]${C_D} The ${C_Y}${os}${C_D} OS is not supported by this script."
         echo
-        echo "          If you run this script ${C_Y}on Mac OS${C_D}, please visit this site, for conky installation:"
-        echo "          ${C_U}https://github.com/Conky-for-macOS/conky-for-macOS/wiki/How-to-install${C_D}"
+        echo "          eww (ElKowar's Wacky Widgets) is ${C_Y}Linux only${C_D}."
         echo
         exit 1
     fi
@@ -291,7 +314,6 @@ function installDependencies() {
             helperInstall "apt install -y" "${packagesToInstall}"
         elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
             helperInstall "pacman -Sy --noconfirm" "${packagesToInstall}"
-            helperInstallConkyByPackman
         elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
             helperInstall "zypper -n in" "${packagesToInstall}"
         elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
@@ -305,24 +327,59 @@ function installDependencies() {
     fi
 }
 
-function installConky() {
-    echo
-    echo "- Installing: ${C_Y}conky${C_D} ... "
+function installEwwDependencies() {
+    local packages=""
+
     if [[ "$(helperExistsProgram yum)" = "0" ]]; then
-        helperInstall "yum install -y" "conky"
+        packages="python3 python3-requests python3-psutil python3-yaml xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts"
     elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
-        helperInstall "apt install -y" "conky-all"
+        packages="python3 python3-requests python3-psutil python3-yaml x11-utils x11-xserver-utils fonts-noto-core"
     elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
-        helperInstallConkyByPackman
+        packages="python python-requests python-psutil python-yaml xorg-xprop xorg-xrandr noto-fonts"
     elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
-        helperInstall "zypper -n in" "conky"
+        packages="python3 python3-requests python3-psutil python3-PyYAML xprop xrandr google-noto-sans-fonts"
     elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
-        helperInstall "dnf install -y" "conky"
+        packages="python3 python3-requests python3-psutil python3-yaml xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts"
     else
         echo
-        echo "${C_R}[ ERROR ]${C_D} Can't install dependencies: ${C_Y}install system not known${C_D}"
+        echo "${C_R}[ ERROR ]${C_D} Can't install eww dependencies: ${C_Y}install system not known${C_D}"
         echo
         exit 1;
+    fi
+
+    echo
+    echo "- Installing eww dependencies: ${C_Y}${packages}${C_D} ... "
+    if [[ "$(helperExistsProgram yum)" = "0" ]]; then
+        helperInstall "yum install -y" "${packages}"
+    elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
+        helperInstall "apt update -y" "UPDATE"
+        helperInstall "apt install -y" "${packages}"
+    elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
+        helperInstall "pacman -Sy --noconfirm" "${packages}"
+    elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
+        helperInstall "zypper -n in" "${packages}"
+    elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
+        helperInstall "dnf install -y" "${packages}"
+    fi
+}
+
+function installEww() {
+    echo
+    echo "- Installing: ${C_Y}eww${C_D} ... "
+
+    if [[ "$(helperExistsProgram pacman)" = "0" ]]; then
+        echo -n "  == Installing ${C_Y}eww${C_D} ... "
+        sudo pacman -Sy --noconfirm eww &> /dev/null
+
+        if [[ "$(helperExistsProgram eww)" = "0" ]]; then
+            echo "done."
+            return
+        fi
+
+        echo "not found in the official repos;"
+        helperBuildEwwFromSource
+    else
+        helperBuildEwwFromSource
     fi
 }
 
@@ -338,15 +395,15 @@ function installWidgetFromGitHub() {
         )"
 
         if [[ "${delete_repo_dir}" = "y" ]]; then
-            killall conky &> /dev/null
+            killall eww &> /dev/null
             rm -rf "${repo_dir}"
             helperCloneAndCheckout
 
             return
         fi
-        
+
         helperCheckout
-        
+
         return
     fi
 
@@ -357,13 +414,59 @@ function installFont() {
     local font="NotoSans-Regular.ttf"
 
     mkdir -p /home/"$(whoami)"/.local/share/fonts
-    cp "${BASE_DIR}"/"${REPO}"/fonts/"${font}" /home/"$(whoami)"/.local/share/fonts
-    
+    cp "${EWW_DIR}"/fonts/"${font}" /home/"$(whoami)"/.local/share/fonts
+
     echo -e "- The ${C_Y}'${font}'${C_D} font installed."
 }
 
-function installSourceSetup() {
-    source ${BASE_DIR}/${REPO}/scripts/setup.sh --from-install true
+function setupEwwApiKey() {
+    local apiKey="${DEFAULT_OPENWEATHER_API_KEY:-}"
+
+    if [[ -z "${apiKey}" ]]; then
+        echo
+        echo "- Please enter your ${C_Y}OpenWeatherMap API key${C_D}."
+        echo "  If you don't have it yet, ${C_Y}you can get it from here${C_D}:"
+        echo
+        echo "  ${C_U}https://home.openweathermap.org/users/sign_up${C_D}"
+        echo
+
+        apiKey="$(
+            helperPrompt "  your ${C_Y}API key${C_D}: " "EMPTY_ANSWER_NOT_ALLOWED" "NO_VALIDATE"
+        )"
+    fi
+
+    echo "${apiKey}" > "${EWW_DIR}/.api_key"
+    chmod 600 "${EWW_DIR}/.api_key"
+
+    echo -e "- The ${C_Y}'${EWW_DIR}/.api_key'${C_D} file saved (chmod 600)."
+}
+
+function setupStartEwwWidget() {
+    echo
+    echo "- Starting the ${C_Y}eww widgets${C_D} ... "
+    bash "${EWW_DIR}/scripts/start.sh"
+    echo
+    echo "- The ${C_Y}eww widgets${C_D} are running."
+}
+
+function setupDesktopAndMenuIcons() {
+    echo
+    echo "- Creating ${C_Y}menu / desktop icons${C_D} ... "
+    source "${EWW_DIR}/scripts/setup.sh" --from-install true
+
+    # Ask whether to also place icons on the desktop (menu icons are automatic).
+    echo
+    echo "- Do you want to create ${C_Y}Desktop icons${C_D} for starting/setup?"
+    echo "  (Menu icons will be created automatically)"
+    echo -e "  ${C_Y}1.${C_D} Yes"
+    echo -e "  ${C_Y}2.${C_D} No"
+    echo
+    DEFAULT_CREATE_DESKTOP_ICONS="$(
+        helperPrompt "  your choice ?: " "1" "1 2"
+    )"
+
+    setupCreateStartIcons
+    setupCreateSetupIcons
 }
 
 function main() {
@@ -375,18 +478,14 @@ function main() {
     installSetRootPassword
     installUsLocale
     installDependencies
-    installConky
+    installEwwDependencies
+    installEww
     installWidgetFromGitHub
     installFont
 
-    installSourceSetup
-
-    setupApiKey
-    setupSetWeatherApiVariables
-    setupWindowSettings
-    setupCreateDesktopIcon
-    setupCreateConfigDesktopIcon
-    setupStartApplication
+    setupEwwApiKey
+    setupDesktopAndMenuIcons
+    setupStartEwwWidget
 }
 
 main
