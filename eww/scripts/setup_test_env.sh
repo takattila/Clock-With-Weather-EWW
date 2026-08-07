@@ -2,9 +2,9 @@
 # ===========================================================================
 # setup_test_env.sh - KDE Plasma test environment setup / restore
 #
-# Creates a clean desktop (solid background, no desktop widgets, no desktop
-# icons) for screenshot-based verification of the eww widget. The normal
-# desktop is restored with the "restore" subcommand.
+# Creates a clean desktop (solid color or wallpaper background, no desktop
+# widgets, no desktop icons) for screenshot-based verification of the eww
+# widget. The normal desktop is restored with the "restore" subcommand.
 #
 # How it works:
 #   - The original appletsrc is backed up once (used by "restore").
@@ -12,8 +12,8 @@
 #     nothing is hardcoded.
 #   - A test copy is written while plasmashell is stopped, so the daemon
 #     cannot overwrite it on exit. Desktop widgets, icon positions and the
-#     video wallpaper are removed; the solid background is set. The panel
-#     (taskbar) is kept untouched.
+#     video wallpaper are removed; the test background (solid color or
+#     wallpaper image) is set. The panel (taskbar) is kept untouched.
 #   - plasmashell is restarted with nohup so the changes take effect.
 # ===========================================================================
 set -euo pipefail
@@ -53,9 +53,15 @@ try:
 except Exception:
     pass
 
-Image.new("RGB", (w, h), rgb).save(bg_file)
-print("  background: %s (%dx%d) %s" % (bg_file, w, h, "#%02x%02x%02x" % rgb))
+  Image.new("RGB", (w, h), rgb).save(bg_file)
+  print("  background: %s (%dx%d) %s" % (bg_file, w, h, "#%02x%02x%02x" % rgb))
 PY
+}
+
+install_wallpaper() {
+  local src="$1"
+  cp "$src" "$BG_FILE"
+  log "wallpaper installed: $src -> $BG_FILE"
 }
 
 # --------------------------------------------------------- test config
@@ -192,7 +198,7 @@ start_plasmashell() {
 
 # ----------------------------------------------------------------- commands
 cmd_hide() {
-  local color="${1:-$BG_COLOR}"
+  local arg="${1:-}"
 
   [[ -f "$APLETSRC" ]] || die "Not found: $APLETSRC"
 
@@ -204,11 +210,21 @@ cmd_hide() {
     log "backup already exists: $BACKUP (keeping it)"
   fi
 
-  generate_background "$color"
+  # background source: color (#RRGGBB) or a wallpaper image file
+  if [[ "$arg" == "#"* ]]; then
+    generate_background "$arg"
+  elif [[ -z "$arg" ]]; then
+    generate_background "$BG_COLOR"
+  elif [[ -f "$arg" ]]; then
+    install_wallpaper "$arg"
+  else
+    die "Not a color or existing file: $arg"
+  fi
+
   stop_plasmashell
   make_test_config
   start_plasmashell
-  log "Test environment active (desktop widgets + icons hidden, solid background)."
+  log "Test environment active (desktop widgets + icons hidden, test background set)."
 }
 
 cmd_restore() {
@@ -223,7 +239,7 @@ cmd_restore() {
 
 cmd_status() {
   if [[ -f "$APLETSRC" ]] && grep -q "Image=file://$BG_FILE" "$APLETSRC"; then
-    echo "Status: TEST MODE active (desktop widgets + icons hidden, solid background). Restore: $0 restore"
+    echo "Status: TEST MODE active (desktop widgets + icons hidden, test background). Restore: $0 restore"
   elif [[ -f "$BACKUP" ]]; then
     echo "Status: NORMAL desktop (backup exists: $BACKUP). Test mode: $0 hide"
   else
@@ -233,11 +249,12 @@ cmd_status() {
 
 usage() {
   cat <<EOF
-Usage: $0 <command> [color]
+Usage: $0 <command> [color|wallpaper]
 
 Commands:
   hide                Enable test mode (default background color $BG_COLOR)
   hide "#RRGGBB"      Enable test mode with a custom background color
+  hide /path/to/img   Enable test mode with a wallpaper image
   restore             Restore the normal desktop from the backup
   status              Print the current state
   -h, --help          Show this help

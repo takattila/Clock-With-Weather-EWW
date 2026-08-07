@@ -133,14 +133,15 @@ eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
 ## 4. Setting up a test environment (KDE Plasma)
 
 Measuring the widget needs a clean desktop: no other widgets, no desktop icons,
-and a solid background. For this, the **`eww/scripts/setup_test_env.sh`**
-script:
+and a plain background (solid color or a wallpaper image). For this, the
+**`eww/scripts/setup_test_env.sh`** script:
 
 ```bash
 cd ~/.conky/Clock-With-Weather-Conky/eww
 
 ./scripts/setup_test_env.sh hide                # test mode: widgets + icons hidden, solid background
 ./scripts/setup_test_env.sh hide "#112233"      # ... with a custom background color
+./scripts/setup_test_env.sh hide "/path/to/wallpaper.jpg"  # ... with a wallpaper image
 ./scripts/setup_test_env.sh status              # current state
 ./scripts/setup_test_env.sh restore             # restore the normal desktop
 ```
@@ -150,13 +151,15 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
 1. **Backup** — saves the current
    `~/.config/plasma-org.kde.plasma.desktop-appletsrc` to
    `...desktop-appletsrc.backup` (only once, to preserve the normal desktop).
-2. **Solid background** — generates a solid PNG with PIL
+2. **Test background** — either generates a solid PNG with PIL
    (`~/.config/eww-test-background.png`, default color `#2d3034`, overridable
-   with the `EWW_TEST_BG_COLOR` environment variable).
+   with the `EWW_TEST_BG_COLOR` environment variable), or copies a given
+   wallpaper image (e.g. `hide /path/to/wallpaper.jpg`) to
+   `~/.config/eww-test-background.png`.
 3. **File swap** — with plasmashell stopped, a test copy of the appletsrc is
    written. The desktop containments are detected **dynamically** (by
    `plugin` + `formfactor`), nothing is hardcoded. The script removes the
-   desktop widget applets and the icon positions, sets the solid wallpaper and
+   desktop widget applets and the icon positions, sets the test wallpaper and
    drops the `[ScreenMapping]` section; video-wallpaper sections are also
    removed. **The panel/taskbar is kept untouched**, so the workarea stays
    realistic.
