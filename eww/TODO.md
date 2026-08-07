@@ -2,7 +2,7 @@
 
 Dátum: 2026-08-07
 Ág: `feature/wayland`
-Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
+Repo: `Clock-With-Weather-EWW` (standalone)
 
 ## Cél
 
@@ -19,7 +19,7 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
 
 ## Elkészült (implementálva)
 
-- `eww/scripts/watch.py` (új): ctypes `inotify`, eseményvezérelt (blokkoló
+- `scripts/watch.py` (új): ctypes `inotify`, eseményvezérelt (blokkoló
   `select`, üresjáratban ~0 CPU), nincs külső csomag. Figyeli a `config.yaml`-t és
   az összes `themes/**/*.yaml`-t; változáskor ~0.5s settle után `theme.py` →
   siker esetén `eww --config <dir> reload`. Új téma-mappánál bővíti a watch-okat.
@@ -27,7 +27,7 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
   név-szűrővel kiszűri → nincs reload-lop. Log: `watch.log`, PID: `watch.pid`.
 - `start.sh`: `start_watcher()` — `nohup python3 scripts/watch.py` + PID fájl.
 - `stop.sh`: `stop_watcher()` — PID-alapú kill.
-- `eww/.gitignore`: `watch.log`, `watch.pid`.
+- `.gitignore`: `watch.log`, `watch.pid`.
 - `eww.yuck`: `config` és `theme` defpoll 1h → **5s** (csak biztosíték).
 - `workarea.py` (**újraírva, Req 2**): JSON kimenet — `screen`, `workarea`,
   `taskbar` pozíció (`top|bottom|left|right|none`), `panel` geometria
@@ -48,7 +48,7 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
   `requests`/`psutil`/**PyYAML**, `xprop`/`xrandr`, inotify csomag nélkül; **jq
   törölve**; `config.yaml` dokumentáció; auto-reload; panel-alignment (szimmetrikus
   gap, taskbar-pozíciók táblázata); changes.
-- `eww/README.md`: defpoll tábla → 5s + `watch.py` sor + `panel.gap` a config
+- `README.md`: defpoll tábla → 5s + `watch.py` sor + `panel.gap` a config
   táblában + "Panel alignment (Req 2)" szekció + megjegyzés.
 - **Bg a tartalomra simul + config-ozható sarok-lekerekítés**: az óra/idojárás
   widget bg-ja már NEM a teljes 745px-es vászon; egy `.widget-bg` box simul a
@@ -117,8 +117,8 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
   origin feature/wayland` megtörtént (ab439a3 → 16f15d3), a remote-történet
   nem tartalmazza a régi kulcsot (pickaxe üres).
 - **Eszközök a repóban (kész)**: `git-filter-repo` vendorelve az
-  `eww/scripts/git-filter-repo.sh`-ba (3dbf1f6); a monitor-projekt
-  `tools/screenshots`-ja bemásolva az `eww/tools/screenshots/`-ba + README
+  `scripts/git-filter-repo.sh`-ba (3dbf1f6); a monitor-projekt
+  `tools/screenshots`-ja bemásolva az `tools/screenshots/`-ba + README
   újraírva a repóra (3bf258b, b8daa74).
 - **Téma-default (kész)**: a `light-blue` / `modern` ikonkészlet /
   cián-színek lett az alapértelmezett `appearance` (037e9eb).
@@ -131,14 +131,14 @@ Repo: `/home/takattila/.conky/Clock-With-Weather-Conky`
 
 | Fájl | Szerep |
 |---|---|
-| `eww/scripts/watch.py` | új inotify watcher |
-| `eww/scripts/config.py` | YAML híd (config.yaml + weather téma) |
-| `eww/scripts/theme.py` | YAML → `eww.theme.json/.scss` |
-| `eww/config.yaml` | központi konfig (+ `panel.gap`) |
-| `eww/themes/appearance/*/appearance.yaml` (20) | appearance témák |
-| `eww/themes/weather/*/weather.yaml` (11) | weather témák |
-| `eww/eww.yuck` | defpoll-ok + `panel_window` (sor ~195-203) |
-| `eww/scripts/panel.py` | `get_screen_height()` (~47), `get_net_workarea_height()` (~47), chart geometria (~238) |
-| `eww/scripts/workarea.py` | `_NET_WORKAREA` → JSON (taskbar-pozíció + szimmetrikus panel-geometria `panel.gap`-pel) |
-| `eww/scripts/git-filter-repo.sh` | vendorelt git-history-tisztító (kulcs-s scrub) |
-| `eww/tools/screenshots/` | headless Chrome screenshot-generátor (webes dashboard; az eww widgetet nem tudja, ahhoz spectacle) |
+| `scripts/watch.py` | új inotify watcher |
+| `scripts/config.py` | YAML híd (config.yaml + weather téma) |
+| `scripts/theme.py` | YAML → `eww.theme.json/.scss` |
+| `config.yaml` | központi konfig (+ `panel.gap`) |
+| `themes/appearance/*/appearance.yaml` (20) | appearance témák |
+| `themes/weather/*/weather.yaml` (11) | weather témák |
+| `eww.yuck` | defpoll-ok + `panel_window` (sor ~195-203) |
+| `scripts/panel.py` | `get_screen_height()` (~47), `get_net_workarea_height()` (~47), chart geometria (~238) |
+| `scripts/workarea.py` | `_NET_WORKAREA` → JSON (taskbar-pozíció + szimmetrikus panel-geometria `panel.gap`-pel) |
+| `scripts/git-filter-repo.sh` | vendorelt git-history-tisztító (kulcs-s scrub) |
+| `tools/screenshots/` | headless Chrome screenshot-generátor (webes dashboard; az eww widgetet nem tudja, ahhoz spectacle) |

@@ -6,7 +6,7 @@
 }
 
 /* ============================================================
-   Main widget (Clock + Weather) - 745x250, mirrors cwDraw.lua
+   Main widget (Clock + Weather) - 745x250, absolute layout
    ============================================================ */
 
 .main-container {
@@ -31,7 +31,7 @@
   background-color: transparent;
 }
 
-/* ---------- Date / year (cwDraw text(20,30) / text(70,30), font 20) ---------- */
+/* ---------- Date / year (text(20,30) / text(70,30), font 20) ---------- */
 
 .year-label {
   font-size: 20px;
@@ -47,7 +47,7 @@
   margin-top: 15px;
 }
 
-/* ---------- Hour / minutes / seconds (cwDraw baseline y=155) ---------- */
+/* ---------- Hour / minutes / seconds (baseline y=155) ---------- */
 
 .hour-label {
   font-size: 145px;
@@ -125,7 +125,7 @@
   color: $color-dark;
 }
 
-/* ---------- Divider line (cwDraw image centered 415,110, 1x205) ---------- */
+/* ---------- Divider line (image centered 415,110, 1x205) ---------- */
 
 .divider {
   margin-left: 414px;
@@ -154,7 +154,7 @@
   margin-top: 78px;
 }
 
-/* Temperature: baseline y155 (cwDraw text(460,155) font 40),
+/* Temperature: baseline y155 (text(460,155) font 40),
    between city (y110) and description (y180). */
 .temp-icon {
   margin-left: 427px;
@@ -224,7 +224,7 @@
 }
 
 /* ============================================================
-   System monitor panel - 250 wide, full height, panelDraw.lua
+   System monitor panel - 250 wide, full height
    ============================================================ */
 
 .panel-container {

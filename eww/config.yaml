@@ -1,4 +1,4 @@
-# Central configuration for the eww widget (mirrors the Conky cwTheme.lua).
+# Central configuration for the eww widget.
 #
 # appearance selects the theme under  themes/appearance/<name>/appearance.yaml
 # weather    selects the city settings under themes/weather/<name>/weather.yaml

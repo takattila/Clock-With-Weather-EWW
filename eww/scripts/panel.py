@@ -3,8 +3,7 @@
 System monitor panel chart generator for the eww widget.
 
 Reads CPU / Memory / Network statistics, keeps a rolling history
-(mirroring the Conky panel in panelDraw.lua) and renders SVG line
-charts with a soft area fill.
+and renders SVG line charts with a soft area fill.
 
 The SVG files are written into ./charts/ with a unique name per poll;
 eww reloads them because the returned filenames change every second.
@@ -258,7 +257,7 @@ def main():
     dynamic_down_max = get_dynamic_max(down_hist, 1024)
     dynamic_up_max = get_dynamic_max(up_hist, 512)
 
-    # --- Chart geometry (mirrors panelDraw.lua) ---
+    # --- Chart geometry ---
     screen_h = get_screen_height()
     section_height = screen_h / 4
     title_space = 50
@@ -300,7 +299,7 @@ def main():
     except Exception:
         pass
 
-    # --- Status texts (mirrors panelDraw.lua) ---
+    # --- Status texts ---
     cpu_freq = None
     try:
         cpu_freq = psutil.cpu_freq().current / 1000.0

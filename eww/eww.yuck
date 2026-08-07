@@ -1,11 +1,9 @@
 ;; ===========================================================================
-;; Clock-With-Weather-Conky - eww (Wayland) migration
+;; Clock-With-Weather-EWW
 ;;
-;; Two windows mirror the original Conky setup:
+;; Two windows:
 ;;   1. main_window  -> Clock + Weather widget (745x250, centered)
 ;;   2. panel_window -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
-;;
-;; All proportions and coordinates follow cwDraw.lua / panelDraw.lua.
 ;; ===========================================================================
 
 ;; --- Clock data ------------------------------------------------------------
@@ -49,9 +47,9 @@
   (box :class "main-container" :orientation "h" :space-evenly false
 
     ;; ------------------------------------------------------------------
-    ;; ABSOLUTE layout mirroring cwDraw.lua coordinates (745x250).
-    ;; cwDraw.text() = cairo baseline (pos_x, pos_y); image() = centered.
-    ;; CSS margin-top = baseline_y - 0.73*font_size (cap height).
+    ;; ABSOLUTE layout (745x250). Baseline coordinates converted to the
+    ;; label top: CSS margin-top = baseline_y - 0.73*font_size (cap height);
+    ;; images anchored to the top-left corner (pos - size/2).
     ;; ------------------------------------------------------------------
     (overlay :class "widget-overlay"
       (box :class "section-sizer" :width 745 :height 250)
@@ -60,13 +58,13 @@
       ;; window canvas (745x250) stays transparent around it.
       (box :class "widget-bg" :halign "start" :valign "start")
 
-      ;; Date / year --- cwDraw text(20,30) / text(70,30), font 20
+      ;; Date / year --- text(20,30) / text(70,30), font 20
       (label :class "year-label" :text date_year
              :halign "start" :valign "start")
       (label :class "date-label" :text date_day
              :halign "start" :valign "start")
 
-      ;; Hour / minutes / seconds --- cwDraw text(10/170/370,155)
+      ;; Hour / minutes / seconds --- text(10/170/370,155)
       (label :class "hour-label" :text hour
              :halign "start" :valign "start")
       (label :class "minutes-label" :text minutes
@@ -74,7 +72,7 @@
       (label :class "seconds-label" :text {": " + seconds}
              :halign "start" :valign "start")
 
-      ;; System info row 1 (HDD, RAM) --- cwDraw baseline y=180, font 15
+      ;; System info row 1 (HDD, RAM) --- baseline y=180, font 15
       (label :class "sys-label hdd-label" :text "HDD"
              :halign "start" :valign "start")
       (label :class "sys-value hdd-value" :text {system_info.hdd}
@@ -84,7 +82,7 @@
       (label :class "sys-value ram-value" :text {system_info.ram}
              :halign "start" :valign "start")
 
-      ;; System info row 2 (CPU, SWAP) --- cwDraw baseline y=200, font 15
+      ;; System info row 2 (CPU, SWAP) --- baseline y=200, font 15
       (label :class "sys-label cpu-label" :text "CPU"
              :halign "start" :valign "start")
       (label :class "sys-value cpu-value" :text {system_info.cpu}
@@ -94,19 +92,19 @@
       (label :class "sys-value swap-value" :text {system_info.swap}
              :halign "start" :valign "start")
 
-      ;; Vertical divider line --- cwDraw image centered (415,110), 1x205
+      ;; Vertical divider line --- image centered (415,110), 1x205
       (image :class "divider"
              :path { "images/theme/" + theme.theme + "/elements/line.png" }
              :image-width 2 :image-height 219
              :halign "start" :valign "start")
 
-      ;; Weather icon --- cwDraw image centered (470,45), 64x64
+      ;; Weather icon --- image centered (470,45), 64x64
       (image :class "weather-icon"
              :path { "images/theme/" + theme.theme + "/weather/" + theme.icon_set + "/" + weather_info.icon_path + ".png" }
              :image-width 64 :image-height 64
              :halign "start" :valign "start")
 
-      ;; City --- icon centered (440,100) 20x20; cwDraw text(455,110) font 30
+      ;; City --- icon centered (440,100) 20x20; text(455,110) font 30
       (image :class "city-icon"
              :path { "images/theme/" + theme.theme + "/elements/map-marker.png" }
              :image-width 20 :image-height 20
@@ -122,7 +120,7 @@
       (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol}
              :halign "start" :valign "start")
 
-      ;; Description --- icon centered (435,175) 10x10; cwDraw text(445,180) font 15
+      ;; Description --- icon centered (435,175) 10x10; text(445,180) font 15
       (image :class "details-icon"
              :path { "images/theme/" + theme.theme + "/elements/arrow-right.png" }
              :image-width 10 :image-height 10
@@ -130,7 +128,7 @@
       (label :class "details-label" :text {weather_info.weather[0].description}
              :halign "start" :valign "start")
 
-      ;; MIN --- icon centered (435,195) 10x10; cwDraw text(445,200) font 15
+      ;; MIN --- icon centered (435,195) 10x10; text(445,200) font 15
       (image :class "stat-icon stat-min-icon"
              :path { "images/theme/" + theme.theme + "/elements/arrow-down.png" }
              :image-width 10 :image-height 10
@@ -138,7 +136,7 @@
       (label :class "stat-label stat-min-label" :text {weather_info.temp_min_fmt + weather_info.unit_symbol}
              :halign "start" :valign "start")
 
-      ;; MAX --- icon centered (495,195) 10x10; cwDraw text(505,200) font 15
+      ;; MAX --- icon centered (495,195) 10x10; text(505,200) font 15
       (image :class "stat-icon stat-max-icon"
              :path { "images/theme/" + theme.theme + "/elements/arrow-up.png" }
              :image-width 10 :image-height 10
@@ -146,7 +144,7 @@
       (label :class "stat-label stat-max-label" :text {weather_info.temp_max_fmt + weather_info.unit_symbol}
              :halign "start" :valign "start")
 
-      ;; FEELS LIKE --- icon centered (555,195) 4x10; cwDraw text(565,200) font 15
+      ;; FEELS LIKE --- icon centered (555,195) 4x10; text(565,200) font 15
       (image :class "stat-icon stat-feels-icon"
              :path { "images/theme/" + theme.theme + "/elements/white-man.png" }
              :image-width 4 :image-height 10
@@ -156,7 +154,7 @@
 
 
 ;; ===========================================================================
-;; System monitor panel (mirrors panelDraw.lua)
+;; System monitor panel
 ;; ===========================================================================
 
 (defwidget widget_panel []

@@ -34,7 +34,7 @@ Against the locally running web service (default `http://127.0.0.1:8383`):
 ## Install
 
 ```sh
-cd eww/tools/screenshots
+cd tools/screenshots
 npm install
 ```
 

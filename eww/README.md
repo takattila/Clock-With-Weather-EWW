@@ -1,7 +1,7 @@
-# Clock-With-Weather-EWW (Wayland) version
+# Clock-With-Weather-EWW
 
 A clock + weather widget written in **EWW** (`ElKowar's Wacky Widgets`) for
-Wayland. Two windows:
+Wayland (it also runs on X11). Two windows:
 
 | Window | Size | Content |
 |---|---|---|
@@ -9,25 +9,26 @@ Wayland. Two windows:
 | `panel_window` | 250 wide, full height, top-right | CPU / MEMORY / NET DOWN / NET UP charts |
 
 > The non-Wayland → X11 specific widget is the **`Clock-With-Weather-Conky`**
-> project (the parent repository).
+> project (a separate repository).
 
 ---
 
 ## Installation
 
 Install the eww widget via the command-line with either `wget` or `curl` (root
-privileges are needed; the script asks for them):
+privileges are needed; the script asks for them). Replace `GITHUB_USER` and
+`REPO` below with the standalone repository's owner and name:
 
 ... via wget:
 
 ```bash
-bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-Conky/v1.0.0/eww/scripts/install.sh)"
+bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/GITHUB_USER/REPO/v1.0.0/scripts/install.sh)"
 ```
 
 ... via curl:
 
 ```bash
-bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-Conky/v1.0.0/eww/scripts/install.sh)"
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/GITHUB_USER/REPO/v1.0.0/scripts/install.sh)"
 ```
 
 The `scripts/install.sh` installer is **cross-distro**: it detects the package
@@ -49,12 +50,12 @@ What the installer does, in order:
 1. base tools (`curl`, `gawk`, `git`),
 2. eww runtime dependencies (Python modules, `xprop`, `xrandr`, Noto fonts),
 3. `eww` itself (package or source build),
-4. clones `Clock-With-Weather-Conky` to `~/.conky/` and checks out the latest
-   release tag,
+4. clones the repo to `~/.conky/` and checks out the latest release tag,
 5. installs the `NotoSans-Regular.ttf` font,
-6. asks for the **OpenWeatherMap API key** → saves it to `eww/.api_key`
+6. asks for the **OpenWeatherMap API key** → saves it to `.api_key`
    (chmod 600, git-ignored),
-7. starts the widgets (`scripts/start.sh`): daemon + both windows + watcher.
+7. creates the **desktop / menu icons** (menu always, desktop optionally),
+8. starts the widgets (`scripts/start.sh`): daemon + both windows + watcher.
 
 > Tip: to skip the interactive API-key prompt, export
 > `DEFAULT_OPENWEATHER_API_KEY` before running the script (or set the
@@ -87,9 +88,9 @@ What the installer does, in order:
 ### The X11 (non-Wayland) widget
 
 The non-Wayland → X11 specific widget is the **`Clock-With-Weather-Conky`**
-project (`../`). The `eww/` directory does **not** depend on it: the theme
-settings are mirrored under `eww/themes/` as **YAML**, so `eww/` works
-standalone (even without the `../themes` directory).
+project (a separate repository). This directory does **not** depend on it: the
+theme settings are mirrored under `themes/` as **YAML**, so this widget works
+fully standalone.
 
 ---
 
@@ -120,7 +121,7 @@ missing, an **empty/raw `null`** value goes into the widget, which is often an
 ## 3. Starting the widget
 
 ```bash
-cd ~/.conky/Clock-With-Weather-Conky/eww
+cd ~/.conky/Clock-With-Weather-EWW
 ./scripts/start.sh
 ```
 
@@ -147,7 +148,7 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
 ### Stopping
 
 ```bash
-cd ~/.conky/Clock-With-Weather-Conky/eww
+cd ~/.conky/Clock-With-Weather-EWW
 ./scripts/stop.sh
 ```
 
@@ -155,17 +156,37 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
 (`eww --config . kill`), which closes both windows. Manually that is:
 
 ```bash
-eww --config ~/.conky/Clock-With-Weather-Conky/eww kill
+eww --config ~/.conky/Clock-With-Weather-EWW kill
 ```
 
-### Configuration (`eww/config.yaml`)
+### Setup and desktop / menu icons
+
+The installer and the widget create **`.desktop` launchers** (like the Conky
+widget does):
+
+- `start-clock-with-weather-eww.desktop` — starts the widget (`scripts/start.sh`).
+- `setup-clock-with-weather-eww.desktop` — opens the setup (terminal).
+
+**Menu icons** are always created in `~/.local/share/applications/`; **desktop
+icons** are created optionally (the installer/setup asks whether you want
+them) in `$(xdg-user-dir DESKTOP)`.
+
+To change the settings (API key, appearance theme, weather theme, hour format)
+and (re)create the icons interactively:
+
+```bash
+cd ~/.conky/Clock-With-Weather-EWW
+./scripts/setup.sh
+```
+
+### Configuration (`config.yaml`)
 
 The central config is **YAML**. It selects the active appearance and weather
 theme; the city, language and unit settings come from the selected
 `themes/weather/<name>/weather.yaml`:
 
 ```yaml
-# eww/config.yaml
+# config.yaml
 appearance: light       # -> themes/appearance/<name>/appearance.yaml
 weather: default        # -> themes/weather/<name>/weather.yaml
 system:
@@ -193,7 +214,7 @@ The OpenWeatherMap key is **not** stored in `config.yaml` (that file is part of
 the repository). It is resolved by `scripts/config.py` in this order:
 
 1. the `OPENWEATHER_API_KEY` environment variable,
-2. a local, git-ignored file **`eww/.api_key`** (first line, `chmod 600`),
+2. a local, git-ignored file **`.api_key`** (first line, `chmod 600`),
 3. empty string → the weather block falls back to an API error message.
 
 Setup (pick one):
@@ -216,10 +237,10 @@ daemon, so both ways work no matter how the widget is launched. Editing
 
 Measuring the widget needs a clean desktop: no other widgets, no desktop icons,
 and a plain background (solid color or a wallpaper image). For this, the
-**`eww/scripts/setup-test-env.sh`** script:
+**`scripts/setup-test-env.sh`** script:
 
 ```bash
-cd ~/.conky/Clock-With-Weather-Conky/eww
+cd ~/.conky/Clock-With-Weather-EWW
 
 ./scripts/setup-test-env.sh hide                # test mode: widgets + icons hidden, solid background
 ./scripts/setup-test-env.sh hide "#112233"      # ... with a custom background color
@@ -269,7 +290,7 @@ cd ~/.conky/Clock-With-Weather-Conky/eww
 
 ## 5. Structure — what does what
 
-### `eww/eww.yuck` — the widget tree and the data sources
+### `eww.yuck` — the widget tree and the data sources
 
 The file has three main parts:
 
@@ -307,7 +328,7 @@ The file has three main parts:
 4. **`defwindow` blocks** — `main_window` (745x250, center) and
    `panel_window` (250 wide, top-right, full height).
 
-### `eww/scripts/` — data-producing Python and shell scripts
+### `scripts/` — data-producing Python and shell scripts
 
 | Script | Output | Responsibility |
 |---|---|---|
@@ -317,24 +338,25 @@ The file has three main parts:
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme |
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` → the values for the `defpoll`s |
 | `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`); also logs a human-readable summary to stderr |
-| `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; log: `eww/watch.log`, PID: `eww/watch.pid` |
+| `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; log: `watch.log`, PID: `watch.pid` |
 | `start.sh` | — | starting the widget (section 3): Plasma check, theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
-| `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key and starts the widgets |
+| `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key, creates the desktop/menu icons and starts the widgets |
+| `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
-### `eww/charts/` — generated SVGs
+### `charts/` — generated SVGs
 
 `panel.py` writes a new, timestamped SVG to `charts/` on every poll
 (`cpu_00042.svg`, ...), and returns the file name in the `defpoll panel` JSON.
 Old ones are deleted automatically (it keeps 3 per type). **Don't commit
 them** — gitignored (`.gitignore`).
 
-### `eww/images/`, `eww/themes/`, `eww/fonts/`
+### `images/`, `themes/`, `fonts/`
 
-The `eww/` directory is **self-contained** (ready for a standalone repo): the
-shared assets of the widget are copied here.
+The widget directory is **self-contained** (ready for a standalone repo): the
+shared assets are stored here.
 
 - `images/theme/<theme>/elements/` — line, location icon, thermometer, arrows.
 - `images/theme/<theme>/weather/<icon-set>/` — weather icons
@@ -350,7 +372,7 @@ shared assets of the widget are copied here.
 
 ## 6. Modifying how elements are displayed (EWW CSS)
 
-All formatting is in the **`eww/eww.scss`** file. `eww.yuck` only provides the
+All formatting is in the **`eww.scss`** file. `eww.yuck` only provides the
 **structure** and the **data**; size, color and position are all CSS.
 
 ### The basic rule: the positioning method
@@ -405,7 +427,7 @@ $bg-alpha: 0.0;
 ### Resize / reposition workflow
 
 1. Modify `eww.scss`.
-2. `eww --config ~/.conky/Clock-With-Weather-Conky/eww reload`
+2. `eww --config ~/.conky/Clock-With-Weather-EWW reload`
 3. `spectacle -b -o shot.png` and image measurement (PIL) — see section 7.
 
 ### Panel alignment (taskbar-relative, "Req 2")
@@ -456,7 +478,7 @@ startup (the committed default reflects the current machine: 30 px taskbar,
 
 ```bash
 export DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000
-eww --config ~/.conky/Clock-With-Weather-Conky/eww reload
+eww --config ~/.conky/Clock-With-Weather-EWW reload
 sleep 2
 spectacle -b -o /tmp/opencode/shots/check.png
 ```
@@ -491,7 +513,5 @@ print('content:', (rows.min()+392, rows.max()+392), (cols.min()+587, cols.max()+
 
 ## Related documentation
 
-- `../README.md` — description of the whole project (the X11 widget
-  `Clock-With-Weather-Conky`).
-- `../TESTS.md` — the list of successful tests.
-- `../themes/themes.md` — the example themes.
+- The X11-specific widget `Clock-With-Weather-Conky` (this widget's
+  non-Wayland counterpart) lives in its own repository.

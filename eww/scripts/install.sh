@@ -1,9 +1,15 @@
 #!/bin/bash
 
-REPO="Clock-With-Weather-Conky"
+# --- Standalone widget repo -------------------------------------------------
+# The eww widget is its own repository; the repo root IS the widget directory.
+# TODO: set GITHUB_USER and REPO to the standalone repo's owner and name.
+GITHUB_USER="takattila"
+REPO="Clock-With-Weather-EWW"
+# ----------------------------------------------------------------------------
+
 EWW_REPO="elkowar/eww"
 BASE_DIR="/home/$(whoami)/.conky"
-EWW_DIR="${BASE_DIR}/${REPO}/eww"
+EWW_DIR="${BASE_DIR}/${REPO}"
 
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
 C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
@@ -41,7 +47,7 @@ function helperCheckout() {
     {
         cd "${BASE_DIR}"/"${REPO}"
         git fetch --all --tags
-        git checkout tags/"$(helperGetLatestRelease takattila/"${REPO}")"
+        git checkout tags/"$(helperGetLatestRelease "${GITHUB_USER}/${REPO}")"
     } &> /dev/null
 }
 
@@ -50,7 +56,7 @@ function helperCloneAndCheckout() {
     echo -n "- Downloading ${C_Y}${REPO}${C_D} ... "
 
     {
-      git clone https://github.com/takattila/"${REPO}".git \
+      git clone https://github.com/"${GITHUB_USER}"/"${REPO}".git \
           "${BASE_DIR}"/"${REPO}"
     } &> /dev/null
 
@@ -409,7 +415,7 @@ function installFont() {
     local font="NotoSans-Regular.ttf"
 
     mkdir -p /home/"$(whoami)"/.local/share/fonts
-    cp "${BASE_DIR}"/"${REPO}"/fonts/"${font}" /home/"$(whoami)"/.local/share/fonts
+    cp "${EWW_DIR}"/fonts/"${font}" /home/"$(whoami)"/.local/share/fonts
 
     echo -e "- The ${C_Y}'${font}'${C_D} font installed."
 }
@@ -444,6 +450,26 @@ function setupStartEwwWidget() {
     echo "- The ${C_Y}eww widgets${C_D} are running."
 }
 
+function setupDesktopAndMenuIcons() {
+    echo
+    echo "- Creating ${C_Y}menu / desktop icons${C_D} ... "
+    source "${EWW_DIR}/scripts/setup.sh" --from-install true
+
+    # Ask whether to also place icons on the desktop (menu icons are automatic).
+    echo
+    echo "- Do you want to create ${C_Y}Desktop icons${C_D} for starting/setup?"
+    echo "  (Menu icons will be created automatically)"
+    echo -e "  ${C_Y}1.${C_D} Yes"
+    echo -e "  ${C_Y}2.${C_D} No"
+    echo
+    DEFAULT_CREATE_DESKTOP_ICONS="$(
+        helperPrompt "  your choice ?: " "1" "1 2"
+    )"
+
+    setupCreateStartIcons
+    setupCreateSetupIcons
+}
+
 function main() {
     clear
 
@@ -459,6 +485,7 @@ function main() {
     installFont
 
     setupEwwApiKey
+    setupDesktopAndMenuIcons
     setupStartEwwWidget
 }
 

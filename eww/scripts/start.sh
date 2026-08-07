@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start the eww widget (Wayland migration of the Conky widget).
+# Start the eww widget.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." >/dev/null 2>&1 && pwd )"
 
 # --- KDE Plasma check -----------------------------------------------------
@@ -88,7 +88,7 @@ start_eww() {
 
   # Make the API key available to the eww daemon (and its defpoll children).
   # config.py reads the same key from the git-ignored .api_key file, so this
-  # is just a convenience/consistency with the Conky side (OPENWEATHER_API_KEY).
+  # is just a convenience/consistency for the OPENWEATHER_API_KEY handling.
   if [ -z "${OPENWEATHER_API_KEY:-}" ] && [ -f "$DIR/.api_key" ]; then
     export OPENWEATHER_API_KEY="$(head -n1 "$DIR/.api_key")"
   fi

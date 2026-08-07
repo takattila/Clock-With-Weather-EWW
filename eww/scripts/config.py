@@ -8,8 +8,8 @@ bridge instead of reading a JSON config file.
 
 The OpenWeatherMap API key is NOT stored in config.yaml (so it never ends up
 in the repository). It is resolved in this order:
-  1. the OPENWEATHER_API_KEY environment variable (same as the Conky side),
-  2. a local, git-ignored file eww/.api_key (first line, chmod 600),
+  1. the OPENWEATHER_API_KEY environment variable,
+  2. a local, git-ignored file .api_key (first line, chmod 600),
   3. an empty string (weather falls back to an API error message).
 
 Usage:

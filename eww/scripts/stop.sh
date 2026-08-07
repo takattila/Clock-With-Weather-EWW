@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stop the eww widget (Wayland migration of the Conky widget).
+# Stop the eww widget.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." >/dev/null 2>&1 && pwd )"
 
 # Stop the config watcher (PID file written by start.sh)

@@ -18,7 +18,7 @@ def format_bytes(n):
 def get_system_info():
     # HDD info
     total, used, free = shutil.disk_usage("/")
-    # A Conky-hoz hasonlóan a szabad és az összes helyet mutatjuk
+    # Show free and total space
     hdd_fmt = f"{format_bytes(free)} / {format_bytes(total)}"
 
     # RAM info
