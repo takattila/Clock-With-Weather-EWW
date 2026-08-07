@@ -197,9 +197,15 @@ function helperInstallEwwBuildDeps() {
 function helperBuildEwwFromSource() {
     local eww_features="x11"
     [[ -n "${WAYLAND_DISPLAY}" ]] && eww_features="wayland"
+    local eww_bin="/usr/local/bin/eww"
 
     echo
     echo "- Building ${C_Y}eww${C_D} from source (feature: ${eww_features}) ... "
+
+    if [[ -x "${eww_bin}" ]]; then
+        echo "  == ${C_Y}eww${C_D} is already installed at ${C_Y}${eww_bin}${C_D}; skipping build."
+        return 0
+    fi
 
     helperInstallRust
     helperInstallEwwBuildDeps
