@@ -31,87 +31,87 @@
   background-color: transparent;
 }
 
-/* ---------- Date / year (text(20,30) / text(70,30), font 20) ---------- */
+/* ---------- Date / year (text(20,45) / text(70,45), font 20) ---------- */
 
 .year-label {
   font-size: 20px;
   color: $color-light;
   margin-left: 16px;
-  margin-top: 15px;
+  margin-top: 30px;
 }
 
 .date-label {
   font-size: 20px;
   color: $color-dark;
   margin-left: 62px;
-  margin-top: 15px;
+  margin-top: 30px;
 }
 
-/* ---------- Hour / minutes / seconds (baseline y=155) ---------- */
+/* ---------- Hour / minutes / seconds (baseline y=122) ---------- */
 
 .hour-label {
   font-size: 145px;
   color: $color-light;
   margin-left: 10px;
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 .minutes-label {
   font-size: 145px;
   color: $color-dark;
   margin-left: 165px;
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 .seconds-label {
   font-size: 20px;
   color: $color-light;
-  margin-left: 355px;
-  margin-top: 154px;
+  margin-left: 366px;
+  margin-top: 152px;
 }
 
 /* ---------- System info row 1 (HDD, RAM) - baseline y=180, font 15 ---------- */
 
 .hdd-label {
   margin-left: 13px;
-  margin-top: 194px;
+  margin-top: 178px;
 }
 
 .hdd-value {
   margin-left: 50px;
-  margin-top: 194px;
+  margin-top: 178px;
 }
 
 .ram-label {
-  margin-left: 140px;
-  margin-top: 194px;
+  margin-left: 211px;
+  margin-top: 178px;
 }
 
 .ram-value {
-  margin-left: 185px;
-  margin-top: 194px;
+  margin-left: 259px;
+  margin-top: 178px;
 }
 
 /* ---------- System info row 2 (CPU, SWAP) - baseline y=200, font 15 ---------- */
 
 .cpu-label {
   margin-left: 13px;
-  margin-top: 214px;
+  margin-top: 203px;
 }
 
 .cpu-value {
   margin-left: 50px;
-  margin-top: 214px;
+  margin-top: 203px;
 }
 
 .swap-label {
-  margin-left: 140px;
-  margin-top: 214px;
+  margin-left: 211px;
+  margin-top: 203px;
 }
 
 .swap-value {
-  margin-left: 185px;
-  margin-top: 214px;
+  margin-left: 259px;
+  margin-top: 203px;
 }
 
 .sys-label {
@@ -134,16 +134,16 @@
 
 /* ---------- Weather ---------- */
 
-/* Weather icon (centered 470,45) */
+/* Weather icon (centered 470,57) */
 .weather-icon {
   margin-left: 438px;
-  margin-top: 13px;
+  margin-top: 25px;
 }
 
-/* City: icon centered (440,100); text baseline (455,110) font 30 */
+/* City: icon centered (440,112); text baseline (455,112) font 30 */
 .city-icon {
   margin-left: 430px;
-  margin-top: 90px;
+  margin-top: 102px;
 }
 
 .city-label {
@@ -151,14 +151,14 @@
   font-weight: bold;
   color: $color-dark;
   margin-left: 447px;
-  margin-top: 78px;
+  margin-top: 90px;
 }
 
-/* Temperature: baseline y155 (text(460,155) font 40),
-   between city (y110) and description (y180). */
+/* Temperature: baseline y157 (text(460,157) font 44),
+   between city (y112) and description (y189). */
 .temp-icon {
   margin-left: 427px;
-  margin-top: 143px;
+  margin-top: 140px;
 }
 
 .temp-label {
@@ -166,51 +166,51 @@
   font-weight: bold;
   color: $color-light;
   margin-left: 452px;
-  margin-top: 128px;
+  margin-top: 125px;
 }
 
 /* Description: same row as HDD/RAM (row 1, baseline y180) */
 .details-icon {
   margin-left: 430px;
-  margin-top: 202px;
+  margin-top: 186px;
 }
 
 .details-label {
   font-size: 15px;
   color: $color-dark;
   margin-left: 440px;
-  margin-top: 194px;
+  margin-top: 178px;
 }
 
 /* MIN/MAX/Feels: same row as CPU/SWAP (row 2, baseline y200) */
 .stat-min-icon {
   margin-left: 430px;
-  margin-top: 220px;
+  margin-top: 216px;
 }
 
 .stat-min-label {
   margin-left: 440px;
-  margin-top: 214px;
+  margin-top: 210px;
 }
 
 .stat-max-icon {
   margin-left: 476px;
-  margin-top: 220px;
+  margin-top: 216px;
 }
 
 .stat-max-label {
   margin-left: 491px;
-  margin-top: 214px;
+  margin-top: 210px;
 }
 
 .stat-feels-icon {
   margin-left: 534px;
-  margin-top: 220px;
+  margin-top: 216px;
 }
 
 .stat-feels-label {
   margin-left: 546px;
-  margin-top: 214px;
+  margin-top: 210px;
 }
 
 .stat-icon {

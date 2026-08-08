@@ -58,13 +58,13 @@
       ;; window canvas (745x250) stays transparent around it.
       (box :class "widget-bg" :halign "start" :valign "start")
 
-      ;; Date / year --- text(20,30) / text(70,30), font 20
+      ;; Date / year --- text(20,45) / text(70,45), font 20
       (label :class "year-label" :text date_year
              :halign "start" :valign "start")
       (label :class "date-label" :text date_day
              :halign "start" :valign "start")
 
-      ;; Hour / minutes / seconds --- text(10/170/370,155)
+      ;; Hour / minutes / seconds --- text(10/170/366,122)
       (label :class "hour-label" :text hour
              :halign "start" :valign "start")
       (label :class "minutes-label" :text minutes
@@ -98,13 +98,13 @@
              :image-width 2 :image-height 219
              :halign "start" :valign "start")
 
-      ;; Weather icon --- image centered (470,45), 64x64
+      ;; Weather icon --- image centered (470,57), 64x64
       (image :class "weather-icon"
              :path { "images/theme/" + theme.theme + "/weather/" + theme.icon_set + "/" + weather_info.icon_path + ".png" }
              :image-width 64 :image-height 64
              :halign "start" :valign "start")
 
-      ;; City --- icon centered (440,100) 20x20; text(455,110) font 30
+      ;; City --- icon centered (440,112) 20x20; text(455,112) font 30
       (image :class "city-icon"
              :path { "images/theme/" + theme.theme + "/elements/map-marker.png" }
              :image-width 20 :image-height 20
