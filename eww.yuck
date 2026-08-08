@@ -95,7 +95,7 @@
       ;; Vertical divider line --- image centered (415,110), 1x205
       (image :class "divider"
              :path { "images/theme/" + theme.theme + "/elements/line.png" }
-             :image-width 2 :image-height 219
+             :image-width 2 :image-height 186
              :halign "start" :valign "start")
 
       ;; Weather icon --- image centered (470,57), 64x64
@@ -104,7 +104,7 @@
              :image-width 64 :image-height 64
              :halign "start" :valign "start")
 
-      ;; City --- icon centered (440,112) 20x20; text(455,112) font 30
+      ;; City --- icon centered (440,112) 20x20; text(465,112) font 30
       (image :class "city-icon"
              :path { "images/theme/" + theme.theme + "/elements/map-marker.png" }
              :image-width 20 :image-height 20

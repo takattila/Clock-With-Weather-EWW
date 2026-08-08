@@ -96,22 +96,22 @@
 
 .cpu-label {
   margin-left: 13px;
-  margin-top: 203px;
+  margin-top: 192px;
 }
 
 .cpu-value {
   margin-left: 50px;
-  margin-top: 203px;
+  margin-top: 192px;
 }
 
 .swap-label {
   margin-left: 211px;
-  margin-top: 203px;
+  margin-top: 192px;
 }
 
 .swap-value {
   margin-left: 259px;
-  margin-top: 203px;
+  margin-top: 192px;
 }
 
 .sys-label {
@@ -129,7 +129,7 @@
 
 .divider {
   margin-left: 414px;
-  margin-top: 14px;
+  margin-top: 26px;
 }
 
 /* ---------- Weather ---------- */
@@ -150,11 +150,11 @@
   font-size: 30px;
   font-weight: bold;
   color: $color-dark;
-  margin-left: 447px;
+  margin-left: 465px;
   margin-top: 90px;
 }
 
-/* Temperature: baseline y157 (text(460,157) font 44),
+/* Temperature: baseline y157 (text(465,157) font 44),
    between city (y112) and description (y189). */
 .temp-icon {
   margin-left: 427px;
@@ -165,7 +165,7 @@
   font-size: 44px;
   font-weight: bold;
   color: $color-light;
-  margin-left: 452px;
+  margin-left: 465px;
   margin-top: 125px;
 }
 
@@ -185,32 +185,32 @@
 /* MIN/MAX/Feels: same row as CPU/SWAP (row 2, baseline y200) */
 .stat-min-icon {
   margin-left: 430px;
-  margin-top: 216px;
+  margin-top: 198px;
 }
 
 .stat-min-label {
   margin-left: 440px;
-  margin-top: 210px;
+  margin-top: 192px;
 }
 
 .stat-max-icon {
-  margin-left: 476px;
-  margin-top: 216px;
+  margin-left: 483px;
+  margin-top: 198px;
 }
 
 .stat-max-label {
-  margin-left: 491px;
-  margin-top: 210px;
+  margin-left: 493px;
+  margin-top: 192px;
 }
 
 .stat-feels-icon {
-  margin-left: 534px;
-  margin-top: 216px;
+  margin-left: 536px;
+  margin-top: 198px;
 }
 
 .stat-feels-label {
   margin-left: 546px;
-  margin-top: 210px;
+  margin-top: 192px;
 }
 
 .stat-icon {
