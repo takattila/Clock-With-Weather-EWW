@@ -62,9 +62,15 @@ function helperCheckout() {
     {
         cd "${REPO_DIR}"
         git fetch --all --tags --prune
-        git checkout "${REPO_BRANCH}" 2>/dev/null || git checkout -B "${REPO_BRANCH}" "origin/${REPO_BRANCH}"
-        git pull --ff-only origin "${REPO_BRANCH}" 2>/dev/null || true
+        git checkout -f -B "${REPO_BRANCH}" "origin/${REPO_BRANCH}"
     } &> /dev/null
+
+    if [[ "$(git -C "${REPO_DIR}" rev-parse --abbrev-ref HEAD)" != "${REPO_BRANCH}" ]]; then
+        echo
+        echo "${C_R}[ ERROR ]${C_D} The widget repo is not on the '${C_Y}${REPO_BRANCH}${C_D}' branch."
+        echo
+        exit 1
+    fi
 }
 
 function helperCloneAndCheckout() {

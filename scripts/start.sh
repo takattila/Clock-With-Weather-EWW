@@ -24,64 +24,45 @@ generate_theme() {
   python3 "$DIR/scripts/theme.py" "$DIR" || { echo "ERROR: theme generation failed"; exit 1; }
 }
 
-# --- WM-independent taskbar alignment -------------------------------------
-# Read the EWMH _NET_WORKAREA (usable area outside the taskbar) and the
-# symmetric gap (config.yaml -> panel.gap), compute the panel geometry
-# (anchor + x/y offsets + height, see workarea.py) and bake it into the
-# panel_window geometry so the panel is inset from the taskbar and from the
-# opposite screen edge by the SAME gap, for any taskbar position. The actual
-# panel height is also exported as PANEL_HEIGHT for panel.py (chart sizing).
-# If the X display is unreachable (no real workarea), the committed geometry
-# is kept instead of being clobbered with a fallback.
-align_panel_to_taskbar() {
-  local json
-  json="$(python3 "$DIR/scripts/workarea.py" "$DIR")" || json=""
-  if [ -z "$json" ]; then
-    echo "WARNING: workarea.py failed; keeping panel geometry in eww.yuck"
-    return 1
-  fi
-  if [ "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["real_workarea"])' "$json")" != "True" ]; then
-    echo "WARNING: no X display / workarea; keeping panel geometry in eww.yuck"
-    return 1
-  fi
+# --- Multi-monitor layout ------------------------------------------------
+# Detect the compositor (X11/Wayland), enumerate the monitors
+# (scripts/monitors.py) and compute the panel geometry for every monitor
+# (scripts/workarea.py --per-monitor). The layout is stored in .layout.json
+# for panel.py (chart sizes per monitor height) and the windows are opened
+# once per monitor with `eww open --screen/--id/--arg`.
+layout_windows() {
+  local monitors layout count
+  monitors="$(python3 "$DIR/scripts/monitors.py")" || {
+    echo "ERROR: monitors.py failed"; return 1
+  }
+  layout="$(printf '%s' "$monitors" | python3 "$DIR/scripts/workarea.py" --per-monitor "$DIR")" || {
+    echo "ERROR: workarea.py --per-monitor failed"; return 1
+  }
+  printf '%s\n' "$layout" > "$DIR/.layout.json"
 
-  local ANCHOR PANEL_X PANEL_Y PANEL_W PANEL_H GAP
-  ANCHOR="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["anchor"])' "$json")"
-  PANEL_X="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["x"])' "$json")"
-  PANEL_Y="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["y"])' "$json")"
-  PANEL_W="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["width"])' "$json")"
-  PANEL_H="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel"]["height"])' "$json")"
-  GAP="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["panel_gap"])' "$json")"
-  export PANEL_HEIGHT="$PANEL_H"
+  # PANEL_HEIGHT fallback (primary monitor) for panel.py when .layout.json is stale
+  export PANEL_HEIGHT="$(printf '%s' "$layout" | python3 -c \
+    'import json,sys; print(json.load(sys.stdin)["monitors"][0]["panel"]["height"])')"
 
-  python3 - "$DIR/eww.yuck" "$ANCHOR" "$PANEL_X" "$PANEL_Y" "$PANEL_W" "$PANEL_H" <<'PYEOF'
-import re
-import sys
-
-path, anchor, x, y, w, h = (
-    sys.argv[1],
-    sys.argv[2],
-    int(sys.argv[3]),
-    int(sys.argv[4]),
-    int(sys.argv[5]),
-    int(sys.argv[6]),
-)
-text = open(path, encoding="utf-8").read()
-start = text.index("(defwindow panel_window")
-end = text.index("(widget_panel)", start)
-block = text[start:end]
-block = re.sub(r'(:x ")[^"]*(")', r"\g<1>%dpx\g<2>" % x, block)
-block = re.sub(r'(:y ")[^"]*(")', r"\g<1>%dpx\g<2>" % y, block)
-block = re.sub(r'(:width ")[^"]*(")', r"\g<1>%dpx\g<2>" % w, block)
-block = re.sub(r'(:height ")[^"]*(")', r"\g<1>%dpx\g<2>" % h, block)
-block = re.sub(r'(:anchor ")[^"]*(")', r"\g<1>%s\g<2>" % anchor, block)
-text = text[:start] + block + text[end:]
-open(path, "w", encoding="utf-8").write(text)
-PYEOF
-  echo "panel aligned to taskbar: anchor=${ANCHOR} x=${PANEL_X}px y=${PANEL_Y}px width=${PANEL_W}px height=${PANEL_H}px (gap=${GAP}px)"
+  count=0
+  while IFS='|' read -r idx px py pw ph panchor; do
+    [ -z "$idx" ] && continue
+    eww --config "$DIR" open --id "main_$idx" --screen "$idx" main_window
+    eww --config "$DIR" open --id "panel_$idx" --screen "$idx" \
+      --arg "screen=$idx" --arg "px=$px" --arg "py=$py" \
+      --arg "pw=$pw" --arg "ph=$ph" --arg "panchor=$panchor" \
+      panel_window
+    count=$((count + 1))
+  done < <(printf '%s' "$layout" | python3 -c '
+import json, sys
+for m in json.load(sys.stdin)["monitors"]:
+    p = m["panel"]
+    print("%s|%s|%s|%s|%s|%s" % (m["index"], p["x"], p["y"], p["width"], p["height"], p["anchor"]))
+')
+  echo "layout: opened main+panel on $count monitor(s)"
 }
 
-# Start the eww daemon and open both windows
+# Start the eww daemon
 start_eww() {
   # Kill any existing eww daemon for this config directory
   eww --config "$DIR" kill 2>/dev/null
@@ -95,10 +76,6 @@ start_eww() {
 
   # Start eww daemon
   eww --config "$DIR" daemon
-
-  # Open the clock/weather widget and the system monitor panel
-  eww --config "$DIR" open main_window
-  eww --config "$DIR" open panel_window
 }
 
 # Start the inotify-based watcher so config.yaml / theme YAML edits take effect
@@ -112,6 +89,21 @@ start_watcher() {
   echo "config watcher started (PID $(cat "$DIR/watch.pid"))"
 }
 
+# Start the monitor watcher (hotplug / mode changes). Event-driven and ~0 CPU
+# while idle; see scripts/monitor_watch.py.
+start_monitor_watch() {
+  setsid python3 "$DIR/scripts/monitor_watch.py" "$DIR" >> "$DIR/monitor_watch.log" 2>&1 &
+  echo $! > "$DIR/monitor_watch.pid"
+  disown 2>/dev/null || true
+  echo "monitor watcher started (PID $(cat "$DIR/monitor_watch.pid"))"
+}
+
+# Recompute the layout and reopen every window (keeps the daemon running).
+relayout() {
+  eww --config "$DIR" close-all 2>/dev/null
+  layout_windows
+}
+
 main() {
   "$DIR/scripts/stop.sh"
   # KDE Plasma (plasmashell) is only relevant on Wayland: the widget does not
@@ -121,10 +113,24 @@ main() {
     ensure_plasma_running
   fi
   generate_theme
-  align_panel_to_taskbar
   start_eww
+  layout_windows
   start_watcher
+  start_monitor_watch
   echo "Clock + weather widget and system monitor panel are running (eww)."
 }
 
+# --- Determine how to run (called from .desktop launcher / manual) ---
+if [[ "${1:-}" = "--screenshot" ]]; then
+  main
+  exit 0
+fi
+if [[ "${1:-}" = "--relayout" ]]; then
+  relayout
+  exit 0
+fi
+
+# On a normal start, run main() and then keep watching for config changes.
+echo "- starting the widget..."
 main
+echo "Widget started."

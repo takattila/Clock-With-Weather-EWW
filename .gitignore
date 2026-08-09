@@ -4,6 +4,9 @@ __pycache__/
 *.pyc
 watch.log
 watch.pid
+monitor_watch.log
+monitor_watch.pid
+.layout.json
 .api_key
 eww.theme.json
 eww.theme.scss

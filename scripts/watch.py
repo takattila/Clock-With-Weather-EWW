@@ -7,7 +7,9 @@ Uses the Linux inotify API directly through ctypes, so no third-party packages
 are needed. The main loop blocks in select(), so it wakes up only when a
 watched file changes (~0 CPU while idle). After a burst of changes it runs
 theme.py and then `eww reload`, so edits to config.yaml / the appearance theme
-take effect immediately without restarting the widget.
+take effect immediately without restarting the widget. A config.yaml change
+(panel.gap etc.) additionally triggers `start.sh --relayout` so the per-monitor
+panel geometry is recomputed and reapplied.
 
 Usage: ./watch.py [config_dir]
 """
@@ -62,6 +64,7 @@ libc.inotify_add_watch.restype = ctypes.c_int
 class Watcher(object):
     def __init__(self, config_dir):
         self.config_dir = os.path.abspath(config_dir)
+        self.config_changed = False
         self.fd = libc.inotify_init1(0)
         if self.fd < 0:
             raise OSError(
@@ -161,6 +164,8 @@ class Watcher(object):
                 continue
             if ev.mask & (IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE):
                 self.log("change: %s" % os.path.join(path, fname))
+                if fname == "config.yaml":
+                    self.config_changed = True
                 changed = True
         return changed
 
@@ -185,6 +190,14 @@ class Watcher(object):
             self.log("eww reload failed: " + reload.stderr.strip())
         else:
             self.log("eww reloaded")
+        if self.config_changed:
+            self.config_changed = False
+            self.log("config.yaml changed; re-laying-out windows")
+            subprocess.run(
+                [os.path.join(self.config_dir, "scripts", "start.sh"), "--relayout"],
+                capture_output=True,
+                text=True,
+            )
 
 
 def main():

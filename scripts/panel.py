@@ -25,6 +25,7 @@ CONFIG_DIR = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
 CHARTS_DIR = os.path.join(CONFIG_DIR, "charts")
 STATE_FILE = os.path.join(CHARTS_DIR, "state.json")
 THEME_FILE = os.path.join(CONFIG_DIR, "eww.theme.scss")
+LAYOUT_FILE = os.path.join(CONFIG_DIR, ".layout.json")
 
 MAX_POINTS = 100
 PANEL_WIDTH = 250
@@ -100,6 +101,18 @@ def get_active_iface():
         if name != "lo":
             return name
     return "eth0"
+
+
+def load_panel_heights():
+    try:
+        with open(LAYOUT_FILE, "r", encoding="utf-8") as f:
+            layout = json.load(f)
+        heights = [int(h) for h in layout.get("heights", []) if int(h) > 0]
+        if heights:
+            return heights
+    except Exception:
+        pass
+    return [get_screen_height()]
 
 
 def read_state():
@@ -258,42 +271,36 @@ def main():
     dynamic_up_max = get_dynamic_max(up_hist, 512)
 
     # --- Chart geometry ---
-    screen_h = get_screen_height()
-    section_height = screen_h / 4
+    heights = load_panel_heights()
+    chart_w = CHART_W
     title_space = 50
     gap = 20
-    chart_h = int(section_height - title_space - gap)
-    chart_w = CHART_W
 
     # --- Chart color from the active theme ---
     color_hex = load_chart_color()
 
     os.makedirs(CHARTS_DIR, exist_ok=True)
     stamp = counter
+    series = (("cpu", cpu_hist, 100), ("mem", mem_hist, 100), ("down", down_hist, dynamic_down_max), ("up", up_hist, dynamic_up_max))
     files = {}
-    for key, hist, max_val in (
-        ("cpu", cpu_hist, 100),
-        ("mem", mem_hist, 100),
-        ("down", down_hist, dynamic_down_max),
-        ("up", up_hist, dynamic_up_max),
-    ):
-        name = "%s_%05d.svg" % (key, stamp)
-        files[key] = "charts/" + name
-        render_chart(
-            os.path.join(CHARTS_DIR, name),
-            hist,
-            max_val,
-            color_hex,
-            chart_w,
-            chart_h,
-        )
+    chart_h = {}
+    for h in heights:
+        section_height = h / 4
+        ch = int(section_height - title_space - gap)
+        key = str(h)
+        files[key] = {}
+        for k, hist, max_val in series:
+            name = "%s_h%d_%05d.svg" % (k, h, stamp)
+            files[key][k] = "charts/" + name
+            render_chart(os.path.join(CHARTS_DIR, name), hist, max_val, color_hex, chart_w, ch)
+        chart_h[key] = ch
 
-    # --- Cleanup old charts (keep the last 3 per chart type) ---
+    # --- Cleanup old charts (keep the last 3 per chart type and height) ---
     try:
         for entry in os.listdir(CHARTS_DIR):
             if not entry.endswith(".svg"):
                 continue
-            match = re.match(r"(cpu|mem|down|up)_(\d+)\.svg$", entry)
+            match = re.match(r"(cpu|mem|down|up)(?:_h\d+)?_(\d+)\.svg$", entry)
             if match and int(match.group(2)) < stamp - 3:
                 os.remove(os.path.join(CHARTS_DIR, entry))
     except Exception:
@@ -319,19 +326,21 @@ def main():
 
     write_state(state)
 
+    primary = files[str(heights[0])]
     print(
         json.dumps(
             {
-                "cpu_file": files["cpu"],
-                "mem_file": files["mem"],
-                "down_file": files["down"],
-                "up_file": files["up"],
+                "cpu_file": primary["cpu"],
+                "mem_file": primary["mem"],
+                "down_file": primary["down"],
+                "up_file": primary["up"],
+                "files": files,
+                "chart_h": chart_h,
                 "cpu_txt": cpu_txt,
                 "mem_txt": mem_txt,
                 "down_txt": down_txt,
                 "up_txt": up_txt,
                 "chart_w": chart_w,
-                "chart_h": chart_h,
             }
         )
     )

@@ -37,6 +37,27 @@ depending on the compositor:
     the screen right edge (== workarea right) and the "top left" anchor is only
     used when workarea.x == 0.
 
+Per-monitor mode (--per-monitor) reads a monitors JSON on stdin (from
+scripts/monitors.py) and computes the panel geometry for every monitor:
+
+  ./monitors.py | ./workarea.py --per-monitor [config_dir]
+
+Output (stdout, JSON):
+  {
+    "compositor": "wayland" | "x11",
+    "monitors": [
+      {"index": 0, "name": "..", "width": .., "height": ..,
+       "panel": {"x": .., "y": .., "width": .., "height": .., "anchor": ".."}},
+      ...
+    ],
+    "heights": [ .. ]    # distinct panel heights (for panel.py)
+  }
+
+On Wayland the taskbar workarea is not readable (_NET_WORKAREA is X11-only), so
+every monitor is laid out from its own resolution minus two gaps. On X11 the
+primary monitor (the one under the _NET_WORKAREA origin) keeps the taskbar
+inset; secondary monitors use the symmetric-gap full-height geometry.
+
 Usage: ./workarea.py [config_dir]
 """
 
@@ -155,9 +176,60 @@ def compute_panel(screen, workarea, taskbar, gap, compositor):
     return {"x": x, "y": y, "width": width, "height": height, "anchor": anchor}
 
 
+def monitor_screen(m):
+    return m["width"], m["height"]
+
+
+def global_bounds(monitors):
+    tw = max(m["x"] + m["width"] for m in monitors) if monitors else 0
+    th = max(m["y"] + m["height"] for m in monitors) if monitors else 0
+    return tw, th
+
+
+def compute_per_monitor(monitors, gap, compositor):
+    result = []
+    workarea = get_net_workarea()
+    global_screen = global_bounds(monitors)
+    global_workarea = workarea if workarea else (0, 0, global_screen[0], global_screen[1])
+    taskbar = detect_taskbar(global_screen, global_workarea)
+
+    primary = 0
+    if workarea:
+        for i, m in enumerate(monitors):
+            if m["x"] <= workarea[0] < m["x"] + m["width"] and m["y"] <= workarea[1] < m["y"] + m["height"]:
+                primary = i
+                break
+
+    for i, m in enumerate(monitors):
+        screen = monitor_screen(m)
+        if compositor == "x11" and i == primary and workarea:
+            local_workarea = (0, workarea[1], screen[0], workarea[3])
+            panel = compute_panel(screen, local_workarea, taskbar, gap, compositor)
+        else:
+            panel = compute_panel(screen, (0, 0, screen[0], screen[1]), "none", gap, compositor)
+        result.append(
+            {
+                "index": m["index"],
+                "name": m["name"],
+                "width": screen[0],
+                "height": screen[1],
+                "panel": panel,
+            }
+        )
+
+    heights = sorted({r["panel"]["height"] for r in result}, reverse=True)
+    return {"compositor": compositor, "monitors": result, "heights": heights}
+
+
 def main():
     config_dir = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
     gap = load_gap(config_dir)
+
+    if "--per-monitor" in sys.argv:
+        compositor = detect_compositor()
+        monitors = json.load(sys.stdin).get("monitors", [])
+        print(json.dumps(compute_per_monitor(monitors, gap, compositor)))
+        return
 
     screen = get_xrandr_resolution()
     workarea = get_net_workarea()

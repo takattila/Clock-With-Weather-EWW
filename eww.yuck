@@ -157,28 +157,28 @@
 ;; System monitor panel
 ;; ===========================================================================
 
-(defwidget widget_panel []
+(defwidget widget_panel [ph]
   (box :class "panel-container" :orientation "v" :space-evenly true
 
     (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
       (label :class "panel-title" :text "CPU" :halign "start")
       (label :class "panel-status" :text {panel.cpu_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.cpu_file} :halign "start"))
+      (image :class "panel-chart" :path {panel.files[ph].cpu} :halign "start"))
 
     (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
       (label :class "panel-title" :text "MEMORY" :halign "start")
       (label :class "panel-status" :text {panel.mem_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.mem_file} :halign "start"))
+      (image :class "panel-chart" :path {panel.files[ph].mem} :halign "start"))
 
     (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
       (label :class "panel-title" :text "NET DOWN" :halign "start")
       (label :class "panel-status" :text {panel.down_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.down_file} :halign "start"))
+      (image :class "panel-chart" :path {panel.files[ph].down} :halign "start"))
 
     (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
       (label :class "panel-title" :text "NET UP" :halign "start")
       (label :class "panel-status" :text {panel.up_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.up_file} :halign "start"))))
+      (image :class "panel-chart" :path {panel.files[ph].up} :halign "start"))))
 
 ;; ===========================================================================
 ;; Windows
@@ -196,14 +196,20 @@
   :wm-ignore true
   (widget_clock_weather))
 
+;; panel_window is parametrized so start.sh can open one instance per monitor
+;; with `eww open --id panel_<N> --screen <N> --arg "screen=<N>" ... panel_window`.
+;; `screen` is both the monitor selector and the :monitor value; the rest are
+;; the panel geometry (px/py/pw/ph) and its anchor, computed per monitor by
+;; scripts/workarea.py --per-monitor.
 (defwindow panel_window
-  :monitor 0
-  :geometry (geometry :x "0px"
-                      :y "16px"
-                      :width "250px"
-                      :height "1018px"
-                      :anchor "top right")
+  [screen px py pw ph panchor]
+  :monitor {screen}
+  :geometry (geometry :x {px}
+                      :y {py}
+                      :width {pw}
+                      :height {ph}
+                      :anchor {panchor})
   :stacking "bottom"
   :windowtype "normal"
   :wm-ignore true
-  (widget_panel))
+  (widget_panel :ph ph))
