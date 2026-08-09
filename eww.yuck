@@ -215,10 +215,14 @@
   (widget_panel :ph ph))
 
 ;; X11 variants: eww 0.5.0 only honours `:stacking "foreground"`/`"background"` on
-;; X11 ("bottom" is a no-op there), so on X11 these windows use "background"
-;; (gtk set_keep_below) to stay below opened windows instead of floating above
-;; them. scripts/start.sh picks these definitions when the compositor is x11;
-;; the Wayland ones above use "bottom" (Layer::Bottom).
+;; X11 ("bottom" is a no-op there), so these windows use "background"
+;; (gtk set_keep_below -> _NET_WM_STATE_BELOW). With `:wm-ignore false` the
+;; windows are WM-managed Toplevels, so Cinnamon/Muffin keeps them below opened
+;; windows (the same way Conky's "below" hint works) while the wallpaper stays
+;; below them. Eww always disables decorations and the taskbar entry
+;; (set_decorated/set_skip_taskbar_hint). scripts/start.sh picks these
+;; definitions when the compositor is x11; the Wayland ones above use "bottom"
+;; (Layer::Bottom).
 (defwindow main_window_x11
   :monitor 0
   :geometry (geometry :x "0%"
@@ -227,8 +231,8 @@
                       :height "250px"
                       :anchor "center")
   :stacking "background"
-  :windowtype "normal"
-  :wm-ignore true
+  :windowtype "utility"
+  :wm-ignore false
   (widget_clock_weather))
 
 (defwindow panel_window_x11
@@ -240,6 +244,6 @@
                       :height {ph}
                       :anchor {panchor})
   :stacking "background"
-  :windowtype "normal"
-  :wm-ignore true
+  :windowtype "utility"
+  :wm-ignore false
   (widget_panel :ph ph))
