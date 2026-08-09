@@ -428,7 +428,7 @@ function installWidgetFromGitHub() {
         echo
         echo "- The ${C_Y}'${repo_dir}'${C_D} already exists."
         delete_repo_dir="$(
-            helperPrompt "  Do you want to delete it? ${C_Y}[y or n]${C_D}: " "n" "y n"
+            helperPrompt "  Do you want to delete it? ${C_Y}[y or n]${C_D}: " "y" "y n"
         )"
 
         if [[ "${delete_repo_dir}" = "y" ]]; then
