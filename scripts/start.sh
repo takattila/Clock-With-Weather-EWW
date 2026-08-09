@@ -32,6 +32,7 @@ generate_theme() {
 # once per monitor with `eww open --screen/--id/--arg`.
 layout_windows() {
   local monitors layout count compositor win_main win_panel
+  local alignment main_anchor main_x main_y panel_enabled
   monitors="$(python3 "$DIR/scripts/monitors.py")" || {
     echo "ERROR: monitors.py failed"; return 1
   }
@@ -55,14 +56,37 @@ layout_windows() {
     win_main="main_window"; win_panel="panel_window"
   fi
 
+  # Clock widget placement from config.yaml (conky-style alignment + pixel
+  # offset) and whether the system monitor panel should be started.
+  alignment="$(python3 "$DIR/scripts/config.py" --key alignment)"
+  main_x="$(python3 "$DIR/scripts/config.py" --key position_x)"
+  main_y="$(python3 "$DIR/scripts/config.py" --key position_y)"
+  panel_enabled="$(python3 "$DIR/scripts/config.py" --key panel_enabled)"
+  case "$alignment" in
+    top_left)     main_anchor="top left" ;;
+    top_right)    main_anchor="top right" ;;
+    top_middle)   main_anchor="top center" ;;
+    bottom_left)  main_anchor="bottom left" ;;
+    bottom_right) main_anchor="bottom right" ;;
+    bottom_middle) main_anchor="bottom center" ;;
+    middle_left)  main_anchor="center left" ;;
+    middle_right) main_anchor="center right" ;;
+    middle_middle) main_anchor="center" ;;
+    *)            main_anchor="center" ;;
+  esac
+
   count=0
   while IFS='|' read -r idx px py pw ph panchor; do
     [ -z "$idx" ] && continue
-    eww --config "$DIR" open --id "main_$idx" --screen "$idx" "$win_main"
-    eww --config "$DIR" open --id "panel_$idx" --screen "$idx" \
-      --arg "screen=$idx" --arg "px=$px" --arg "py=$py" \
-      --arg "pw=$pw" --arg "ph=$ph" --arg "panchor=$panchor" \
-      "$win_panel"
+    eww --config "$DIR" open --id "main_$idx" --screen "$idx" \
+      --arg "main_anchor=$main_anchor" --arg "main_x=$main_x" --arg "main_y=$main_y" \
+      "$win_main"
+    if [ "$panel_enabled" = "true" ]; then
+      eww --config "$DIR" open --id "panel_$idx" --screen "$idx" \
+        --arg "screen=$idx" --arg "px=$px" --arg "py=$py" \
+        --arg "pw=$pw" --arg "ph=$ph" --arg "panchor=$panchor" \
+        "$win_panel"
+    fi
     count=$((count + 1))
   done < <(printf '%s' "$layout" | python3 -c '
 import json, sys
@@ -70,7 +94,11 @@ for m in json.load(sys.stdin)["monitors"]:
     p = m["panel"]
     print("%s|%s|%s|%s|%s|%s" % (m["index"], p["x"], p["y"], p["width"], p["height"], p["anchor"]))
 ')
-  echo "layout: opened main+panel on $count monitor(s)"
+  if [ "$panel_enabled" = "true" ]; then
+    echo "layout: opened main+panel on $count monitor(s)"
+  else
+    echo "layout: opened main on $count monitor(s) (panel disabled)"
+  fi
 }
 
 # Start the eww daemon

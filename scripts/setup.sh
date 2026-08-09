@@ -12,29 +12,49 @@ while [[ ! $# -eq 0 ]]; do
             shift
             ARG_API_KEY=$1
             ;;
-        --appearance | -ap)
+        --city | -c)
             shift
-            ARG_APPEARANCE=$1
+            ARG_CITY=$1
             ;;
-        --weather | -w)
+        --language-code | -lc)
             shift
-            ARG_WEATHER=$1
+            ARG_LANGUAGE_CODE=$1
+            ;;
+        --lang | -la)
+            shift
+            ARG_LANG=$1
+            ;;
+        --units-number | -u)
+            shift
+            ARG_UNITS_NUMBER=$1
+            ;;
+        --theme-number | -t)
+            shift
+            ARG_THEME_NUMBER=$1
             ;;
         --hour-format | -hf)
             shift
             ARG_HOUR_FORMAT=$1
             ;;
+        --window-alignment-number | -wa)
+            shift
+            ARG_ALIGNMENT_NUMBER=$1
+            ;;
+        --window-position-x-number | -wx)
+            shift
+            ARG_POSITION_X=$1
+            ;;
+        --window-position-y-number | -wy)
+            shift
+            ARG_POSITION_Y=$1
+            ;;
+        --start-panel | -sp)
+            shift
+            ARG_START_PANEL=$1
+            ;;
         --create-desktop-icons | -cdi)
             shift
             ARG_CREATE_DESKTOP_ICONS=$1
-            ;;
-        --corner-radius | -cr)
-            shift
-            ARG_CORNER_RADIUS=$1
-            ;;
-        --panel-gap | -pg)
-            shift
-            ARG_PANEL_GAP=$1
             ;;
     esac
     shift
@@ -44,15 +64,47 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." >/dev/null 2>&1 && pwd )"
 API_KEY_FILE="${DIR}/.api_key"
 CONFIG_FILE="${DIR}/config.yaml"
 
-DEFAULT_OPENWEATHER_API_KEY="$( [[ -n "${ARG_API_KEY}" ]]      && echo "${ARG_API_KEY}"      || echo "${OPENWEATHER_API_KEY}" )"
-DEFAULT_APPEARANCE="$(          [[ -n "${ARG_APPEARANCE}" ]]   && echo "${ARG_APPEARANCE}"   || echo "light" )"
-DEFAULT_WEATHER="$(             [[ -n "${ARG_WEATHER}" ]]      && echo "${ARG_WEATHER}"      || echo "default" )"
-DEFAULT_HOUR_FORMAT="$(         [[ -n "${ARG_HOUR_FORMAT}" ]]  && echo "${ARG_HOUR_FORMAT}"  || echo "24" )"
+LANGUAGE_CODES="af al ar az bg ca cz da de el en eu fa fi fr gl he hi hr hu id it ja kr la lt mk no nl pl pt pt_br ro ru sv sk sl sp sr th tr ua vi zh_cn zh_tw zu"
+COUNTRY_CODES="ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug um us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw"
+
+ALIGNMENTS_ARRAY=(
+    "top_left"
+    "top_right"
+    "top_middle"
+    "bottom_left"
+    "bottom_right"
+    "bottom_middle"
+    "middle_left"
+    "middle_right"
+    "middle_middle"
+)
+
+DEFAULT_OPENWEATHER_API_KEY="$(  [[ -n "${ARG_API_KEY}" ]]          && echo "${ARG_API_KEY}"          || echo "${OPENWEATHER_API_KEY}" )"
+DEFAULT_CITY="$(                 [[ -n "${ARG_CITY}" ]]              && echo "${ARG_CITY}"              || python3 "${DIR}/scripts/config.py" --key city )"
+DEFAULT_LANGUAGE_CODE="$(        [[ -n "${ARG_LANGUAGE_CODE}" ]]     && echo "${ARG_LANGUAGE_CODE}"     || python3 "${DIR}/scripts/config.py" --key language_code )"
+DEFAULT_LANG="$(                 [[ -n "${ARG_LANG}" ]]              && echo "${ARG_LANG}"              || python3 "${DIR}/scripts/config.py" --key lang )"
+DEFAULT_UNITS_NUMBER="$(         [[ -n "${ARG_UNITS_NUMBER}" ]]      && echo "${ARG_UNITS_NUMBER}"      || python3 -c 'import sys; print(2 if sys.argv[1] == "imperial" else 1)' "$(python3 "${DIR}/scripts/config.py" --key units)" )"
+DEFAULT_THEME_NUMBER="$(         [[ -n "${ARG_THEME_NUMBER}" ]]      && echo "${ARG_THEME_NUMBER}"      || python3 -c '
+import os, sys
+names = sorted(os.listdir(os.path.join(sys.argv[1], "themes", "appearance")))
+try:
+    print(names.index(sys.argv[2]) + 1)
+except ValueError:
+    print(11)
+' "$DIR" "$(python3 "${DIR}/scripts/config.py" --key appearance)" )"
+DEFAULT_HOUR_FORMAT="$(          [[ -n "${ARG_HOUR_FORMAT}" ]]       && echo "${ARG_HOUR_FORMAT}"       || python3 "${DIR}/scripts/config.py" --key hour_format )"
+DEFAULT_ALIGNMENT_NUMBER="$(     [[ -n "${ARG_ALIGNMENT_NUMBER}" ]]  && echo "${ARG_ALIGNMENT_NUMBER}"  || python3 -c '
+import sys
+a = ["top_left", "top_right", "top_middle", "bottom_left", "bottom_right", "bottom_middle", "middle_left", "middle_right", "middle_middle"]
+try:
+    print(a.index(sys.argv[1]) + 1)
+except ValueError:
+    print(9)
+' "$(python3 "${DIR}/scripts/config.py" --key alignment)" )"
+DEFAULT_POSITION_X="$(           [[ -n "${ARG_POSITION_X}" ]]        && echo "${ARG_POSITION_X}"        || python3 "${DIR}/scripts/config.py" --key position_x )"
+DEFAULT_POSITION_Y="$(           [[ -n "${ARG_POSITION_Y}" ]]        && echo "${ARG_POSITION_Y}"        || python3 "${DIR}/scripts/config.py" --key position_y )"
+DEFAULT_START_PANEL="$(          [[ -n "${ARG_START_PANEL}" ]]       && echo "${ARG_START_PANEL}"       || python3 -c 'import sys; print(1 if sys.argv[1] == "true" else 2)' "$(python3 "${DIR}/scripts/config.py" --key panel_enabled)" )"
 DEFAULT_CREATE_DESKTOP_ICONS="$( [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]] && echo "${ARG_CREATE_DESKTOP_ICONS}" || echo "1" )"
-DEFAULT_CORNER_RADIUS="$(        [[ -n "${ARG_CORNER_RADIUS}" ]] && echo "${ARG_CORNER_RADIUS}" || grep -E '^  corner_radius: ' "${CONFIG_FILE}" 2>/dev/null | sed -E 's/^  corner_radius: //' )"
-DEFAULT_CORNER_RADIUS="${DEFAULT_CORNER_RADIUS:-10}"
-DEFAULT_PANEL_GAP="$(            [[ -n "${ARG_PANEL_GAP}" ]]     && echo "${ARG_PANEL_GAP}"     || grep -E '^  gap: ' "${CONFIG_FILE}" 2>/dev/null | sed -E 's/^  gap: //' )"
-DEFAULT_PANEL_GAP="${DEFAULT_PANEL_GAP:-16}"
 
 DESKTOP_LAUNCHER='
 [Desktop Entry]
@@ -170,93 +222,172 @@ function setupApiKey() {
     echo -e "- The ${C_Y}'${API_KEY_FILE}'${C_D} file saved (chmod 600)."
 }
 
-function setupAppearance() {
-    local appearances
-    appearances="$(ls "${DIR}/themes/appearance")"
+function setupWeatherDetails() {
+    local city
+    local country
+    local lang
+    local unitsNumber
+    local units
+    local weatherFile="${DIR}/themes/weather/default/weather.yaml"
 
     echo
-    echo "- Choose the ${C_Y}appearance theme${C_D}:"
-    local i=1
-    local items=()
-    for name in ${appearances} ; do
-        echo -e "  ${C_Y}${i}.${C_D} ${name}"
-        items+=("${name}")
-        i=$((i + 1))
-    done
-
-    local number="$(
-        helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER"
+    city="$(
+        helperPrompt "- Please enter your ${C_Y}city${C_D} name ${C_Y}[e.g.: budapest, wien or london]${C_D}: " "${DEFAULT_CITY}" "NO_VALIDATE"
     )"
+    city="$(python3 -c 'import sys; s = sys.argv[1].strip(); print((s[:1].upper() + s[1:].lower()) if s else s)' "${city}")"
+    DEFAULT_CITY="${city}"
 
-    if [[ -z "${number}" ]] || [[ ${number} -lt 1 ]] || [[ ${number} -gt ${#items[@]} ]]; then
-        number=1
-    fi
+    echo
+    echo "- Please enter your ${C_Y}country code${C_D}."
+    echo "  This one is to specify in which country the given ${C_Y}city is located${C_D}."
+    echo "  Check your country code here: ${C_U}https://www.iban.com/country-codes${C_D}"
+    echo
+    country="$(
+        helperPrompt "  ${C_Y}[e.g.: hu, gb, us]${C_D}: " "${DEFAULT_LANGUAGE_CODE}" "${COUNTRY_CODES}"
+    )"
+    DEFAULT_LANGUAGE_CODE="${country}"
 
-    DEFAULT_APPEARANCE="${items[$((number - 1))]}"
+    echo
+    echo "- Please enter your ${C_Y}language code${C_D}."
+    echo "  In what language do you want to ${C_Y}display the weather details?${C_D}"
+    echo "  Check your language code here: ${C_U}https://openweathermap.org/current#multi${C_D}"
+    echo
+    lang="$(
+        helperPrompt "  ${C_Y}[e.g.: hu, en, fr]${C_D}: " "${DEFAULT_LANG}" "${LANGUAGE_CODES}"
+    )"
+    DEFAULT_LANG="${lang}"
+
+    echo
+    echo "- Please enter which temperature unit do you want to use: "
+    echo -e "  ${C_Y}1.${C_D} metric (for displaying ${C_Y}Celsius${C_D})"
+    echo -e "  ${C_Y}2.${C_D} imperial (for displaying ${C_Y}Fahrenheit${C_D})"
+    echo
+    unitsNumber="$(
+        helperPrompt "  ${C_Y}[1 or 2]${C_D} ?: " "${DEFAULT_UNITS_NUMBER}" "1 2"
+    )"
+    [[ "${unitsNumber}" = "2" ]] && units="imperial" || units="metric"
+    DEFAULT_UNITS_NUMBER="${unitsNumber}"
+
+    sed -i "s/^  city: .*/  city: ${city}/" "${weatherFile}"
+    sed -i "s/^  language_code: .*/  language_code: ${country}/" "${weatherFile}"
+    sed -i "s/^  lang: .*/  lang: ${lang}/" "${weatherFile}"
+    sed -i "s/^  units: .*/  units: ${units}/" "${weatherFile}"
 }
 
-function setupWeather() {
-    local weathers
-    weathers="$(ls "${DIR}/themes/weather")"
+function setupListThemes() {
+    local printWithoutNames=$1
+    local i=0
 
-    echo
-    echo "- Choose the ${C_Y}weather theme${C_D} (city / language / units):"
-    local i=1
-    local items=()
-    for name in ${weathers} ; do
-        echo -e "  ${C_Y}${i}.${C_D} ${name}"
-        items+=("${name}")
-        i=$((i + 1))
+    for t in $(ls -A "${DIR}/themes/appearance") ; do
+        i=$(( i + 1 ))
+        if [[ "${printWithoutNames}" ]]; then
+            echo "${i} "
+        else
+            echo "  ${C_Y}${i}.${C_D} ${t}"
+        fi
     done
+}
 
-    local number="$(
-        helperPrompt "  your choice ?: " "1" "VALIDATE_NUMBER"
+function setupGetThemeByNumber() {
+    local number=$1
+    local i=0
+
+    for t in $(ls -A "${DIR}/themes/appearance") ; do
+        i=$(( i + 1 ))
+        if [[ "$i" = "$number" ]]; then
+            echo "${t}"
+            break
+        fi
+    done
+}
+
+function setupAppearance() {
+    echo
+    setupListThemes
+    echo
+    DEFAULT_THEME_NUMBER="$(
+        helperPrompt "- Enter choosen ${C_Y}theme${C_D} number ${C_Y}[e.g.: 11]${C_D}: " "${DEFAULT_THEME_NUMBER}" "$(setupListThemes 1)"
     )"
-
-    if [[ -z "${number}" ]] || [[ ${number} -lt 1 ]] || [[ ${number} -gt ${#items[@]} ]]; then
-        number=1
-    fi
-
-    DEFAULT_WEATHER="${items[$((number - 1))]}"
+    DEFAULT_APPEARANCE="$(setupGetThemeByNumber "${DEFAULT_THEME_NUMBER}")"
 }
 
 function setupHourFormat() {
     echo
-    echo "- Choose the ${C_Y}hour format${C_D}:"
-    echo -e "  ${C_Y}1.${C_D} 24 (e.g. 14:05)"
-    echo -e "  ${C_Y}2.${C_D} 12 (e.g. 02:05 PM)"
-    echo
     DEFAULT_HOUR_FORMAT="$(
-        helperPrompt "  your choice ?: " "1" "1 2"
+        helperPrompt "- What type of ${C_Y}hour format${C_D} do you want to use ${C_Y}[12 or 24]${C_D} ?: " "${DEFAULT_HOUR_FORMAT}" "12 24"
     )"
-    [[ "${DEFAULT_HOUR_FORMAT}" = "2" ]] && DEFAULT_HOUR_FORMAT="12" || DEFAULT_HOUR_FORMAT="24"
+}
+
+function setupListConfigAlignments() {
+    local printWithoutNames=$1
+    local i=0
+
+    for a in "${ALIGNMENTS_ARRAY[@]}" ; do
+        i=$(( i + 1 ))
+        if [[ "${printWithoutNames}" ]]; then
+            echo "${i} "
+        else
+            echo -e "  ${C_Y}${i}.${C_D} ${a}"
+        fi
+    done
+}
+
+function setupGetConfigAlignmentByNumber() {
+    local number=$1
+    local i=0
+
+    for a in "${ALIGNMENTS_ARRAY[@]}" ; do
+        i=$(( i + 1 ))
+        if [[ "$i" = "$number" ]]; then
+            echo "${a}"
+            break
+        fi
+    done
 }
 
 function setupWindowSettings() {
     echo
-    echo "- Window settings:"
-    echo "  corner_radius : window/panel background corner rounding in px (0 = square)."
-    echo "  panel.gap     : symmetric spacing in px between the panel and the taskbar on one"
-    echo "                  side and the opposite screen edge on the other side."
+    echo "- Please enter the ${C_Y}number${C_D} of the choosen ${C_Y}window alignment${C_D}."
     echo
-    DEFAULT_CORNER_RADIUS="$(
-        helperPrompt "  ${C_Y}corner radius${C_D} in px [0-50] ?: " "${DEFAULT_CORNER_RADIUS}" "VALIDATE_NUMBER"
+    setupListConfigAlignments
+    echo
+    DEFAULT_ALIGNMENT_NUMBER="$(
+        helperPrompt "  ${C_Y}[e.g.: 9]${C_D} ?: " "${DEFAULT_ALIGNMENT_NUMBER}" "$(setupListConfigAlignments 1)"
     )"
-    [[ "${DEFAULT_CORNER_RADIUS}" -lt 0 ]] && DEFAULT_CORNER_RADIUS=0
 
-    DEFAULT_PANEL_GAP="$(
-        helperPrompt "  ${C_Y}panel gap${C_D} in px [0-100] ?: " "${DEFAULT_PANEL_GAP}" "VALIDATE_NUMBER"
+    echo
+    DEFAULT_POSITION_X="$(
+        helperPrompt "- Please enter the '${C_Y}X${C_D}' position of the widget's window ${C_Y}[e.g.: 0]${C_D}: " "${DEFAULT_POSITION_X}" "VALIDATE_NUMBER"
     )"
-    [[ "${DEFAULT_PANEL_GAP}" -lt 0 ]] && DEFAULT_PANEL_GAP=0
+
+    echo
+    DEFAULT_POSITION_Y="$(
+        helperPrompt "- Please enter the '${C_Y}Y${C_D}' position of the widget's window ${C_Y}[e.g.: 0]${C_D}: " "${DEFAULT_POSITION_Y}" "VALIDATE_NUMBER"
+    )"
+
+    echo
+    echo "- Do you want to start the ${C_Y}System Monitor Panel${C_D} as well?"
+    echo -e "  ${C_Y}1.${C_D} Yes (Recommended)"
+    echo -e "  ${C_Y}2.${C_D} No"
+    echo
+    DEFAULT_START_PANEL="$(
+        helperPrompt "  your choice ?: " "${DEFAULT_START_PANEL}" "1 2"
+    )"
 }
 
 function setupWriteConfig() {
+    local alignment
+    local panelEnabled
+
+    alignment="$(setupGetConfigAlignmentByNumber "${DEFAULT_ALIGNMENT_NUMBER}")"
+    [[ "${DEFAULT_START_PANEL}" = "1" ]] && panelEnabled="true" || panelEnabled="false"
+
     sed -i "s/^appearance: .*/appearance: ${DEFAULT_APPEARANCE}/" "${CONFIG_FILE}"
-    sed -i "s/^weather: .*/weather: ${DEFAULT_WEATHER}/" "${CONFIG_FILE}"
     sed -i "s/^  hour_format: .*/  hour_format: \"${DEFAULT_HOUR_FORMAT}\"/" "${CONFIG_FILE}"
-    sed -i "s/^  corner_radius: .*/  corner_radius: ${DEFAULT_CORNER_RADIUS}/" "${CONFIG_FILE}"
-    sed -i "s/^  gap: .*/  gap: ${DEFAULT_PANEL_GAP}/" "${CONFIG_FILE}"
-    echo "- ${C_Y}'${CONFIG_FILE}'${C_D} updated (appearance: ${DEFAULT_APPEARANCE}, weather: ${DEFAULT_WEATHER}, hour_format: ${DEFAULT_HOUR_FORMAT}, corner_radius: ${DEFAULT_CORNER_RADIUS}, panel.gap: ${DEFAULT_PANEL_GAP})."
+    sed -i "s/^  alignment: .*/  alignment: ${alignment}/" "${CONFIG_FILE}"
+    sed -i "s/^  position_x: .*/  position_x: ${DEFAULT_POSITION_X}/" "${CONFIG_FILE}"
+    sed -i "s/^  position_y: .*/  position_y: ${DEFAULT_POSITION_Y}/" "${CONFIG_FILE}"
+    sed -i "s/^  enabled: .*/  enabled: ${panelEnabled}/" "${CONFIG_FILE}"
 }
 
 function setupIconSettings() {
@@ -358,20 +489,35 @@ function setupCreateSetupIcons() {
 function setupStartApplication() {
     local apiKey="${DEFAULT_OPENWEATHER_API_KEY:-}"
     local startLog="${DIR}/start.log"
+    local count
 
     if [[ -z "${apiKey}" ]] && [[ -f "${DIR}/.api_key" ]]; then
         apiKey="$(head -n 1 "${DIR}/.api_key")"
     fi
 
     echo
-    echo "- Starting the ${C_Y}eww widgets${C_D} ... "
+    echo -n "- Starting widgets ... "
     if [[ -n "${apiKey}" ]]; then
         nohup bash "${DIR}/scripts/start.sh" "${apiKey}" > "${startLog}" 2>&1 &
     else
         nohup bash "${DIR}/scripts/start.sh" > "${startLog}" 2>&1 &
     fi
+
+    sleep 2
+    count="$(eww --config "${DIR}" active-windows 2>/dev/null | wc -l)"
+
+    if [[ "${count}" -gt 0 ]]; then
+        echo -e "${C_Y}done${C_D} (${count} eww windows detected)."
+    else
+        echo -e "${C_R}failed or still starting...${C_D}"
+    fi
+
     echo
-    echo "- The ${C_Y}eww widgets${C_D} are running."
+    echo -e "- EWW widgets started. - ${C_Y}Bye! :-)${C_D}"
+    echo
+    echo "-------------------------------------------------------"
+    read -n 1 -s -p "  Press any key to close this window..."
+    echo
 }
 
 function main() {
@@ -380,8 +526,8 @@ function main() {
     fi
 
     setupApiKey
+    setupWeatherDetails
     setupAppearance
-    setupWeather
     setupHourFormat
     setupWindowSettings
     setupWriteConfig

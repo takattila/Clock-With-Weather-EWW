@@ -184,13 +184,17 @@
 ;; Windows
 ;; ===========================================================================
 
+;; main_window is parametrized like panel_window so scripts/start.sh can pass
+;; the clock widget's alignment (-> anchor) and pixel offsets from config.yaml
+;; (window.alignment / window.position_x / window.position_y).
 (defwindow main_window
+  [main_anchor main_x main_y]
   :monitor 0
-  :geometry (geometry :x "0%"
-                      :y "0%"
+  :geometry (geometry :x {main_x}
+                      :y {main_y}
                       :width "745px"
                       :height "250px"
-                      :anchor "center")
+                      :anchor {main_anchor})
   :stacking "bottom"
   :windowtype "normal"
   :wm-ignore true
@@ -224,12 +228,13 @@
 ;; definitions when the compositor is x11; the Wayland ones above use "bottom"
 ;; (Layer::Bottom).
 (defwindow main_window_x11
+  [main_anchor main_x main_y]
   :monitor 0
-  :geometry (geometry :x "0%"
-                      :y "0%"
+  :geometry (geometry :x {main_x}
+                      :y {main_y}
                       :width "745px"
                       :height "250px"
-                      :anchor "center")
+                      :anchor {main_anchor})
   :stacking "background"
   :windowtype "utility"
   :wm-ignore false

@@ -2,8 +2,13 @@
 #
 # appearance selects the theme under  themes/appearance/<name>/appearance.yaml
 # weather    selects the city settings under themes/weather/<name>/weather.yaml
+# window.alignment  position of the clock widget, one of the conky-style names:
+#                   top_left, top_right, top_middle, bottom_left, bottom_right,
+#                   bottom_middle, middle_left, middle_right, middle_middle
+# window.position_x / position_y  pixel offset of the clock widget from its anchor
 # system.hour_format: "24" | "12"
 # system.corner_radius  bg corner rounding (px) for both widgets; 0 = square.
+# panel.enabled  whether the system monitor panel is started (true/false)
 # panel.gap  symmetric spacing (px) between the panel and the taskbar on one
 #            side and the opposite screen edge on the other side (Req 2).
 #
@@ -13,8 +18,13 @@
 
 appearance: light
 weather: default
+window:
+  alignment: middle_middle
+  position_x: 0
+  position_y: 0
 system:
   hour_format: "24"
   corner_radius: 10
 panel:
+  enabled: true
   gap: 16

@@ -476,8 +476,8 @@ function main() {
     installSourceSetup
 
     setupApiKey
+    setupWeatherDetails
     setupAppearance
-    setupWeather
     setupHourFormat
     setupWindowSettings
     setupWriteConfig
