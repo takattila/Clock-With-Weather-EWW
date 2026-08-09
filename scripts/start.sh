@@ -31,7 +31,7 @@ generate_theme() {
 # for panel.py (chart sizes per monitor height) and the windows are opened
 # once per monitor with `eww open --screen/--id/--arg`.
 layout_windows() {
-  local monitors layout count
+  local monitors layout count compositor win_main win_panel
   monitors="$(python3 "$DIR/scripts/monitors.py")" || {
     echo "ERROR: monitors.py failed"; return 1
   }
@@ -44,14 +44,25 @@ layout_windows() {
   export PANEL_HEIGHT="$(printf '%s' "$layout" | python3 -c \
     'import json,sys; print(json.load(sys.stdin)["monitors"][0]["panel"]["height"])')"
 
+  # eww 0.5.0 ignores `:stacking "bottom"` on X11 (only "foreground"/"background"
+  # are honoured), so use the *_x11 window definitions there to keep the widget
+  # below opened windows (set_keep_below) instead of floating above them.
+  compositor="$(printf '%s' "$layout" | python3 -c \
+    'import json,sys; print(json.load(sys.stdin)["compositor"])')"
+  if [ "$compositor" = "x11" ]; then
+    win_main="main_window_x11"; win_panel="panel_window_x11"
+  else
+    win_main="main_window"; win_panel="panel_window"
+  fi
+
   count=0
   while IFS='|' read -r idx px py pw ph panchor; do
     [ -z "$idx" ] && continue
-    eww --config "$DIR" open --id "main_$idx" --screen "$idx" main_window
+    eww --config "$DIR" open --id "main_$idx" --screen "$idx" "$win_main"
     eww --config "$DIR" open --id "panel_$idx" --screen "$idx" \
       --arg "screen=$idx" --arg "px=$px" --arg "py=$py" \
       --arg "pw=$pw" --arg "ph=$ph" --arg "panchor=$panchor" \
-      panel_window
+      "$win_panel"
     count=$((count + 1))
   done < <(printf '%s' "$layout" | python3 -c '
 import json, sys

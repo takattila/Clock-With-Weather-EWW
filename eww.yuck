@@ -213,3 +213,33 @@
   :windowtype "normal"
   :wm-ignore true
   (widget_panel :ph ph))
+
+;; X11 variants: eww 0.5.0 only honours `:stacking "foreground"`/`"background"` on
+;; X11 ("bottom" is a no-op there), so on X11 these windows use "background"
+;; (gtk set_keep_below) to stay below opened windows instead of floating above
+;; them. scripts/start.sh picks these definitions when the compositor is x11;
+;; the Wayland ones above use "bottom" (Layer::Bottom).
+(defwindow main_window_x11
+  :monitor 0
+  :geometry (geometry :x "0%"
+                      :y "0%"
+                      :width "745px"
+                      :height "250px"
+                      :anchor "center")
+  :stacking "background"
+  :windowtype "normal"
+  :wm-ignore true
+  (widget_clock_weather))
+
+(defwindow panel_window_x11
+  [screen px py pw ph panchor]
+  :monitor {screen}
+  :geometry (geometry :x {px}
+                      :y {py}
+                      :width {pw}
+                      :height {ph}
+                      :anchor {panchor})
+  :stacking "background"
+  :windowtype "normal"
+  :wm-ignore true
+  (widget_panel :ph ph))
