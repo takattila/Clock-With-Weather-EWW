@@ -28,6 +28,14 @@ while [[ ! $# -eq 0 ]]; do
             shift
             ARG_CREATE_DESKTOP_ICONS=$1
             ;;
+        --corner-radius | -cr)
+            shift
+            ARG_CORNER_RADIUS=$1
+            ;;
+        --panel-gap | -pg)
+            shift
+            ARG_PANEL_GAP=$1
+            ;;
     esac
     shift
 done
@@ -41,12 +49,16 @@ DEFAULT_APPEARANCE="$(          [[ -n "${ARG_APPEARANCE}" ]]   && echo "${ARG_AP
 DEFAULT_WEATHER="$(             [[ -n "${ARG_WEATHER}" ]]      && echo "${ARG_WEATHER}"      || echo "default" )"
 DEFAULT_HOUR_FORMAT="$(         [[ -n "${ARG_HOUR_FORMAT}" ]]  && echo "${ARG_HOUR_FORMAT}"  || echo "24" )"
 DEFAULT_CREATE_DESKTOP_ICONS="$( [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]] && echo "${ARG_CREATE_DESKTOP_ICONS}" || echo "1" )"
+DEFAULT_CORNER_RADIUS="$(        [[ -n "${ARG_CORNER_RADIUS}" ]] && echo "${ARG_CORNER_RADIUS}" || grep -E '^  corner_radius: ' "${CONFIG_FILE}" 2>/dev/null | sed -E 's/^  corner_radius: //' )"
+DEFAULT_CORNER_RADIUS="${DEFAULT_CORNER_RADIUS:-10}"
+DEFAULT_PANEL_GAP="$(            [[ -n "${ARG_PANEL_GAP}" ]]     && echo "${ARG_PANEL_GAP}"     || grep -E '^  gap: ' "${CONFIG_FILE}" 2>/dev/null | sed -E 's/^  gap: //' )"
+DEFAULT_PANEL_GAP="${DEFAULT_PANEL_GAP:-16}"
 
 DESKTOP_LAUNCHER='
 [Desktop Entry]
 Comment=Start - Clock with Weather EWW widget
 Terminal=false
-Name=[ Start ] Clock with Weather widget
+Name=[ Start ] Clock with Weather EWW widget
 Exec=bash -c "REPLACE_APP_DIR/scripts/start.sh"
 Type=Application
 Categories=Utility;
@@ -58,7 +70,7 @@ DESKTOP_LAUNCHER_SETUP='
 [Desktop Entry]
 Comment=Setup - Clock with Weather EWW widget
 Terminal=true
-Name=[ Setup ] Clock with Weather widget
+Name=[ Setup ] Clock with Weather EWW widget
 Exec=bash -c "REPLACE_APP_DIR/scripts/setup.sh"
 Type=Application
 Categories=Settings;Utility;
@@ -220,11 +232,31 @@ function setupHourFormat() {
     [[ "${DEFAULT_HOUR_FORMAT}" = "2" ]] && DEFAULT_HOUR_FORMAT="12" || DEFAULT_HOUR_FORMAT="24"
 }
 
+function setupWindowSettings() {
+    echo
+    echo "- Window settings:"
+    echo "  corner_radius : window/panel background corner rounding in px (0 = square)."
+    echo "  panel.gap     : symmetric spacing in px between the panel and the taskbar on one"
+    echo "                  side and the opposite screen edge on the other side."
+    echo
+    DEFAULT_CORNER_RADIUS="$(
+        helperPrompt "  ${C_Y}corner radius${C_D} in px [0-50] ?: " "${DEFAULT_CORNER_RADIUS}" "VALIDATE_NUMBER"
+    )"
+    [[ "${DEFAULT_CORNER_RADIUS}" -lt 0 ]] && DEFAULT_CORNER_RADIUS=0
+
+    DEFAULT_PANEL_GAP="$(
+        helperPrompt "  ${C_Y}panel gap${C_D} in px [0-100] ?: " "${DEFAULT_PANEL_GAP}" "VALIDATE_NUMBER"
+    )"
+    [[ "${DEFAULT_PANEL_GAP}" -lt 0 ]] && DEFAULT_PANEL_GAP=0
+}
+
 function setupWriteConfig() {
     sed -i "s/^appearance: .*/appearance: ${DEFAULT_APPEARANCE}/" "${CONFIG_FILE}"
     sed -i "s/^weather: .*/weather: ${DEFAULT_WEATHER}/" "${CONFIG_FILE}"
     sed -i "s/^  hour_format: .*/  hour_format: \"${DEFAULT_HOUR_FORMAT}\"/" "${CONFIG_FILE}"
-    echo "- ${C_Y}'${CONFIG_FILE}'${C_D} updated (appearance: ${DEFAULT_APPEARANCE}, weather: ${DEFAULT_WEATHER}, hour_format: ${DEFAULT_HOUR_FORMAT})."
+    sed -i "s/^  corner_radius: .*/  corner_radius: ${DEFAULT_CORNER_RADIUS}/" "${CONFIG_FILE}"
+    sed -i "s/^  gap: .*/  gap: ${DEFAULT_PANEL_GAP}/" "${CONFIG_FILE}"
+    echo "- ${C_Y}'${CONFIG_FILE}'${C_D} updated (appearance: ${DEFAULT_APPEARANCE}, weather: ${DEFAULT_WEATHER}, hour_format: ${DEFAULT_HOUR_FORMAT}, corner_radius: ${DEFAULT_CORNER_RADIUS}, panel.gap: ${DEFAULT_PANEL_GAP})."
 }
 
 function setupIconSettings() {
@@ -241,12 +273,19 @@ function setupIconSettings() {
 
 function setupCreateStartIcons() {
     local launcherPath
+    local launcherMenuPath
     local launcher
     local menuDir="${HOME}/.local/share/applications"
+    local desktopDir
 
     mkdir -p "${menuDir}"
 
-    launcherPath="$(xdg-user-dir DESKTOP)/start-clock-with-weather-eww.desktop"
+    desktopDir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+    if [[ -z "${desktopDir}" ]]; then
+        desktopDir="${HOME}/Desktop"
+    fi
+
+    launcherPath="${desktopDir}/start-clock-with-weather-eww.desktop"
     launcherMenuPath="${menuDir}/start-clock-with-weather-eww.desktop"
 
     launcher=$(helperReplace "${DESKTOP_LAUNCHER}" "REPLACE_APP_DIR" "${DIR}")
@@ -266,12 +305,19 @@ function setupCreateStartIcons() {
 
 function setupCreateSetupIcons() {
     local launcherPath
+    local launcherMenuPath
     local launcher
     local menuDir="${HOME}/.local/share/applications"
+    local desktopDir
 
     mkdir -p "${menuDir}"
 
-    launcherPath="$(xdg-user-dir DESKTOP)/setup-clock-with-weather-eww.desktop"
+    desktopDir="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
+    if [[ -z "${desktopDir}" ]]; then
+        desktopDir="${HOME}/Desktop"
+    fi
+
+    launcherPath="${desktopDir}/setup-clock-with-weather-eww.desktop"
     launcherMenuPath="${menuDir}/setup-clock-with-weather-eww.desktop"
 
     launcher=$(helperReplace "${DESKTOP_LAUNCHER_SETUP}" "REPLACE_APP_DIR" "${DIR}")
@@ -289,6 +335,25 @@ function setupCreateSetupIcons() {
     fi
 }
 
+function setupStartApplication() {
+    local apiKey="${DEFAULT_OPENWEATHER_API_KEY:-}"
+    local startLog="${DIR}/start.log"
+
+    if [[ -z "${apiKey}" ]] && [[ -f "${DIR}/.api_key" ]]; then
+        apiKey="$(head -n 1 "${DIR}/.api_key")"
+    fi
+
+    echo
+    echo "- Starting the ${C_Y}eww widgets${C_D} ... "
+    if [[ -n "${apiKey}" ]]; then
+        nohup bash "${DIR}/scripts/start.sh" "${apiKey}" > "${startLog}" 2>&1 &
+    else
+        nohup bash "${DIR}/scripts/start.sh" > "${startLog}" 2>&1 &
+    fi
+    echo
+    echo "- The ${C_Y}eww widgets${C_D} are running."
+}
+
 function main() {
     if [[ -n "${FROM_INSTALL}" ]]; then
         return
@@ -298,10 +363,12 @@ function main() {
     setupAppearance
     setupWeather
     setupHourFormat
+    setupWindowSettings
     setupWriteConfig
     setupIconSettings
     setupCreateStartIcons
     setupCreateSetupIcons
+    setupStartApplication
 }
 
 main
