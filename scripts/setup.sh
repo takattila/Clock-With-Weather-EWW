@@ -288,6 +288,16 @@ function setupCreateStartIcons() {
     launcherPath="${desktopDir}/start-clock-with-weather-eww.desktop"
     launcherMenuPath="${menuDir}/start-clock-with-weather-eww.desktop"
 
+    local legacyLauncher
+    for legacyLauncher in \
+        "${menuDir}/start-clock-with-weather-conky-widget.desktop" \
+        "${desktopDir}/start-clock-with-weather-conky-widget.desktop"; do
+        if [[ -f "${legacyLauncher}" ]]; then
+            rm -f "${legacyLauncher}"
+            echo "- Removed obsolete launcher: ${C_Y}${legacyLauncher}${C_D}"
+        fi
+    done
+
     launcher=$(helperReplace "${DESKTOP_LAUNCHER}" "REPLACE_APP_DIR" "${DIR}")
 
     # Always create menu icon
@@ -319,6 +329,16 @@ function setupCreateSetupIcons() {
 
     launcherPath="${desktopDir}/setup-clock-with-weather-eww.desktop"
     launcherMenuPath="${menuDir}/setup-clock-with-weather-eww.desktop"
+
+    local legacyLauncher
+    for legacyLauncher in \
+        "${menuDir}/setup-clock-with-weather-conky-widget.desktop" \
+        "${desktopDir}/setup-clock-with-weather-conky-widget.desktop"; do
+        if [[ -f "${legacyLauncher}" ]]; then
+            rm -f "${legacyLauncher}"
+            echo "- Removed obsolete launcher: ${C_Y}${legacyLauncher}${C_D}"
+        fi
+    done
 
     launcher=$(helperReplace "${DESKTOP_LAUNCHER_SETUP}" "REPLACE_APP_DIR" "${DIR}")
 
