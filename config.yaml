@@ -9,14 +9,16 @@
 # system.hour_format: "24" | "12"
 # system.corner_radius  bg corner rounding (px) for both widgets; 0 = square.
 # panel.enabled  whether the system monitor panel is started (true/false)
-# panel.gap  symmetric spacing (px) between the panel and the taskbar on one
-#            side and the opposite screen edge on the other side (Req 2).
+# panel.gap  spacing (px) between the panel and the screen/taskbar edges.
+#            A single number applies it to every side, or give per-side gaps:
+#            gap: { top: 16, right: 16, bottom: 16, left: 16 }
+#            (missing sides default to 16 px)
 #
 # The OpenWeatherMap API key is intentionally NOT here (it would land in git).
 # Provide it via the OPENWEATHER_API_KEY environment variable or the local,
 # git-ignored file ./.api_key (first line, chmod 600).
 
-appearance: light-bg
+appearance: light
 weather: default
 window:
   alignment: middle_middle
@@ -27,4 +29,4 @@ system:
   corner_radius: 15
 panel:
   enabled: true
-  gap: 5
+  gap: 2

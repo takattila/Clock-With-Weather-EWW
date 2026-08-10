@@ -4,18 +4,25 @@ WM-independent workarea detection and panel geometry computation.
 
 The panel must stay inside the taskbar-free area (_NET_WORKAREA) on any window
 manager (KDE, GNOME, XFCE, i3, ...), and it must be inset from the taskbar,
-from the opposite screen edge AND from the lateral screen edge by the **same
-gap** (Req 2), so the free spacing stays symmetric on every side no matter
-where the taskbar sits:
+from the opposite screen edge AND from the lateral screen edge by the
+configured gap (Req 2), so the free spacing stays symmetric no matter where
+the taskbar sits:
 
-  taskbar at top    -> panel top / bottom / right all `gap` from their edges
-  taskbar at bottom -> panel bottom / top / right all `gap` from their edges
-  taskbar at right  -> panel left / top / bottom all `gap` (the panel moves to
-                       the left edge)
-  taskbar at left   -> panel right / top / bottom all `gap`
+  taskbar at top    -> panel top / bottom / right all gapped from their edges
+  taskbar at bottom -> panel bottom / top / right all gapped from their edges
+  taskbar at right  -> panel left / top / bottom all gapped (the panel moves
+                       to the left edge)
+  taskbar at left   -> panel right / top / bottom all gapped
 
-The gap value comes from config.yaml -> panel.gap (default: 16 px). The panel
-width is fixed at 250 px; the height is the workarea height minus the two gaps.
+The gap(s) come from config.yaml -> panel.gap (default: 16 px). panel.gap may
+be a single number (all sides get the same gap) or a map with per-side keys,
+e.g.:
+
+  panel:
+    gap: { top: 16, right: 16, bottom: 16, left: 16 }
+
+Missing sides default to 16 px. The panel width is fixed at 250 px; the height
+is the workarea height minus the top and bottom gaps.
 
 Output (stdout, JSON):
   {
@@ -23,7 +30,7 @@ Output (stdout, JSON):
     "workarea":   {"x": .., "y": .., "width": .., "height": ..},
     "taskbar":    "top" | "bottom" | "left" | "right" | "none",
     "panel":      {"x": .., "y": .., "width": .., "height": .., "anchor": ".."},
-    "panel_gap":  ..,
+    "panel_gap":  {"top": .., "right": .., "bottom": .., "left": ..},
     "real_workarea": bool   # False when the X display was unreachable
   }
 
@@ -33,10 +40,9 @@ depending on the compositor:
   - Wayland (gtk layer-shell): relative to the WORKAREA top-left (the taskbar
     is an exclusive zone that shifts the window down/right).
   - X11: ABSOLUTE screen coordinates (no layer-shell exclusive zone), so the
-    top-anchored y offset must include the workarea origin (wy). The horizontal
-    offset stays (ww - width)//2 because the "top right" anchor measures from
-    the screen right edge (== workarea right) and the "top left" anchor is only
-    used when workarea.x == 0.
+    top-anchored y offset must include the workarea origin (wy). The "top
+    right" anchor measures from the screen right edge (== workarea right) and
+    the "top left" anchor is only used when the taskbar sits on the right edge.
 
 Per-monitor mode (--per-monitor) reads a monitors JSON on stdin (from
 scripts/monitors.py) and computes the panel geometry for every monitor:
@@ -207,14 +213,35 @@ def get_xrandr_resolution():
     return None
 
 
-def load_gap(config_dir):
+def load_gaps(config_dir):
+    """Read the per-side panel gaps from config.yaml -> panel.gap.
+
+    panel.gap may be a single number (all sides get it) or a map with any of
+    the top/right/bottom/left keys (missing sides default to 16 px).
+    """
+    default = 16
+    gaps = {"top": default, "right": default, "bottom": default, "left": default}
     try:
         with open(os.path.join(config_dir, "config.yaml"), "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
         panel = cfg.get("panel") or {}
-        return int(panel.get("gap", 16))
+        raw = panel.get("gap", default)
+        if isinstance(raw, dict):
+            for side in gaps:
+                if side in raw:
+                    try:
+                        gaps[side] = int(raw[side])
+                    except (TypeError, ValueError):
+                        gaps[side] = default
+        else:
+            try:
+                v = int(raw)
+            except (TypeError, ValueError):
+                v = default
+            gaps = dict.fromkeys(gaps, v)
     except Exception:
-        return 16
+        pass
+    return gaps
 
 
 def detect_taskbar(screen, workarea):
@@ -237,33 +264,37 @@ def detect_compositor():
     return "x11"
 
 
-def compute_panel(screen, workarea, taskbar, gap, compositor, kde_frame=None):
+def compute_panel(screen, workarea, taskbar, gaps, compositor, kde_frame=None):
     # NOTE: on KDE/wayland (gtk layer-shell) the :x/:y offsets are margins
     # measured relative to the WORKAREA (the taskbar is an exclusive zone that
     # shifts the window down/right): screen_position = workarea_edge + offset.
-    # So the top-anchored y offset is just `gap` (workarea top is the taskbar
-    # bottom), and a `taskbar_h + gap` bottom margin applies when the taskbar
-    # sits on the bottom edge (workarea bottom == screen bottom).
+    # So the top-anchored y offset is just the top gap (workarea top is the
+    # taskbar bottom), and a `taskbar_h + bottom_gap` bottom margin applies when
+    # the taskbar sits at the bottom (the bottom exclusive zone shifts the
+    # window up).
     # On X11 (see eww display_backend.rs -> get_window_rectangle) there is no
     # layer-shell: the :x/:y are ABSOLUTE offsets from the monitor edge given by
     # the anchor, so a top-anchored panel must be offset below the taskbar by
     # workarea.y (wy). The "top right" anchor measures from the right edge
     # (workarea right == screen right) and the "top left" anchor is used only
     # when the taskbar sits on the right edge.
-    # The panel is inset from the taskbar, from the opposite screen edge and
-    # from the lateral screen edge by the SAME gap, so the free spacing around
-    # the panel is symmetric on every side (Req 2).
+    # The panel is inset from the taskbar and from the opposite screen edge by
+    # the corresponding per-side gap and from the lateral screen edge by the
+    # lateral gap, so the free spacing around the panel is configurable on
+    # every side (Req 2).
     sw, sh = screen
     wx, wy, ww, wh = workarea
+    gt, gr, gb, gl = gaps["top"], gaps["right"], gaps["bottom"], gaps["left"]
     width = PANEL_WIDTH
-    height = max(wh - 2 * gap, 100)
+    height = max(wh - gt - gb, 100)
     x11 = compositor == "x11"
     top_origin = wy if x11 else 0
 
     # The Plasma taskbar's visual frame may extend beyond the exclusive zone
     # reported by _NET_WORKAREA (floating-panel margins), so the panel must be
-    # inset by `gap` from the *frame* edge, not from the exclusive zone, to
-    # match the config value on screen. frame_edge is that taskbar-side edge.
+    # inset by the top/bottom gap from the *frame* edge, not from the exclusive
+    # zone, to match the config value on screen. frame_edge is that taskbar-side
+    # edge.
     frame_edge = None
     if kde_frame:
         fx, fy, fw, fh = kde_frame
@@ -274,34 +305,34 @@ def compute_panel(screen, workarea, taskbar, gap, compositor, kde_frame=None):
 
     if taskbar == "bottom":
         anchor = "bottom right"
-        x = gap
+        x = gr
         if frame_edge is not None:
-            panel_bottom = frame_edge - gap
+            panel_bottom = frame_edge - gb
             y = (sh - panel_bottom) if x11 else (wy + wh - panel_bottom)
-            height = max(panel_bottom - (wy + gap), 100)
+            height = max(panel_bottom - (wy + gt), 100)
         else:
-            y = (sh - (wy + wh)) + gap
+            y = (sh - (wy + wh)) + gb
     elif taskbar == "right":
         anchor = "top left"
-        x = gap
-        y = top_origin + gap
+        x = gl
+        y = top_origin + gt
     elif taskbar == "left":
         anchor = "top right"
-        x = gap
-        y = top_origin + gap
+        x = gr
+        y = top_origin + gt
     elif taskbar == "none":
         anchor = "top right"
-        x = gap
-        y = top_origin + gap
-        height = max(sh - 2 * gap, 100)
+        x = gr
+        y = top_origin + gt
+        height = max(sh - gt - gb, 100)
     else:  # taskbar == "top"
         anchor = "top right"
-        x = gap
+        x = gr
         if frame_edge is not None:
-            y = top_origin + (frame_edge - wy) + gap
-            height = max(sh - frame_edge - 2 * gap, 100)
+            y = top_origin + (frame_edge - wy) + gt
+            height = max(sh - frame_edge - gt - gb, 100)
         else:
-            y = top_origin + gap
+            y = top_origin + gt
     return {"x": x, "y": y, "width": width, "height": height, "anchor": anchor}
 
 
@@ -315,7 +346,7 @@ def global_bounds(monitors):
     return tw, th
 
 
-def compute_per_monitor(monitors, gap, compositor):
+def compute_per_monitor(monitors, gaps, compositor):
     result = []
     workarea = get_net_workarea()
     global_screen = global_bounds(monitors)
@@ -330,7 +361,7 @@ def compute_per_monitor(monitors, gap, compositor):
                 break
 
     # The taskbar's visual frame (with floating-panel margins) is what the panel
-    # must keep `gap` away from, so the gap matches the config on screen.
+    # must keep the top/bottom gap away from, so the gap matches the config.
     frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
 
     for i, m in enumerate(monitors):
@@ -343,9 +374,9 @@ def compute_per_monitor(monitors, gap, compositor):
         # bottom gap would be eaten by the taskbar's exclusive zone.
         if i == primary and workarea:
             local_workarea = (0, workarea[1], screen[0], workarea[3])
-            panel = compute_panel(screen, local_workarea, taskbar, gap, compositor, kde_frame=frame)
+            panel = compute_panel(screen, local_workarea, taskbar, gaps, compositor, kde_frame=frame)
         else:
-            panel = compute_panel(screen, (0, 0, screen[0], screen[1]), "none", gap, compositor)
+            panel = compute_panel(screen, (0, 0, screen[0], screen[1]), "none", gaps, compositor)
         result.append(
             {
                 "index": m["index"],
@@ -363,12 +394,12 @@ def compute_per_monitor(monitors, gap, compositor):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     config_dir = os.path.abspath(args[-1] if args else os.getcwd())
-    gap = load_gap(config_dir)
+    gaps = load_gaps(config_dir)
 
     if "--per-monitor" in sys.argv:
         compositor = detect_compositor()
         monitors = json.load(sys.stdin).get("monitors", [])
-        print(json.dumps(compute_per_monitor(monitors, gap, compositor)))
+        print(json.dumps(compute_per_monitor(monitors, gaps, compositor)))
         return
 
     screen = get_xrandr_resolution()
@@ -382,7 +413,7 @@ def main():
     compositor = detect_compositor()
     taskbar = detect_taskbar(screen, workarea)
     frame = kde_panel_frame(screen) if taskbar in ("top", "bottom") else None
-    panel = compute_panel(screen, workarea, taskbar, gap, compositor, kde_frame=frame)
+    panel = compute_panel(screen, workarea, taskbar, gaps, compositor, kde_frame=frame)
 
     # PANEL_HEIGHT env override still wins (used by panel.py to size the charts).
     env_override = os.environ.get("PANEL_HEIGHT") or os.environ.get("EWW_PANEL_HEIGHT")
@@ -399,13 +430,13 @@ def main():
         },
         "taskbar": taskbar,
         "panel": panel,
-        "panel_gap": gap,
+        "panel_gap": gaps,
         "compositor": compositor,
         "real_workarea": real,
     }
     print(json.dumps(result))
     print(
-        "screen=%dx%d workarea=%d,%d %dx%d taskbar=%s gap=%d panel=%s %dx%d+%d+%d"
+        "screen=%dx%d workarea=%d,%d %dx%d taskbar=%s gap=t%d,r%d,b%d,l%d panel=%s %dx%d+%d+%d"
         % (
             screen[0],
             screen[1],
@@ -414,7 +445,10 @@ def main():
             workarea[2],
             workarea[3],
             taskbar,
-            gap,
+            gaps["top"],
+            gaps["right"],
+            gaps["bottom"],
+            gaps["left"],
             panel["anchor"],
             panel["width"],
             panel["height"],

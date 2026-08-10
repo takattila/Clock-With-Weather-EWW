@@ -261,10 +261,11 @@ cd ~/.conky/Clock-With-Weather-EWW
    from the `appearance` field of `config.yaml` +
    `themes/appearance/<name>/appearance.yaml` (colors, font, icon set,
    background transparency).
-2. **`workarea.py`** — reads `_NET_WORKAREA` and the `panel.gap` value from
+2. **`workarea.py`** — reads `_NET_WORKAREA` and the `panel.gap` value(s) from
    `config.yaml`, then computes the `panel_window` geometry (anchor + offsets
-   + height) so the panel is inset from the taskbar **and** from the opposite
-   screen edge by the **same gap** (Req 2). The offsets are interpreted for
+   + height) so the panel is inset from the taskbar, from the opposite screen
+   edge and from the lateral screen edge by the configured per-side gap
+   (Req 2). The offsets are interpreted for
    the current compositor (Wayland layer-shell vs. absolute X11 coordinates,
    see the "Panel alignment" section). The computed values override the
    `panel_window` geometry in `eww.yuck` at runtime. If the X display is
@@ -329,7 +330,7 @@ panel:
 | `weather` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
 | `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
-| `panel.gap` | integer px | the panel is inset from the taskbar and from the opposite screen edge by this same gap (see the "Panel alignment" section) |
+| `panel.gap` | integer px **or** map | the panel is inset from the taskbar, the opposite screen edge and the lateral edge. A single number applies to every side; a map `{ top:, right:, bottom:, left: }` sets each side independently (missing sides default to 16 px). See the "Panel alignment" section |
 
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
 + the selected weather theme and prints the merged values as JSON for the
@@ -565,16 +566,23 @@ $bg-alpha: 0.0;
 ### Panel alignment (taskbar-relative, "Req 2")
 
 The `panel_window` (250 px wide) is positioned so that the free spacing on the
-**taskbar side and on the opposite screen edge is equal**. `start.sh` computes
-this from `_NET_WORKAREA` + `config.yaml → panel.gap` (default **16 px**) via
-`scripts/workarea.py`, which detects the taskbar position:
+**taskbar side, the opposite screen edge and the lateral screen edge** is the
+configured gap on every side. `start.sh` computes this from `_NET_WORKAREA` +
+`config.yaml → panel.gap` (default **16 px**; either a single number or a
+per-side map `{ top:, right:, bottom:, left: }`) via `scripts/workarea.py`,
+which detects the taskbar position and applies the per-side gaps:
 
 | Taskbar position | Panel geometry result |
 |---|---|
-| **top** | `anchor "top right"`, `y = gap` (Wayland) / `y = workarea.y + gap` (X11), height `= workarea_h − 2·gap` → gap(panel→taskbar) = gap(panel→screen bottom) |
-| **bottom** | `anchor "bottom right"`, `y = taskbar_h + gap` (bottom margin), height `= workarea_h − 2·gap` → gap(panel→taskbar) = gap(panel→screen top) |
-| **right** | the panel moves to the **left** edge: `anchor "top left"`, `x = (workarea_w − 250)/2` → gap(panel→taskbar) = gap(panel→left screen edge) |
-| **left** | `anchor "top right"`, `x = (workarea_w − 250)/2` → gap(panel→taskbar) = gap(panel→right screen edge) |
+| **top** | `anchor "top right"`, `x = gap.right`, `y = gap.top` (Wayland) / `y = workarea.y + (frame − workarea.y) + gap.top` (X11), height `= screen_h − frame − gap.top − gap.bottom` → gaps from the taskbar frame, the screen bottom and the right edge |
+| **bottom** | `anchor "bottom right"`, `x = gap.right`, bottom margin `= gap.bottom`, height `= panel_bottom − (workarea.y + gap.top)` → gaps from the taskbar frame, the screen top and the right edge |
+| **right** | the panel moves to the **left** edge: `anchor "top left"`, `x = gap.left`, `y = gap.top`, height `= workarea_h − gap.top − gap.bottom` |
+| **left** | `anchor "top right"`, `x = gap.right`, `y = gap.top`, height `= workarea_h − gap.top − gap.bottom` |
+
+On KDE/Plasma the top/bottom gap is measured from the taskbar's **visual frame**
+(the KWin scripting API is queried for it), because a floating taskbar's frame
+extends beyond the exclusive zone reported by `_NET_WORKAREA`; without the frame
+info the geometry falls back to the exclusive zone.
 | **none** | `anchor "top right"`, flush right, inset top/bottom by `gap` |
 
 > Note: the `:x`/`:y` offsets are interpreted differently depending on the
