@@ -16,7 +16,7 @@
 # Provide it via the OPENWEATHER_API_KEY environment variable or the local,
 # git-ignored file ./.api_key (first line, chmod 600).
 
-appearance: light-bg
+appearance: light
 weather: default
 window:
   alignment: middle_middle
