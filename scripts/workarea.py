@@ -53,10 +53,10 @@ Output (stdout, JSON):
     "heights": [ .. ]    # distinct panel heights (for panel.py)
   }
 
-On Wayland the taskbar workarea is not readable (_NET_WORKAREA is X11-only), so
-every monitor is laid out from its own resolution minus two gaps. On X11 the
-primary monitor (the one under the _NET_WORKAREA origin) keeps the taskbar
-inset; secondary monitors use the symmetric-gap full-height geometry.
+The taskbar workarea is read through XWayland on Wayland too (KDE exposes
+_NET_WORKAREA there, see find_xwayland_env), so the primary monitor (the one
+under the _NET_WORKAREA origin) keeps the taskbar inset on both compositors.
+Secondary monitors use the symmetric-gap full-height geometry.
 
 Usage: ./workarea.py [config_dir]
 """
@@ -72,7 +72,46 @@ import yaml
 PANEL_WIDTH = 250
 
 
+def find_xwayland_env():
+    """Locate DISPLAY/XAUTHORITY for the running XWayland instance.
+
+    The panel geometry scripts may run without the X environment exported
+    (start.sh is often launched from the desktop session), while the taskbar
+    workarea (_NET_WORKAREA) is only readable through XWayland. The compositor
+    exposes its Xwayland display + auth file on the command line, so scan /proc
+    for it instead of requiring the session to export DISPLAY/XAUTHORITY.
+    Existing environment values always win.
+    """
+    env = {}
+    try:
+        import glob
+        markers = (b"kwin_wayland", b"Xwayland", b"mutter", b"gnome-shell", b"weston")
+        for path in glob.glob("/proc/[0-9]*/cmdline"):
+            try:
+                with open(path, "rb") as f:
+                    data = f.read()
+            except OSError:
+                continue
+            parts = data.split(b"\0")
+            if not parts or not any(m in parts[0] for m in markers):
+                continue
+            argv = [p.decode("utf-8", "replace") for p in parts if p]
+            for idx, arg in enumerate(argv):
+                if arg == "--xwayland-display" and idx + 1 < len(argv):
+                    env.setdefault("DISPLAY", argv[idx + 1])
+                elif arg == "--xwayland-xauthority" and idx + 1 < len(argv):
+                    env.setdefault("XAUTHORITY", argv[idx + 1])
+    except Exception:
+        pass
+    return env
+
+
 def get_net_workarea():
+    for key in ("DISPLAY", "XAUTHORITY"):
+        if key not in os.environ:
+            discovered = find_xwayland_env().get(key)
+            if discovered:
+                os.environ[key] = discovered
     try:
         out = subprocess.check_output(
             ["xprop", "-root", "_NET_WORKAREA"],
@@ -202,7 +241,13 @@ def compute_per_monitor(monitors, gap, compositor):
 
     for i, m in enumerate(monitors):
         screen = monitor_screen(m)
-        if compositor == "x11" and i == primary and workarea:
+        # The taskbar workarea is applied to the monitor that holds it on both
+        # X11 and Wayland (KDE exposes _NET_WORKAREA through XWayland, see
+        # find_xwayland_env). On Wayland eww's layer-shell offsets are relative
+        # to that workarea (the exclusive zone shifts the window), so the panel
+        # height must be the workarea height minus two gaps, otherwise the
+        # bottom gap would be eaten by the taskbar's exclusive zone.
+        if i == primary and workarea:
             local_workarea = (0, workarea[1], screen[0], workarea[3])
             panel = compute_panel(screen, local_workarea, taskbar, gap, compositor)
         else:
@@ -222,7 +267,8 @@ def compute_per_monitor(monitors, gap, compositor):
 
 
 def main():
-    config_dir = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    config_dir = os.path.abspath(args[-1] if args else os.getcwd())
     gap = load_gap(config_dir)
 
     if "--per-monitor" in sys.argv:
