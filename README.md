@@ -193,6 +193,11 @@ What the installer does, in order:
 | `xrandr` | any | resolution / workarea fallback |
 | `Noto Sans` font | any | the only font family used |
 
+The three Python packages (`requests`, `psutil`, `PyYAML`) are also listed in
+[`requirements.txt`](requirements.txt) for manual / pip-based setups
+(`pip install -r requirements.txt`); the installer (`install.sh`) installs
+them from your distribution's repositories instead.
+
 ### For testing / development
 
 | Dependency | Role |
