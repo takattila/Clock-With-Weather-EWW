@@ -169,6 +169,32 @@ class Watcher(object):
                 changed = True
         return changed
 
+    def _reload_eww(self):
+        """Run `eww reload`, retrying when it fails.
+
+        The eww 0.5.0 IPC client occasionally fails to read the daemon's
+        response with EAGAIN (os error 11) when the daemon is busy; without a
+        retry that drops the reload and the SCSS theme changes (colors, corner
+        radius, fonts) never get applied. Returns True on success.
+        """
+        attempts = 5
+        delay = 0.75
+        for attempt in range(1, attempts + 1):
+            reload = subprocess.run(
+                ["eww", "--config", self.config_dir, "reload"],
+                capture_output=True,
+                text=True,
+            )
+            if reload.returncode == 0:
+                return True
+            if attempt < attempts:
+                self.log(
+                    "eww reload failed (attempt %d/%d): %s"
+                    % (attempt, attempts, reload.stderr.strip().splitlines()[-1])
+                )
+                time.sleep(delay)
+        return False
+
     def _apply(self):
         self.log("regenerating theme + reloading eww ...")
         gen = subprocess.run(
@@ -181,15 +207,10 @@ class Watcher(object):
             return
         for line in gen.stdout.splitlines():
             self.log("  " + line.strip())
-        reload = subprocess.run(
-            ["eww", "--config", self.config_dir, "reload"],
-            capture_output=True,
-            text=True,
-        )
-        if reload.returncode != 0:
-            self.log("eww reload failed: " + reload.stderr.strip())
-        else:
+        if self._reload_eww():
             self.log("eww reloaded")
+        else:
+            self.log("eww reload failed (after retries)")
         if self.config_changed:
             self.config_changed = False
             self.log("config.yaml changed; re-laying-out windows")
