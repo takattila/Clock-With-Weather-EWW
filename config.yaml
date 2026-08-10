@@ -29,4 +29,9 @@ system:
   corner_radius: 15
 panel:
   enabled: true
-  gap: 2
+  gap: {
+    top: 0,
+    bottom: 5,
+    left: 0,
+    right: 0
+  }
