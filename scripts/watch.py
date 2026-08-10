@@ -180,11 +180,19 @@ class Watcher(object):
         attempts = 5
         delay = 0.75
         for attempt in range(1, attempts + 1):
-            reload = subprocess.run(
-                ["eww", "--config", self.config_dir, "reload"],
-                capture_output=True,
-                text=True,
-            )
+            try:
+                reload = subprocess.run(
+                    ["eww", "--config", self.config_dir, "reload"],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+            except subprocess.TimeoutExpired:
+                self.log(
+                    "eww reload timed out (attempt %d/%d)" % (attempt, attempts)
+                )
+                time.sleep(delay)
+                continue
             if reload.returncode == 0:
                 return True
             if attempt < attempts:
@@ -197,11 +205,16 @@ class Watcher(object):
 
     def _apply(self):
         self.log("regenerating theme + reloading eww ...")
-        gen = subprocess.run(
-            [sys.executable, os.path.join(self.config_dir, "scripts", "theme.py"), self.config_dir],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            gen = subprocess.run(
+                [sys.executable, os.path.join(self.config_dir, "scripts", "theme.py"), self.config_dir],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            self.log("theme generation timed out")
+            return
         if gen.returncode != 0:
             self.log("theme generation failed, skipping reload:\n" + gen.stderr.strip())
             return
@@ -214,11 +227,24 @@ class Watcher(object):
         if self.config_changed:
             self.config_changed = False
             self.log("config.yaml changed; re-laying-out windows")
-            subprocess.run(
-                [os.path.join(self.config_dir, "scripts", "start.sh"), "--relayout"],
-                capture_output=True,
-                text=True,
-            )
+            # Redirect the relayout output to watch.log instead of a pipe: the
+            # eww open clients it spawns can outlive start.sh and would keep the
+            # pipe write-end open, making subprocess.run block forever (which
+            # wedges the watcher so further config edits are ignored).
+            log_path = os.path.join(self.config_dir, "watch.log")
+            try:
+                with open(log_path, "a", encoding="utf-8") as logf:
+                    relayout = subprocess.run(
+                        [os.path.join(self.config_dir, "scripts", "start.sh"), "--relayout"],
+                        stdout=logf,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        timeout=45,
+                    )
+                if relayout.returncode != 0:
+                    self.log("relayout exited with status %d" % relayout.returncode)
+            except subprocess.TimeoutExpired:
+                self.log("relayout timed out (killed); watcher continues")
 
 
 def main():
