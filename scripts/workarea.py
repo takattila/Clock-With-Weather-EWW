@@ -3,15 +3,16 @@
 WM-independent workarea detection and panel geometry computation.
 
 The panel must stay inside the taskbar-free area (_NET_WORKAREA) on any window
-manager (KDE, GNOME, XFCE, i3, ...), and it must be inset from the taskbar and
-from the opposite screen edge by the **same gap** (Req 2), so the free spacing
-stays symmetric no matter where the taskbar sits:
+manager (KDE, GNOME, XFCE, i3, ...), and it must be inset from the taskbar,
+from the opposite screen edge AND from the lateral screen edge by the **same
+gap** (Req 2), so the free spacing stays symmetric on every side no matter
+where the taskbar sits:
 
-  taskbar at top    -> gap(panel top -> taskbar)   == gap(panel bottom -> screen edge)
-  taskbar at bottom -> gap(panel bottom -> taskbar) == gap(panel top -> screen edge)
-  taskbar at right  -> gap(panel -> taskbar)       == gap(panel -> left screen edge)
-                       (the panel moves to the left edge)
-  taskbar at left   -> gap(panel -> taskbar)       == gap(panel -> right screen edge)
+  taskbar at top    -> panel top / bottom / right all `gap` from their edges
+  taskbar at bottom -> panel bottom / top / right all `gap` from their edges
+  taskbar at right  -> panel left / top / bottom all `gap` (the panel moves to
+                       the left edge)
+  taskbar at left   -> panel right / top / bottom all `gap`
 
 The gap value comes from config.yaml -> panel.gap (default: 16 px). The panel
 width is fixed at 250 px; the height is the workarea height minus the two gaps.
@@ -66,6 +67,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+import time
 
 import yaml
 
@@ -129,6 +132,68 @@ def get_net_workarea():
     return None
 
 
+def kde_panel_frame(screen):
+    """Query the KDE Plasma taskbar's visual frame via the KWin scripting API.
+
+    _NET_WORKAREA only reports the taskbar's exclusive zone, which is smaller
+    than the panel's actual frame (floating panels add margins around it). The
+    widget must keep `gap` away from the *frame*, so the top/bottom gap matches
+    the config value on screen. Returns (x, y, w, h) of the largest non-desktop
+    plasmashell surface, or None when unavailable (non-KDE, no qdbus6/journald
+    ...), in which case the caller falls back to the exclusive zone.
+    """
+    try:
+        script = os.path.join(tempfile.gettempdir(), "kwin_panel_dump.js")
+        with open(script, "w", encoding="utf-8") as f:
+            f.write(
+                "var wl = workspace.windowList();\n"
+                "for (var i = 0; i < wl.length; i++) {\n"
+                "  var w = wl[i];\n"
+                "  var g = w.frameGeometry;\n"
+                "  if (w.resourceClass === 'plasmashell' && g.width > 200 && g.height > 10) {\n"
+                "    console.log('KPANEL ' + g.x + ',' + g.y + ',' + g.width + ',' + g.height);\n"
+                "  }\n"
+                "}\n"
+                "console.log('KPANEL DONE');\n"
+            )
+        env = dict(os.environ)
+        env.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/%d/bus" % os.getuid())
+        env.setdefault("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+        subprocess.run(
+            ["qdbus6", "org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", script],
+            env=env, capture_output=True, text=True, timeout=5,
+        )
+        subprocess.run(
+            ["qdbus6", "org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"],
+            env=env, capture_output=True, text=True, timeout=5,
+        )
+        sw, sh = screen
+        best = None
+        for _ in range(3):
+            time.sleep(1.0)
+            try:
+                out = subprocess.check_output(
+                    ["journalctl", "--user", "-o", "cat", "--since", "15 seconds ago"],
+                    stderr=subprocess.DEVNULL, text=True, timeout=5,
+                )
+            except Exception:
+                continue
+            for line in out.splitlines():
+                m = re.match(r"^KPANEL\s+(-?\d+),(-?\d+),(\d+),(\d+)$", line.strip())
+                if not m:
+                    continue
+                x, y, w, h = (int(v) for v in m.groups())
+                if w >= sw - 1 and h >= sh - 1:
+                    continue
+                if best is None or w * h > best[2] * best[3]:
+                    best = (x, y, w, h)
+            if best is not None:
+                break
+        return best
+    except Exception:
+        return None
+
+
 def get_xrandr_resolution():
     try:
         out = subprocess.check_output(
@@ -172,7 +237,7 @@ def detect_compositor():
     return "x11"
 
 
-def compute_panel(screen, workarea, taskbar, gap, compositor):
+def compute_panel(screen, workarea, taskbar, gap, compositor, kde_frame=None):
     # NOTE: on KDE/wayland (gtk layer-shell) the :x/:y offsets are margins
     # measured relative to the WORKAREA (the taskbar is an exclusive zone that
     # shifts the window down/right): screen_position = workarea_edge + offset.
@@ -182,36 +247,61 @@ def compute_panel(screen, workarea, taskbar, gap, compositor):
     # On X11 (see eww display_backend.rs -> get_window_rectangle) there is no
     # layer-shell: the :x/:y are ABSOLUTE offsets from the monitor edge given by
     # the anchor, so a top-anchored panel must be offset below the taskbar by
-    # workarea.y (wy). The horizontal offset stays (ww - width)//2 because the
-    # "top right" anchor measures from the right edge (workarea right == screen
-    # right) and the "top left" anchor is used only when workarea.x == 0.
+    # workarea.y (wy). The "top right" anchor measures from the right edge
+    # (workarea right == screen right) and the "top left" anchor is used only
+    # when the taskbar sits on the right edge.
+    # The panel is inset from the taskbar, from the opposite screen edge and
+    # from the lateral screen edge by the SAME gap, so the free spacing around
+    # the panel is symmetric on every side (Req 2).
     sw, sh = screen
     wx, wy, ww, wh = workarea
     width = PANEL_WIDTH
     height = max(wh - 2 * gap, 100)
     x11 = compositor == "x11"
     top_origin = wy if x11 else 0
+
+    # The Plasma taskbar's visual frame may extend beyond the exclusive zone
+    # reported by _NET_WORKAREA (floating-panel margins), so the panel must be
+    # inset by `gap` from the *frame* edge, not from the exclusive zone, to
+    # match the config value on screen. frame_edge is that taskbar-side edge.
+    frame_edge = None
+    if kde_frame:
+        fx, fy, fw, fh = kde_frame
+        if taskbar == "top":
+            frame_edge = fy + fh
+        elif taskbar == "bottom":
+            frame_edge = fy
+
     if taskbar == "bottom":
         anchor = "bottom right"
-        x = 0
-        y = (sh - (wy + wh)) + gap
+        x = gap
+        if frame_edge is not None:
+            panel_bottom = frame_edge - gap
+            y = (sh - panel_bottom) if x11 else (wy + wh - panel_bottom)
+            height = max(panel_bottom - (wy + gap), 100)
+        else:
+            y = (sh - (wy + wh)) + gap
     elif taskbar == "right":
         anchor = "top left"
-        x = max((ww - width) // 2, 0)
+        x = gap
         y = top_origin + gap
     elif taskbar == "left":
         anchor = "top right"
-        x = max((ww - width) // 2, 0)
+        x = gap
         y = top_origin + gap
     elif taskbar == "none":
         anchor = "top right"
-        x = 0
+        x = gap
         y = top_origin + gap
         height = max(sh - 2 * gap, 100)
     else:  # taskbar == "top"
         anchor = "top right"
-        x = 0
-        y = top_origin + gap
+        x = gap
+        if frame_edge is not None:
+            y = top_origin + (frame_edge - wy) + gap
+            height = max(sh - frame_edge - 2 * gap, 100)
+        else:
+            y = top_origin + gap
     return {"x": x, "y": y, "width": width, "height": height, "anchor": anchor}
 
 
@@ -239,6 +329,10 @@ def compute_per_monitor(monitors, gap, compositor):
                 primary = i
                 break
 
+    # The taskbar's visual frame (with floating-panel margins) is what the panel
+    # must keep `gap` away from, so the gap matches the config on screen.
+    frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
+
     for i, m in enumerate(monitors):
         screen = monitor_screen(m)
         # The taskbar workarea is applied to the monitor that holds it on both
@@ -249,7 +343,7 @@ def compute_per_monitor(monitors, gap, compositor):
         # bottom gap would be eaten by the taskbar's exclusive zone.
         if i == primary and workarea:
             local_workarea = (0, workarea[1], screen[0], workarea[3])
-            panel = compute_panel(screen, local_workarea, taskbar, gap, compositor)
+            panel = compute_panel(screen, local_workarea, taskbar, gap, compositor, kde_frame=frame)
         else:
             panel = compute_panel(screen, (0, 0, screen[0], screen[1]), "none", gap, compositor)
         result.append(
@@ -287,7 +381,8 @@ def main():
 
     compositor = detect_compositor()
     taskbar = detect_taskbar(screen, workarea)
-    panel = compute_panel(screen, workarea, taskbar, gap, compositor)
+    frame = kde_panel_frame(screen) if taskbar in ("top", "bottom") else None
+    panel = compute_panel(screen, workarea, taskbar, gap, compositor, kde_frame=frame)
 
     # PANEL_HEIGHT env override still wins (used by panel.py to size the charts).
     env_override = os.environ.get("PANEL_HEIGHT") or os.environ.get("EWW_PANEL_HEIGHT")

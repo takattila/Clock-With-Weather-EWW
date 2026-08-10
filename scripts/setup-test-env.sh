@@ -190,10 +190,16 @@ stop_plasmashell() {
 }
 
 start_plasmashell() {
-  nohup plasmashell >/dev/null 2>&1 &
-  disown
+  if systemctl --user list-unit-files plasma-plasmashell.service >/dev/null 2>&1; then
+    systemctl --user restart plasma-plasmashell.service
+    log "plasmashell restarted via systemd."
+  else
+    # fallback for sessions without the Plasma user units
+    nohup plasmashell >/dev/null 2>&1 &
+    disown
+    log "plasmashell running (nohup fallback)."
+  fi
   sleep 2
-  log "plasmashell running."
 }
 
 # ----------------------------------------------------------------- commands
