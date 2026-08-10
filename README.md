@@ -14,7 +14,7 @@
     - **Network Traffic** monitoring (Download/Upload).
     - **Dynamic Scaling**: Network charts automatically adjust their scale and units (KiB/s to MiB/s) based on traffic.
     - **Auto-detection**: Automatically identifies the active network interface (NIC).
-- **Taskbar-aware panel**: the panel aligns to the taskbar with a symmetric gap on both sides.
+- **Taskbar-aware panel**: the panel aligns to the taskbar with per-side gaps (`panel.gap`), defaulting to the same spacing on every side.
 - **Desktop Integration**: Automatic creation of Menu icons and optional Desktop shortcuts.
 
 <table>
@@ -46,7 +46,7 @@ This EWW widget consists of two separate but perfectly synchronized windows desi
 #### Key Features of the Integration:
 *   **Seamless Alignment**: The two components are designed to "snap" together. When the Panel is enabled in the settings, both windows are opened, and the Panel automatically positions itself adjacent to the clock widget, creating a single, cohesive interface.
 *   **Unified Styling**: Both units share the same theme configuration (`config.yaml` → `themes/appearance/<name>/appearance.yaml`). This ensures that colors, fonts, and transparency levels are perfectly matched, whether you choose a light or dark theme.
-*   **Taskbar-aware Panel**: The panel is aligned to the taskbar with a symmetric gap on the taskbar side and on the opposite screen edge (see the "Panel alignment" section).
+*   **Taskbar-aware Panel**: The panel is aligned to the taskbar with per-side gaps (taskbar side, opposite screen edge and lateral edge), configurable via `panel.gap` — a single number or a per-side map (see the "Panel alignment" section).
 *   **Visual Hierarchy**: The panel uses alternating "light" and "dark" colors for the charts (e.g., CPU vs. Memory, Download vs. Upload). This intentional design choice provides better visual separation, making it easier to distinguish between different data streams at a glance.
 
 
@@ -321,7 +321,8 @@ system:
   hour_format: "24"     # "24" | "12"
   corner_radius: 20     # bg corner rounding (px) for BOTH widgets; 0 = square
 panel:
-  gap: 16               # symmetric spacing (px) around the panel (Req 2)
+  gap: 16               # spacing (px) on every side of the panel (Req 2)
+                        # or per-side: gap: { top: 16, right: 16, bottom: 16, left: 16 }
 ```
 
 | Field | Values | Effect |
@@ -578,12 +579,12 @@ which detects the taskbar position and applies the per-side gaps:
 | **bottom** | `anchor "bottom right"`, `x = gap.right`, bottom margin `= gap.bottom`, height `= panel_bottom − (workarea.y + gap.top)` → gaps from the taskbar frame, the screen top and the right edge |
 | **right** | the panel moves to the **left** edge: `anchor "top left"`, `x = gap.left`, `y = gap.top`, height `= workarea_h − gap.top − gap.bottom` |
 | **left** | `anchor "top right"`, `x = gap.right`, `y = gap.top`, height `= workarea_h − gap.top − gap.bottom` |
+| **none** | `anchor "top right"`, flush right (`x = gap.right`), inset top/bottom by `gap.top` / `gap.bottom`, height `= screen_h − gap.top − gap.bottom` |
 
 On KDE/Plasma the top/bottom gap is measured from the taskbar's **visual frame**
 (the KWin scripting API is queried for it), because a floating taskbar's frame
 extends beyond the exclusive zone reported by `_NET_WORKAREA`; without the frame
 info the geometry falls back to the exclusive zone.
-| **none** | `anchor "top right"`, flush right, inset top/bottom by `gap` |
 
 > Note: the `:x`/`:y` offsets are interpreted differently depending on the
 > compositor, and `workarea.py` (via `detect_compositor()`) switches between the
