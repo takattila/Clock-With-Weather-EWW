@@ -1,40 +1,68 @@
+# ============================================================================
 # Central configuration for the eww widget.
-#
-# appearance selects the theme under  themes/appearance/<name>/appearance.yaml
-# weather.name  selects the city settings under themes/weather/<name>/weather.yaml
-# weather.window  position of the clock widget, one of the conky-style names:
-#                   top_left, top_right, top_middle, bottom_left, bottom_right,
-#                   bottom_middle, middle_left, middle_right, middle_middle
-#                 weather.window.position_x / position_y are the pixel offset of
-#                 the clock widget from its anchor.
-# system.hour_format: "24" | "12"
-# system.corner_radius  bg corner rounding (px) for both widgets; 0 = square.
-# panel.enabled  whether the system monitor panel is started (true/false)
-# panel.window.alignment  horizontal side of the full-height panel: "right"
-#                 (default, flush right) or "left" (flush left).
-# panel.gap  spacing (px) between the panel and the screen/taskbar edges.
-#            A single number applies it to every side, or give per-side gaps:
-#            gap: { top: 16, right: 16, bottom: 16, left: 16 }
-#            (missing sides default to 16 px)
 #
 # The OpenWeatherMap API key is intentionally NOT here (it would land in git).
 # Provide it via the OPENWEATHER_API_KEY environment variable or the local,
 # git-ignored file ./.api_key (first line, chmod 600).
+# ============================================================================
 
+# appearance -> the color theme. Options: light | dark | light-bg | dark-bg |
+#               any directory name under themes/appearance/<name>/appearance.yaml
 appearance: light
+
+# weather -> weather widget (clock) settings.
 weather:
+
+  # name -> which city settings to use. Options: default | budapest | berlin |
+  #         any directory name under themes/weather/<name>/weather.yaml
   name: default
+
+  # window -> position of the clock widget on the screen.
   window:
+
+    # alignment -> where the clock is anchored.
+    # Options: top_left | top_right | top_middle | bottom_left | bottom_right |
+    #          bottom_middle | middle_left | middle_right | middle_middle
     alignment: middle_middle
+
+    # position_x -> horizontal pixel offset of the clock from its anchor.
+    #               Options: any integer (negative moves left/up)
     position_x: 0
+
+    # position_y -> vertical pixel offset of the clock from its anchor.
+    #               Options: any integer (negative moves up)
     position_y: 0
+
+# system -> global widget settings.
 system:
+
+  # hour_format -> how the hour is displayed.
+  #                Options: "24" (e.g. 23:15) | "12" (e.g. 11:15)
   hour_format: "24"
+
+  # corner_radius -> background corner rounding in px for BOTH widgets.
+  #                  Options: 0 (square) | any positive integer
   corner_radius: 15
+
+# panel -> system monitor panel settings.
 panel:
+
+  # enabled -> whether the system monitor panel is started.
+  #            Options: true | false
   enabled: true
+
+  # window -> panel window settings.
   window:
+
+    # alignment -> horizontal side of the full-height panel.
+    #              Options: right (default, flush right) | left (flush left)
     alignment: right
+
+  # gap -> spacing (px) between the panel and the screen/taskbar edges.
+  #        Options: a single number (applies to every side), e.g. gap: 16
+  #                 or a per-side map, e.g.:
+  #                 gap: { top: 5, bottom: 10, left: 0, right: 0 }
+  #        Missing sides default to 16 px.
   gap: {
     top: 5,
     bottom: 10,
