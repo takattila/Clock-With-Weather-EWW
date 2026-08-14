@@ -106,7 +106,7 @@
 
       ;; City --- icon centered (440,112) 20x20; text(465,112) font 30
       (image :class "city-icon"
-             :path { "images/theme/" + theme.theme + "/elements/map-marker.png" }
+             :path { "images/theme/" + theme.theme + "/elements/map-marker-gray.png" }
              :image-width 20 :image-height 20
              :halign "start" :valign "start")
       (label :class "city-label" :text {config.city}
@@ -114,7 +114,7 @@
 
       ;; Temperature --- thermometer icon beside celsius, same row as CPU/SWAP
       (image :class "temp-icon"
-             :path { "images/theme/" + theme.theme + "/elements/temperature.png" }
+             :path { "images/theme/" + theme.theme + "/elements/temperature-gray.png" }
              :image-width 32 :image-height 32
              :halign "start" :valign "start")
       (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol}
