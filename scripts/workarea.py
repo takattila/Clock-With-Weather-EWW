@@ -61,9 +61,11 @@ Output (stdout, JSON):
   }
 
 The taskbar workarea is read through XWayland on Wayland too (KDE exposes
-_NET_WORKAREA there, see find_xwayland_env), so the primary monitor (the one
-under the _NET_WORKAREA origin) keeps the taskbar inset on both compositors.
-Secondary monitors use the symmetric-gap full-height geometry.
+_NET_WORKAREA there, see find_xwayland_env). The taskbar workarea is
+intersected with each monitor's rectangle, so every monitor the taskbar
+overlaps keeps the taskbar inset while monitors outside the taskbar keep the
+symmetric-gap full-height geometry. The panel height always stays inside the
+monitor's own height, so a smaller secondary monitor gets a matching panel.
 
 Usage: ./workarea.py [config_dir]
 """
@@ -353,30 +355,49 @@ def compute_per_monitor(monitors, gaps, compositor):
     global_workarea = workarea if workarea else (0, 0, global_screen[0], global_screen[1])
     taskbar = detect_taskbar(global_screen, global_workarea)
 
-    primary = 0
-    if workarea:
-        for i, m in enumerate(monitors):
-            if m["x"] <= workarea[0] < m["x"] + m["width"] and m["y"] <= workarea[1] < m["y"] + m["height"]:
-                primary = i
-                break
-
     # The taskbar's visual frame (with floating-panel margins) is what the panel
     # must keep the top/bottom gap away from, so the gap matches the config.
     frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
 
-    for i, m in enumerate(monitors):
+    for m in monitors:
         screen = monitor_screen(m)
-        # The taskbar workarea is applied to the monitor that holds it on both
-        # X11 and Wayland (KDE exposes _NET_WORKAREA through XWayland, see
-        # find_xwayland_env). On Wayland eww's layer-shell offsets are relative
-        # to that workarea (the exclusive zone shifts the window), so the panel
-        # height must be the workarea height minus two gaps, otherwise the
-        # bottom gap would be eaten by the taskbar's exclusive zone.
-        if i == primary and workarea:
-            local_workarea = (0, workarea[1], screen[0], workarea[3])
-            panel = compute_panel(screen, local_workarea, taskbar, gaps, compositor, kde_frame=frame)
+
+        # Intersect the (global, taskbar-free) workarea with this monitor's
+        # rectangle, in monitor-local coordinates. That way the panel is inset
+        # from the taskbar on every monitor the taskbar overlaps while its
+        # height never exceeds the monitor's own height -- with mixed-resolution
+        # setups the global workarea height (from the tallest screen) must not
+        # leak onto a shorter monitor. When the taskbar only overlaps part of
+        # the desktop (e.g. it sits on the primary only), the intersection for
+        # the other monitors collapses to their full height with no taskbar.
+        mx, my = m["x"], m["y"]
+        wx0 = max(global_workarea[0] - mx, 0)
+        wy0 = max(global_workarea[1] - my, 0)
+        wx1 = min(global_workarea[0] + global_workarea[2], mx + screen[0]) - mx
+        wy1 = min(global_workarea[1] + global_workarea[3], my + screen[1]) - my
+        if wx1 > wx0 and wy1 > wy0:
+            local_workarea = (wx0, wy0, wx1 - wx0, wy1 - wy0)
+            local_taskbar = detect_taskbar(screen, local_workarea)
         else:
-            panel = compute_panel(screen, (0, 0, screen[0], screen[1]), "none", gaps, compositor)
+            local_workarea = (0, 0, screen[0], screen[1])
+            local_taskbar = "none"
+
+        # Translate the taskbar frame into this monitor's local coordinates;
+        # it is only relevant on the monitor(s) it geometrically overlaps.
+        local_frame = None
+        if frame:
+            fx, fy, fw, fh = frame
+            if (
+                fx < mx + screen[0]
+                and fx + fw > mx
+                and fy < my + screen[1]
+                and fy + fh > my
+            ):
+                local_frame = (fx - mx, fy - my, fw, fh)
+
+        panel = compute_panel(
+            screen, local_workarea, local_taskbar, gaps, compositor, kde_frame=local_frame
+        )
         result.append(
             {
                 "index": m["index"],
