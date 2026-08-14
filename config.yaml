@@ -1,14 +1,17 @@
 # Central configuration for the eww widget.
 #
 # appearance selects the theme under  themes/appearance/<name>/appearance.yaml
-# weather    selects the city settings under themes/weather/<name>/weather.yaml
-# window.alignment  position of the clock widget, one of the conky-style names:
+# weather.name  selects the city settings under themes/weather/<name>/weather.yaml
+# weather.window  position of the clock widget, one of the conky-style names:
 #                   top_left, top_right, top_middle, bottom_left, bottom_right,
 #                   bottom_middle, middle_left, middle_right, middle_middle
-# window.position_x / position_y  pixel offset of the clock widget from its anchor
+#                 weather.window.position_x / position_y are the pixel offset of
+#                 the clock widget from its anchor.
 # system.hour_format: "24" | "12"
 # system.corner_radius  bg corner rounding (px) for both widgets; 0 = square.
 # panel.enabled  whether the system monitor panel is started (true/false)
+# panel.window.alignment  horizontal side of the full-height panel: "right"
+#                 (default, flush right) or "left" (flush left).
 # panel.gap  spacing (px) between the panel and the screen/taskbar edges.
 #            A single number applies it to every side, or give per-side gaps:
 #            gap: { top: 16, right: 16, bottom: 16, left: 16 }
@@ -19,19 +22,22 @@
 # git-ignored file ./.api_key (first line, chmod 600).
 
 appearance: light
-weather: default
-window:
-  alignment: middle_middle
-  position_x: 0
-  position_y: 0
+weather:
+  name: default
+  window:
+    alignment: middle_middle
+    position_x: 0
+    position_y: 0
 system:
   hour_format: "24"
   corner_radius: 15
 panel:
   enabled: true
+  window:
+    alignment: right
   gap: {
     top: 5,
-    bottom: 5,
+    bottom: 10,
     left: 0,
     right: 0
   }

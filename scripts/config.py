@@ -17,7 +17,8 @@ Usage:
   ./config.py --key NAME  a single value
                           (api_key | appearance | weather | hour_format |
                            city | language_code | lang | units |
-                           alignment | position_x | position_y | panel_enabled)
+                           alignment | position_x | position_y |
+                           panel_enabled | panel_alignment)
 
 Keys that are resolved from the selected weather theme: city, language_code,
 lang, units.
@@ -53,10 +54,12 @@ def load_config():
         cfg = yaml.safe_load(f) or {}
 
     appearance = cfg.get("appearance", "light")
-    weather_name = cfg.get("weather", "default")
+    weather_cfg = cfg.get("weather") or {}
+    weather_name = weather_cfg.get("name", "default")
     system = cfg.get("system") or {}
-    window = cfg.get("window") or {}
+    weather_window = weather_cfg.get("window") or {}
     panel = cfg.get("panel") or {}
+    panel_window = panel.get("window") or {}
 
     weather_path = os.path.join(CONFIG_DIR, "themes", "weather", weather_name, "weather.yaml")
     with open(weather_path, "r", encoding="utf-8") as f:
@@ -71,10 +74,11 @@ def load_config():
         "language_code": weather.get("language_code", ""),
         "lang": weather.get("lang", ""),
         "units": weather.get("units", ""),
-        "alignment": window.get("alignment", "middle_middle"),
-        "position_x": int(window.get("position_x", 0)),
-        "position_y": int(window.get("position_y", 0)),
+        "alignment": weather_window.get("alignment", "middle_middle"),
+        "position_x": int(weather_window.get("position_x", 0)),
+        "position_y": int(weather_window.get("position_y", 0)),
         "panel_enabled": str(panel.get("enabled", True)).lower(),
+        "panel_alignment": str(panel_window.get("alignment", "right")).lower(),
     }
 
 

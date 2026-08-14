@@ -47,7 +47,11 @@ depending on the compositor:
 Per-monitor mode (--per-monitor) reads a monitors JSON on stdin (from
 scripts/monitors.py) and computes the panel geometry for every monitor:
 
-  ./monitors.py | ./workarea.py --per-monitor [config_dir]
+  ./monitors.py | ./workarea.py --per-monitor --align right [config_dir]
+
+`--align left|right` (default: right) forces the full-height panel onto the
+left or right screen edge, overriding the taskbar-derived horizontal side
+while keeping the height and the taskbar gaps.
 
 Output (stdout, JSON):
   {
@@ -342,13 +346,41 @@ def monitor_screen(m):
     return m["width"], m["height"]
 
 
+def align_panel_side(panel, gaps, side):
+    """Force the panel onto the left or right screen edge.
+
+    The panel keeps its full height and taskbar inset; only the anchor and the
+    horizontal offset change. `side` is "left" or "right" (right = default).
+    """
+    if side != "left":
+        return panel
+    anchor = panel["anchor"]
+    if anchor == "bottom right":
+        anchor = "bottom left"
+    elif anchor == "top right":
+        anchor = "top left"
+    panel["anchor"] = anchor
+    panel["x"] = gaps["left"]
+    return panel
+
+
+def parse_align_arg():
+    align = "right"
+    for i, a in enumerate(sys.argv):
+        if a == "--align" and i + 1 < len(sys.argv):
+            align = sys.argv[i + 1].lower()
+        elif a.startswith("--align="):
+            align = a.split("=", 1)[1].lower()
+    return align if align in ("left", "right") else "right"
+
+
 def global_bounds(monitors):
     tw = max(m["x"] + m["width"] for m in monitors) if monitors else 0
     th = max(m["y"] + m["height"] for m in monitors) if monitors else 0
     return tw, th
 
 
-def compute_per_monitor(monitors, gaps, compositor):
+def compute_per_monitor(monitors, gaps, compositor, panel_alignment="right"):
     result = []
     workarea = get_net_workarea()
     global_screen = global_bounds(monitors)
@@ -398,6 +430,7 @@ def compute_per_monitor(monitors, gaps, compositor):
         panel = compute_panel(
             screen, local_workarea, local_taskbar, gaps, compositor, kde_frame=local_frame
         )
+        panel = align_panel_side(panel, gaps, panel_alignment)
         result.append(
             {
                 "index": m["index"],
@@ -420,7 +453,8 @@ def main():
     if "--per-monitor" in sys.argv:
         compositor = detect_compositor()
         monitors = json.load(sys.stdin).get("monitors", [])
-        print(json.dumps(compute_per_monitor(monitors, gaps, compositor)))
+        panel_alignment = parse_align_arg()
+        print(json.dumps(compute_per_monitor(monitors, gaps, compositor, panel_alignment)))
         return
 
     screen = get_xrandr_resolution()
@@ -435,6 +469,7 @@ def main():
     taskbar = detect_taskbar(screen, workarea)
     frame = kde_panel_frame(screen) if taskbar in ("top", "bottom") else None
     panel = compute_panel(screen, workarea, taskbar, gaps, compositor, kde_frame=frame)
+    panel = align_panel_side(panel, gaps, parse_align_arg())
 
     # PANEL_HEIGHT env override still wins (used by panel.py to size the charts).
     env_override = os.environ.get("PANEL_HEIGHT") or os.environ.get("EWW_PANEL_HEIGHT")

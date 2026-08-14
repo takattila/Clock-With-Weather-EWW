@@ -36,7 +36,8 @@ layout_windows() {
   monitors="$(python3 "$DIR/scripts/monitors.py")" || {
     echo "ERROR: monitors.py failed"; return 1
   }
-  layout="$(printf '%s' "$monitors" | python3 "$DIR/scripts/workarea.py" --per-monitor "$DIR")" || {
+  panel_alignment="$(python3 "$DIR/scripts/config.py" --key panel_alignment)"
+  layout="$(printf '%s' "$monitors" | python3 "$DIR/scripts/workarea.py" --per-monitor --align "$panel_alignment" "$DIR")" || {
     echo "ERROR: workarea.py --per-monitor failed"; return 1
   }
   printf '%s\n' "$layout" > "$DIR/.layout.json"

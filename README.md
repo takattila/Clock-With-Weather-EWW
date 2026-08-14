@@ -47,6 +47,7 @@ This EWW widget consists of two separate but perfectly synchronized windows desi
 *   **Seamless Alignment**: The two components are designed to "snap" together. When the Panel is enabled in the settings, both windows are opened, and the Panel automatically positions itself adjacent to the clock widget, creating a single, cohesive interface.
 *   **Unified Styling**: Both units share the same theme configuration (`config.yaml` → `themes/appearance/<name>/appearance.yaml`). This ensures that colors, fonts, and transparency levels are perfectly matched, whether you choose a light or dark theme.
 *   **Taskbar-aware Panel**: The panel is aligned to the taskbar with per-side gaps (taskbar side, opposite screen edge and lateral edge), configurable via `panel.gap` — a single number or a per-side map (see the "Panel alignment" section).
+*   **Configurable panel side**: `panel.window.alignment: right|left` places the full-height panel flush to the right or left screen edge, independent of the taskbar (see the "Panel alignment" section).
 *   **Visual Hierarchy**: The panel uses alternating "light" and "dark" colors for the charts (e.g., CPU vs. Memory, Download vs. Upload). This intentional design choice provides better visual separation, making it easier to distinguish between different data streams at a glance.
 
 
@@ -115,6 +116,11 @@ Use the above command to **change** the following **settings**:
 - weather theme (city)
 - hour format (12 or 24)
 - **Shortcuts**: enable/disable Desktop icon creation
+
+The panel side (`panel.window.alignment`) and the clock position
+(`weather.window.*`) are edited directly in `config.yaml` (see the
+"Configuration" section) — the running widget picks both up automatically
+via the config watcher.
 
 [Back to top](#clock-with-weather-eww)
 
@@ -266,11 +272,13 @@ cd ~/.conky/Clock-With-Weather-EWW
    from the `appearance` field of `config.yaml` +
    `themes/appearance/<name>/appearance.yaml` (colors, font, icon set,
    background transparency).
-2. **`workarea.py`** — reads `_NET_WORKAREA` and the `panel.gap` value(s) from
-   `config.yaml`, then computes the `panel_window` geometry (anchor + offsets
+2. **`workarea.py`** — reads `_NET_WORKAREA`, the `panel.gap` value(s) and the
+   `panel.window.alignment` (passed as `--align left|right`) from `config.yaml`,
+   then computes the `panel_window` geometry (anchor + offsets
    + height) so the panel is inset from the taskbar, from the opposite screen
    edge and from the lateral screen edge by the configured per-side gap
-   (Req 2). The offsets are interpreted for
+   (Req 2), and flush to the left or right screen edge when
+   `panel.window.alignment` is set. The offsets are interpreted for
    the current compositor (Wayland layer-shell vs. absolute X11 coordinates,
    see the "Panel alignment" section). The computed values override the
    `panel_window` geometry in `eww.yuck` at runtime. If the X display is
@@ -321,11 +329,18 @@ theme; the city, language and unit settings come from the selected
 ```yaml
 # config.yaml
 appearance: light       # -> themes/appearance/<name>/appearance.yaml
-weather: default        # -> themes/weather/<name>/weather.yaml
+weather:
+  name: default         # -> themes/weather/<name>/weather.yaml
+  window:               # clock widget position (same names as a Conky alignment)
+    alignment: middle_middle   # top_left..middle_middle
+    position_x: 0       # pixel offset of the clock from its anchor
+    position_y: 0
 system:
   hour_format: "24"     # "24" | "12"
   corner_radius: 20     # bg corner rounding (px) for BOTH widgets; 0 = square
 panel:
+  window:
+    alignment: right    # right (default) | left — full-height panel side
   gap: 16               # spacing (px) on every side of the panel (Req 2)
                         # or per-side: gap: { top: 16, right: 16, bottom: 16, left: 16 }
 ```
@@ -333,9 +348,12 @@ panel:
 | Field | Values | Effect |
 |---|---|---|
 | `appearance` | `light`, `dark`, `light-bg`, ... | which `themes/appearance/<name>/appearance.yaml` colors to use |
-| `weather` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
+| `weather.name` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
+| `weather.window.alignment` | `top_left`, `top_right`, `top_middle`, `bottom_left`, `bottom_right`, `bottom_middle`, `middle_left`, `middle_right`, `middle_middle` | where the clock widget is anchored |
+| `weather.window.position_x` / `position_y` | integer px | pixel offset of the clock widget from its anchor |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
 | `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
+| `panel.window.alignment` | `right` / `left` | the horizontal side of the full-height panel (see the "Panel alignment" section) |
 | `panel.gap` | integer px **or** map | the panel is inset from the taskbar, the opposite screen edge and the lateral edge. A single number applies to every side; a map `{ top:, right:, bottom:, left: }` sets each side independently (missing sides default to 16 px). See the "Panel alignment" section |
 
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
@@ -475,9 +493,9 @@ The file has three main parts:
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme |
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` → the values for the `defpoll`s |
-| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`); detects Wayland vs. X11 and computes the offsets for the current compositor; also logs a human-readable summary to stderr |
-| `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; log: `watch.log`, PID: `watch.pid` |
-| `start.sh` | — | starting the widget (section 3): Plasma check (Wayland only), theme generation, taskbar alignment, `eww daemon` + opening windows, watcher start |
+| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; also logs a human-readable summary to stderr |
+| `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; a `config.yaml` change also triggers `start.sh --relayout`; log: `watch.log`, PID: `watch.pid` |
+| `start.sh` | — | starting the widget (section 3): Plasma check (Wayland only), theme generation, taskbar alignment + panel side (`panel.window.alignment`), `eww daemon` + opening windows, watcher start |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
 | `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key, creates the desktop/menu icons and starts the widgets |
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
@@ -586,6 +604,11 @@ which detects the taskbar position and applies the per-side gaps:
 | **left** | `anchor "top right"`, `x = gap.right`, `y = gap.top`, height `= workarea_h − gap.top − gap.bottom` |
 | **none** | `anchor "top right"`, flush right (`x = gap.right`), inset top/bottom by `gap.top` / `gap.bottom`, height `= screen_h − gap.top − gap.bottom` |
 
+Setting `config.yaml → panel.window.alignment: left` overrides the horizontal
+side of the full-height panel: the anchor becomes `"top left"` / `"bottom left"`
+and `x = gap.left`, while the height and the taskbar top/bottom gaps stay as
+computed above. `right` (the default) keeps the taskbar-derived behavior.
+
 On KDE/Plasma the top/bottom gap is measured from the taskbar's **visual frame**
 (the KWin scripting API is queried for it), because a floating taskbar's frame
 extends beyond the exclusive zone reported by `_NET_WORKAREA`; without the frame
@@ -605,9 +628,10 @@ info the geometry falls back to the exclusive zone.
 >   edge, so they already match the workarea.
 
 The values are written into the `panel_window` geometry of `eww.yuck` at
-startup (the committed default reflects the current machine: 30 px taskbar,
-`gap=16` → `:y "16px" :height "1018px"`, verified to render at screen
-`y=46..1063`, i.e. a 16 px gap on both sides). `PANEL_HEIGHT` is exported for
+startup (the committed `config.yaml` on this machine: 30 px top taskbar,
+`panel.gap` `{ top: 5, bottom: 10, left: 0, right: 0 }` → on the 1920×1080
+screen `:y "35px" :height "1035px"` with `panel.window.alignment: right`).
+`PANEL_HEIGHT` is exported for
 `panel.py` so the chart heights match the inset panel.
 
 ---
