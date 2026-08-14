@@ -2,10 +2,8 @@ charts/*.svg
 charts/state.json
 __pycache__/
 *.pyc
-watch.log
-watch.pid
-monitor_watch.log
-monitor_watch.pid
+*.pid
+*.log
 .layout.json
 .api_key
 eww.theme.json
