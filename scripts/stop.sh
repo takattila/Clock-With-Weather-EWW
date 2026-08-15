@@ -26,9 +26,28 @@ stop_monitor_watch() {
   fi
 }
 
-# Kill the eww daemon for this config directory (closes all windows)
+# Kill the eww daemon for this config directory (closes all windows).
+# A wedged daemon can ignore the IPC kill (and even SIGTERM), so verify the
+# process is really gone and force-stop it otherwise. This guarantees that
+# start.sh always brings up a fresh daemon.
 stop_eww() {
   eww --config "$DIR" kill 2>/dev/null
+
+  sleep 0.3
+  local pid
+  for pid in $(pgrep -x eww 2>/dev/null); do
+    if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq -- "--config ${DIR} daemon"; then
+      kill "$pid" 2>/dev/null || true
+      for _ in 1 2 3 4 5; do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.3
+      done
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+      echo "eww daemon force-stopped (PID $pid)"
+    fi
+  done
 }
 
 main() {
