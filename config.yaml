@@ -14,7 +14,7 @@
 #   2. A custom map (object) -> inline appearance definition, e.g.:
 #
 #          appearance:
-#            theme: light          # image folder under images/theme/<theme>/ (light | dark)
+#            theme: light           # image folder under images/theme/<theme>/ (light | dark)
 #            icon:
 #              set: dovora          # icon set under images/theme/<theme>/weather/<set>/
 #              color:               # icon color (tinted into the PNGs)
@@ -40,6 +40,7 @@
 appearance: light
 
 # weather -> weather widget (clock) settings.
+weather:
 
   # name -> which city settings to use. Options: default | budapest | berlin |
   #         any directory name under themes/weather/<name>/weather.yaml
