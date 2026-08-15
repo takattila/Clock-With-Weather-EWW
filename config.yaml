@@ -13,52 +13,33 @@
 #
 #   2. A custom map (object) -> inline appearance definition, e.g.:
 #
-#          appearance:
-#            theme: light           # image folder under images/theme/<theme>/ (light | dark)
-#            icon:
-#              set: dovora          # icon set under images/theme/<theme>/weather/<set>/
-#              color:               # icon color (tinted into the PNGs)
-#                light: '#ffffff'   #   used when theme is "light"
-#                dark: '#9e9e9e'    #   used when theme is "dark"
-#              transparency:        # icon opacity (applied to all icons)
-#                light: 1.0         #   when theme is "light"
-#                dark: 0.5          #   when theme is "dark"
-#            font:
-#              face: Noto Sans
-#              color:
-#                light: '#ffffff'   # main text color ($color-light)
-#                dark: '#9e9e9e'    # secondary text color ($color-dark)
-#              transparency:
-#                light: 1.0         # opacity of $color-light texts
-#                dark: 1.0          # opacity of $color-dark texts
-#            background:
-#              transparency: 0.0    # 0.0 = fully transparent, 1.0 = opaque
-#              color: '#000000'
+#      appearance:
+#        theme: light           # image folder under images/theme/<theme>/ (light | dark)
+#        icon:
+#          set: dovora          # icon set under images/theme/<theme>/weather/<set>/
+#          color:               # icon color (tinted into the PNGs)
+#            light: '#ffffff'   #   used when theme is "light"
+#            dark: '#9e9e9e'    #   used when theme is "dark"
+#          transparency:        # icon opacity (applied to all icons)
+#            light: 1.0         #   when theme is "light"
+#            dark: 0.5          #   when theme is "dark"
+#        font:
+#          face: Noto Sans
+#          color:
+#            light: '#ffffff'   # main text color ($color-light)
+#            dark: '#9e9e9e'    # secondary text color ($color-dark)
+#          transparency:
+#            light: 1.0         # opacity of $color-light texts
+#            dark: 1.0          # opacity of $color-dark texts
+#        background:
+#          transparency: 0.0    # 0.0 = fully transparent, 1.0 = opaque
+#          color: '#000000'
 #
 
 # appearance -> active appearance theme (see the options above).
 appearance: light
 
-# weather -> weather widget (clock) settings. Two forms are accepted:
-#
-#   1. A theme NAME (string) -> uses themes/weather/<name>/weather.yaml,
-#      e.g.: name: default | budapest | berlin | any directory name under
-#      themes/weather/<name>/weather.yaml
-#
-#   2. An inline map (object) -> the weather details are defined right here,
-#      WITHOUT loading any theme file (a `name` key, if present, takes
-#      precedence and the theme is loaded instead):
-#
-#          weather:
-#            city: Tatabánya
-#            language_code: hu
-#            lang: hu
-#            units: metric
-#            api_url: https://api.openweathermap.org/data/2.5/weather
-#
-#   The `window` sub-map (clock position) works in BOTH forms; in inline mode
-#   it is simply placed next to the city settings.
-#
+# weather -> weather widget (clock) settings. Two forms are accepted.
 weather:
 
   # name -> which city settings to use. Options: default | budapest | berlin |
@@ -66,12 +47,12 @@ weather:
   #         OMIT this key to define the city settings inline below (see the
   #         comment above), e.g.:
   #
-  #         # weather:
-  #         #   city: Tatabánya
-  #         #   language_code: hu
-  #         #   lang: hu
-  #         #   units: metric
-  #         #   api_url: https://api.openweathermap.org/data/2.5/weather
+  #         weather:
+  #           city: Tatabánya
+  #           language_code: hu
+  #           lang: hu
+  #           units: metric
+  #           api_url: https://api.openweathermap.org/data/2.5/weather
   name: default
 
   # window -> position of the clock widget on the screen.
