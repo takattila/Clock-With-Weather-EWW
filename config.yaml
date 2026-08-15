@@ -6,8 +6,32 @@
 # git-ignored file ./.api_key (first line, chmod 600).
 # ============================================================================
 
-# appearance -> the color theme. Options: light | dark | light-bg | dark-bg |
-#               any directory name under themes/appearance/<name>/appearance.yaml
+# appearance -> the color theme. Two forms are accepted:
+#
+#   1. A theme NAME (string) -> uses themes/appearance/<name>/appearance.yaml,
+#      e.g.: appearance: light | dark | dark-orange-bg | ...
+#
+#   2. A custom map (object) -> inline appearance definition, e.g.:
+#
+#        appearance:
+#          theme: light          # image folder under images/theme/<theme>/ (light | dark)
+#          icon:
+#            set: dovora          # icon set under images/theme/<theme>/weather/<set>/
+#            transparency:        # icon opacity (applied to all icons)
+#              light: 1.0         #   when theme is "light"
+#              dark: 0.5          #   when theme is "dark"
+#          font:
+#            face: Noto Sans
+#            color:
+#              light: '#ffffff'   # main text color ($color-light)
+#              dark: '#9e9e9e'    # secondary text color ($color-dark)
+#            transparency:
+#              light: 1.0         # opacity of $color-light texts
+#              dark: 1.0          # opacity of $color-dark texts
+#          background:
+#            transparency: 0.0    # 0.0 = fully transparent, 1.0 = opaque
+#            color: '#000000'
+#
 appearance: light
 
 # weather -> weather widget (clock) settings.
@@ -60,12 +84,17 @@ panel:
 
   # gap -> spacing (px) between the panel and the screen/taskbar edges.
   #        Options: a single number (applies to every side), e.g. gap: 16
-  #                 or a per-side map, e.g.:
+  #                 or a per-side map (braces and commas are optional), e.g.:
   #                 gap: { top: 5, bottom: 10, left: 0, right: 0 }
+  #                 or:
+  #                 gap:
+  #                   top: 5
+  #                   bottom: 5
+  #                   left: 0
+  #                   right: 0
   #        Missing sides default to 16 px.
-  gap: {
-    top: 5,
-    bottom: 10,
-    left: 0,
+  gap:
+    top: 5
+    bottom: 5
+    left: 0
     right: 0
-  }

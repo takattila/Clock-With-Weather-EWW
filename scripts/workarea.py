@@ -219,11 +219,24 @@ def get_xrandr_resolution():
     return None
 
 
+def _parse_gap_value(value):
+    """Coerce a panel.gap value to an int, tolerating '5,' / ' 5 ' forms.
+
+    PyYAML parses block-style `top: 5,` as the string "5,"; strip separators
+    and whitespace so the comma form works like the flow-style map.
+    """
+    try:
+        return int(str(value).strip().replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
 def load_gaps(config_dir):
     """Read the per-side panel gaps from config.yaml -> panel.gap.
 
     panel.gap may be a single number (all sides get it) or a map with any of
-    the top/right/bottom/left keys (missing sides default to 16 px).
+    the top/right/bottom/left keys (missing sides default to 16 px). Invalid
+    values fall back to the default on each side.
     """
     default = 16
     gaps = {"top": default, "right": default, "bottom": default, "left": default}
@@ -235,16 +248,12 @@ def load_gaps(config_dir):
         if isinstance(raw, dict):
             for side in gaps:
                 if side in raw:
-                    try:
-                        gaps[side] = int(raw[side])
-                    except (TypeError, ValueError):
-                        gaps[side] = default
+                    v = _parse_gap_value(raw[side])
+                    gaps[side] = v if v is not None else default
         else:
-            try:
-                v = int(raw)
-            except (TypeError, ValueError):
-                v = default
-            gaps = dict.fromkeys(gaps, v)
+            v = _parse_gap_value(raw)
+            if v is not None:
+                gaps = dict.fromkeys(gaps, v)
     except Exception:
         pass
     return gaps

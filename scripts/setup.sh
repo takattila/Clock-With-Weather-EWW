@@ -382,7 +382,13 @@ function setupWriteConfig() {
     alignment="$(setupGetConfigAlignmentByNumber "${DEFAULT_ALIGNMENT_NUMBER}")"
     [[ "${DEFAULT_START_PANEL}" = "1" ]] && panelEnabled="true" || panelEnabled="false"
 
-    sed -i "s/^appearance: .*/appearance: ${DEFAULT_APPEARANCE}/" "${CONFIG_FILE}"
+    python3 -c '
+import re, sys
+path, new = sys.argv[1], sys.argv[2]
+text = open(path, "r", encoding="utf-8").read()
+text = re.sub(r"^appearance:.*(?:\n[ \t]+.*)*", "appearance: " + new, text, count=1, flags=re.M)
+open(path, "w", encoding="utf-8").write(text)
+' "${CONFIG_FILE}" "${DEFAULT_APPEARANCE}"
     sed -i "s/^  hour_format: .*/  hour_format: \"${DEFAULT_HOUR_FORMAT}\"/" "${CONFIG_FILE}"
     sed -i "s/^  alignment: .*/  alignment: ${alignment}/" "${CONFIG_FILE}"
     sed -i "s/^  position_x: .*/  position_x: ${DEFAULT_POSITION_X}/" "${CONFIG_FILE}"

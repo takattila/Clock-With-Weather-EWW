@@ -91,7 +91,11 @@ def main():
         key = sys.argv[2]
         if key not in merged:
             sys.exit("Unknown key: %s" % key)
-        print(merged[key])
+        value = merged[key]
+        if key == "appearance" and isinstance(value, dict):
+            print("custom")
+            return
+        print(value)
         return
 
     print(json.dumps(merged))
