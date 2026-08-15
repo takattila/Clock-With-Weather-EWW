@@ -85,8 +85,9 @@ weather:
 system:
 
   # hour_format -> how the hour is displayed.
-  #                Options: "24" (e.g. 23:15) | "12" (e.g. 11:15)
-  hour_format: "24"
+  #                Options: "24" (e.g. 23:15) | "12" (e.g. 11:15, with a small
+  #                AM/PM indicator under the hour digits)
+  hour_format: "12"
 
   # corner_radius -> background corner rounding in px for BOTH widgets.
   #                  Options: 0 (square) | any positive integer

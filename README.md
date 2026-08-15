@@ -392,7 +392,7 @@ The `appearance` field accepts **two forms**:
 | `weather.name` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
 | `weather.window.alignment` | `top_left`, `top_right`, `top_middle`, `bottom_left`, `bottom_right`, `bottom_middle`, `middle_left`, `middle_right`, `middle_middle` | where the clock widget is anchored |
 | `weather.window.position_x` / `position_y` | integer px | pixel offset of the clock widget from its anchor |
-| `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour` |
+| `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour`; `12` also shows a small AM/PM indicator under the hour digits |
 | `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
 | `panel.window.alignment` | `right` / `left` | the horizontal side of the full-height panel (see the "Panel alignment" section) |
 | `panel.gap` | integer px **or** map | the panel is inset from the taskbar, the opposite screen edge and the lateral edge. A single number applies to every side; a map `{ top:, right:, bottom:, left: }` sets each side independently (braces/commas optional, e.g. block style) — missing sides default to 16 px. See the "Panel alignment" section |
@@ -499,6 +499,7 @@ The file has three main parts:
    | `hour` | 1s | `date +%H` (or `%I` in 12-hour format) |
    | `minutes` | 1s | `date +:%M` |
    | `seconds` | 1s | `date +%S` |
+   | `meridiem` | 1s | `date +%p` (AM/PM, shown only in 12-hour format) |
    | `date_year` | 1m | `date +%Y.` |
    | `date_day` | 1m | `date "+| %B %d. | %A"` (en_US locale) |
    | `system_info` | 5s | `./scripts/system.py` (JSON) |
@@ -601,6 +602,7 @@ Example, the temperature label:
 | `.year-label`, `.date-label` | year, date line | `font-size: 20px`, `margin-left/margin-top` |
 | `.hour-label`, `.minutes-label` | hour / minute | `font-size: 145px`, `margin-left: 10/170`, `margin-top: 18` |
 | `.seconds-label` | seconds | `font-size: 20px`, `margin-left: 370`, `margin-top: 154` |
+| `.meridiem-label` / `.meridiem-chip` | AM/PM indicator (12h only) | `font-size: 28px`, bold, bottom of the hour digits; the chip masks the digit with the widget background color |
 | `.hdd-label`...`.swap-value` | system info, 2 lines | `.sys-label` (light, bold 15px) + `.sys-value` (dark 15px) |
 | `.divider` | divider line | `margin-left: 414`, `margin-top: 14` |
 | `.weather-icon` | weather icon | 64x64 via `:image-width/height` (in the yuck) |

@@ -70,10 +70,30 @@
   margin-top: 152px;
 }
 
+/* ---------- AM/PM indicator (bottom of the hour digits, 12h mode) ---------- */
+
+/* Small background chip masking the bottom of the big hour digit; its color is
+   the widget background, so it is invisible when $bg-alpha is 0. */
+.meridiem-chip {
+  min-width: 54px;
+  min-height: 32px;
+  background-color: rgba($bg-color, $bg-alpha);
+  margin-left: 18px;
+  margin-top: 144px;
+}
+
+.meridiem-label {
+  font-size: 28px;
+  font-weight: bold;
+  color: rgba($color-dark, $color-dark-alpha);
+  margin-left: 15px;
+  margin-top: 144px;
+}
+
 /* ---------- System info row 1 (HDD, RAM) - baseline y=180, font 15 ---------- */
 
 .hdd-label {
-  margin-left: 13px;
+  margin-left: 16px;
   margin-top: 178px;
 }
 
@@ -95,7 +115,7 @@
 /* ---------- System info row 2 (CPU, SWAP) - baseline y=200, font 15 ---------- */
 
 .cpu-label {
-  margin-left: 13px;
+  margin-left: 16px;
   margin-top: 192px;
 }
 

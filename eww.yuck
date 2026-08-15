@@ -14,6 +14,11 @@
 
 (defpoll seconds :interval "1s" `date +%S`)
 
+;; AM/PM indicator (%p), only displayed when hour_format is "12" (see the
+;; meridiem-chip / meridiem-label widgets and config.hour_format).
+(defpoll meridiem :interval "1s"
+  `LC_TIME=en_US.UTF-8 date +%p`)
+
 (defpoll date_year :interval "1m"
   `date +%Y.`)
 
@@ -70,6 +75,14 @@
       (label :class "minutes-label" :text minutes
              :halign "start" :valign "start")
       (label :class "seconds-label" :text {": " + seconds}
+             :halign "start" :valign "start")
+
+      ;; AM/PM indicator --- chip + text at the bottom of the hour digits
+      ;; (baseline y=122, font 28). Only rendered in 12-hour mode.
+      (box :class "meridiem-chip"
+           :visible {config.hour_format == "12"})
+      (label :class "meridiem-label" :text meridiem
+             :visible {config.hour_format == "12"}
              :halign "start" :valign "start")
 
       ;; System info row 1 (HDD, RAM) --- baseline y=180, font 15
