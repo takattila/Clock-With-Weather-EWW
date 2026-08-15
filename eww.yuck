@@ -80,6 +80,7 @@
       ;; AM/PM indicator --- chip + text at the bottom of the hour digits
       ;; (baseline y=122, font 28). Only rendered in 12-hour mode.
       (box :class "meridiem-chip"
+           :halign "start" :valign "start"
            :visible {config.hour_format == "12"})
       (label :class "meridiem-label" :text meridiem
              :visible {config.hour_format == "12"}

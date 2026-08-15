@@ -72,12 +72,13 @@
 
 /* ---------- AM/PM indicator (bottom of the hour digits, 12h mode) ---------- */
 
-/* Small background chip masking the bottom of the big hour digit; its color is
-   the widget background, so it is invisible when $bg-alpha is 0. */
+/* Background chip masking the bottom of the big hour digit (like the Conky
+   reference): the widget background color, at least 60% opaque so the digit
+   is always masked even when the widget background itself is transparent. */
 .meridiem-chip {
   min-width: 54px;
   min-height: 32px;
-  background-color: rgba($bg-color, $bg-alpha);
+  background-color: rgba($bg-color, max($bg-alpha, 0.6));
   margin-left: 18px;
   margin-top: 144px;
 }
