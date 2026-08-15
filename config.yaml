@@ -36,10 +36,10 @@
 #              color: '#000000'
 #
 
+# appearance -> active appearance theme (see the options above).
 appearance: light
 
 # weather -> weather widget (clock) settings.
-weather:
 
   # name -> which city settings to use. Options: default | budapest | berlin |
   #         any directory name under themes/weather/<name>/weather.yaml
