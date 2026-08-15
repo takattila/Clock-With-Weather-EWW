@@ -17,6 +17,10 @@
 #          theme: light          # image folder under images/theme/<theme>/ (light | dark)
 #          icon:
 #            set: dovora          # icon set under images/theme/<theme>/weather/<set>/
+#            color:               # icon color (tinted into the PNGs) - optional;
+#              light: '#ffffff'   #   used when theme is "light"
+#              dark: '#9e9e9e'    #   used when theme is "dark"
+#                                 #   (omit -> icons keep their original color)
 #            transparency:        # icon opacity (applied to all icons)
 #              light: 1.0         #   when theme is "light"
 #              dark: 0.5          #   when theme is "dark"
@@ -32,7 +36,27 @@
 #            transparency: 0.0    # 0.0 = fully transparent, 1.0 = opaque
 #            color: '#000000'
 #
-appearance: light
+appearance:
+  theme: light          # image folder under images/theme/<theme>/ (light | dark)
+  icon:
+    set: dovora          # icon set under images/theme/<theme>/weather/<set>/
+    color:               # icon color (tinted into the PNGs)
+      light: '#68653e'   #   used when theme is "light"
+      dark: '#232212'    #   used when theme is "dark"
+    transparency:        # icon opacity (applied to all icons)
+      light: 1.0         #   when theme is "light"
+      dark: 0.5          #   when theme is "dark"
+  font:
+    face: Noto Sans
+    color:
+      light: '#e3bd32'   # main text color ($color-light)
+      dark: '#e38332'    # secondary text color ($color-dark)
+    transparency:
+      light: 1.0         # opacity of $color-light texts
+      dark: 1.0          # opacity of $color-dark texts
+  background:
+    transparency: 0.0    # 0.0 = fully transparent, 1.0 = opaque
+    color: '#000000'
 
 # weather -> weather widget (clock) settings.
 weather:
@@ -95,6 +119,6 @@ panel:
   #        Missing sides default to 16 px.
   gap:
     top: 5
-    bottom: 5
+    bottom: 10
     left: 0
     right: 0

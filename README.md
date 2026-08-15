@@ -195,12 +195,13 @@ What the installer does, in order:
 | `python3-requests` | 2.x (tested: 2.34.2) | OpenWeatherMap API call (`weather.py`) |
 | `python3-psutil` | 5.x–7.x (tested: 7.2.2) | CPU/RAM/SWAP/HDD/network (`system.py`, `panel.py`) |
 | `python3-yaml` | 6.x (tested: 6.0.3) | reading the YAML configs (`config.py`, `theme.py`) |
+| `python3-pillow` | 10.x (tested: 10.2.0) | tinting the icon PNGs to `icon.color` (`theme.py`) |
 | `xprop` | any | reading `_NET_WORKAREA` (panel height) |
 | `xrandr` | any | resolution / workarea fallback |
 | `Noto Sans` font | any | the only font family used |
 
-The three Python packages (`requests`, `psutil`, `PyYAML`) are also listed in
-[`requirements.txt`](requirements.txt) for manual / pip-based setups
+The four Python packages (`requests`, `psutil`, `PyYAML`, `pillow`) are also
+listed in [`requirements.txt`](requirements.txt) for manual / pip-based setups
 (`pip install -r requirements.txt`); the installer (`install.sh`) installs
 them from your distribution's repositories instead.
 
@@ -209,7 +210,7 @@ them from your distribution's repositories instead.
 | Dependency | Role |
 |---|---|
 | `spectacle` | taking screenshots for verification |
-| `PIL` (pillow) | image measurement / comparison (development aid) |
+| `PIL` (pillow) | image measurement / comparison (development aid) — also a runtime dependency (see above) |
 
 ### X11 support
 
@@ -364,6 +365,10 @@ The `appearance` field accepts **two forms**:
      theme: light        # image folder under images/theme/<theme>/ (light | dark)
      icon:
        set: dovora        # icon set under images/theme/<theme>/weather/<set>/
+       color:             # icon color (tinted into the PNGs) - optional;
+         light: '#ffffff' #   used when theme is "light"
+         dark: '#9e9e9e'  #   used when theme is "dark"
+                          #   (omit -> icons keep their original color)
        transparency:      # icon opacity (applied to all icons)
          light: 1.0       #   when theme is "light"
          dark: 0.5        #   when theme is "dark"
@@ -383,6 +388,7 @@ The `appearance` field accepts **two forms**:
 | Field | Values | Effect |
 |---|---|---|
 | `appearance` | `light`, `dark`, `light-bg`, ... **or** a custom map | a theme name selects `themes/appearance/<name>/appearance.yaml`; a custom map (`theme`, `icon`, `font`, `background`) defines the appearance inline (see the "Configuration" section) |
+| `appearance.icon.color` | `#rrggbb` (light / dark) | icon color, tinted into the PNGs by `theme.py` (Pillow); `light` is used when the theme is "light", `dark` when "dark". Omit it to keep the icons' original colors |
 | `weather.name` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
 | `weather.window.alignment` | `top_left`, `top_right`, `top_middle`, `bottom_left`, `bottom_right`, `bottom_middle`, `middle_left`, `middle_right`, `middle_middle` | where the clock widget is anchored |
 | `weather.window.position_x` / `position_y` | integer px | pixel offset of the clock widget from its anchor |
@@ -526,7 +532,7 @@ The file has three main parts:
 | `system.py` | `{hdd, ram, cpu, swap}` | `psutil`/`shutil`-based system info, dynamic `format_bytes` (B/KB/MB/GB/TB) |
 | `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call, rounding, °C/°F |
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
-| `theme.py` | `eww.theme.scss` + `eww.theme.json` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme |
+| `theme.py` | `eww.theme.scss` + `eww.theme.json` + tinted icons under `generated/icons/` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme (+ PNG tinting when `appearance.icon.color` is set) |
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` → the values for the `defpoll`s |
 | `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; also logs a human-readable summary to stderr |
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; a `config.yaml` change also triggers `start.sh --relayout`; log: `watch.log`, PID: `watch.pid` |
@@ -553,6 +559,10 @@ shared assets are stored here.
 - `images/theme/<theme>/weather/<icon-set>/` — weather icons
   (`01d.png`, `02d`, ...). `theme.py` takes the `icon_set` from the selected
   `themes/appearance/<name>/appearance.yaml`.
+- `generated/icons/<theme>/...` — **git-ignored** working copies of the active
+  theme's icons. `theme.py` recreates this folder on every start / config
+  change: with `appearance.icon.color` set the PNGs are tinted (Pillow), without
+  it they are copied unchanged. `eww.yuck` always loads the icons from here.
 - `themes/appearance/<name>/appearance.yaml` — the appearance themes.
 - `themes/weather/<name>/weather.yaml` — the city settings (`city`,
   `language_code`, `lang`, `units`).
@@ -618,6 +628,11 @@ $color-dark-alpha: 1.0;    // font.transparency.dark -> rgba($color-dark, ...)
 $bg-color: #000000;
 $bg-alpha: 0.0;
 ```
+
+The **icon color** is not a CSS variable: `appearance.icon.color` (light|dark,
+chosen by `$theme`) is applied to the PNGs themselves by `theme.py` (see the
+"Configuration" section), so the tint works even though GTK/EWW cannot colorize
+images at render time.
 
 ### Resize / reposition workflow
 

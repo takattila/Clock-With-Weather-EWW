@@ -13,9 +13,15 @@ Usage: ./theme.py [config_dir]
 
 import json
 import os
+import shutil
 import sys
 
 import yaml
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 
 def load_config(config_dir):
@@ -51,6 +57,7 @@ def parse_appearance(a):
     font_transparency = font.get("transparency", {}) or {}
     icon = a.get("icon", {}) or {}
     icon_transparency = icon.get("transparency", {}) or {}
+    icon_color = icon.get("color", {}) or {}
     background = a.get("background", {}) or {}
 
     theme = a.get("theme", "light")
@@ -59,6 +66,7 @@ def parse_appearance(a):
         "theme": theme,
         "icon_set": icon.get("set", "dovora"),
         "icon_alpha": icon_transparency.get(theme, 1.0),
+        "icon_color": icon_color.get(theme),
         "font_face": font.get("face", "Noto Sans"),
         "color_light": font_color.get("light", "#ffffff"),
         "color_dark": font_color.get("dark", "#9e9e9e"),
@@ -67,6 +75,70 @@ def parse_appearance(a):
         "bg_color": background.get("color", "#000000"),
         "bg_alpha": background.get("transparency", 0.0),
     }
+
+
+def tint_icon(img, color):
+    """Tint a monochrome icon: replace its RGB with `color`, keep the alpha."""
+    img = img.convert("RGBA")
+    alpha = img.split()[3]
+    r, g, b = _parse_color(color)
+    out = Image.new("RGBA", img.size, (r, g, b, 255))
+    out.putalpha(alpha)
+    return out
+
+
+def _parse_color(value):
+    value = str(value).lstrip("#")
+    return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
+
+
+def generate_icons(config_dir, data):
+    """Recreate generated/icons/ from the source theme icon folders.
+
+    When `icon.color` is set for the active theme the PNGs are tinted with
+    Pillow (RGB replaced, alpha kept); otherwise they are copied unchanged, so
+    themes without a color look exactly as before. Returns a human-readable
+    summary string or None when everything was skipped.
+    """
+    icon_color = data.get("icon_color")
+    theme = data["theme"]
+    icon_set = data["icon_set"]
+    gen_base = os.path.join(config_dir, "generated", "icons", theme)
+    src_base = os.path.join(config_dir, "images", "theme", theme)
+    notes = []
+
+    def generate(src_dir, dst_dir):
+        if not os.path.isdir(src_dir):
+            return
+        shutil.rmtree(dst_dir, ignore_errors=True)
+        os.makedirs(dst_dir, exist_ok=True)
+        for name in sorted(os.listdir(src_dir)):
+            if not name.endswith(".png"):
+                continue
+            src = os.path.join(src_dir, name)
+            dst = os.path.join(dst_dir, name)
+            try:
+                if icon_color is None:
+                    shutil.copy2(src, dst)
+                elif Image is None:
+                    notes.append(
+                        "WARN: Pillow missing, copying %s untinted" % name
+                    )
+                    shutil.copy2(src, dst)
+                else:
+                    tint_icon(Image.open(src), icon_color).save(dst)
+            except Exception as exc:
+                notes.append("WARN: skipping %s (%s)" % (src, exc))
+
+    generate(
+        os.path.join(src_base, "weather", icon_set),
+        os.path.join(gen_base, "weather", icon_set),
+    )
+    generate(
+        os.path.join(src_base, "elements"),
+        os.path.join(gen_base, "elements"),
+    )
+    return "\n".join(notes) or None
 
 
 def main():
@@ -79,6 +151,8 @@ def main():
 
     system = config.get("system", {}) or {}
     data["bg_radius"] = int(system.get("corner_radius", 20))
+
+    icon_notes = generate_icons(config_dir, data)
 
     with open(os.path.join(config_dir, "eww.theme.json"), "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
@@ -100,17 +174,24 @@ def main():
         appearance_label = "custom"
     else:
         appearance_label = appearance
-    print("-> appearance --------- : %s" % appearance_label)
-    print("-> theme --------------- : %s" % data["theme"])
-    print("-> icon set ------------ : %s" % data["icon_set"])
-    print("-> icon transparency --- : %s" % data["icon_alpha"])
-    print("-> font face ----------- : %s" % data["font_face"])
-    print("-> font color light ---- : %s" % data["color_light"])
-    print("-> font color dark ----- : %s" % data["color_dark"])
-    print("-> font transparency --- : light %s / dark %s" % (data["color_light_alpha"], data["color_dark_alpha"]))
-    print("-> background color ----- : %s" % data["bg_color"])
-    print("-> background opacity --- : %s" % data["bg_alpha"])
-    print("-> bg corner radius ----- : %spx" % data["bg_radius"])
+    def print_key(label, value):
+        print("-> %-18s : %s" % (label, value))
+
+    print_key("appearance", appearance_label)
+    print_key("theme", data["theme"])
+    print_key("icon set", data["icon_set"])
+    print_key("icon color", data["icon_color"] or "original (no tint)")
+    print_key("icon transparency", data["icon_alpha"])
+    print_key("font face", data["font_face"])
+    print_key("font color light", data["color_light"])
+    print_key("font color dark", data["color_dark"])
+    print_key("font transparency", "light %s / dark %s" % (data["color_light_alpha"], data["color_dark_alpha"]))
+    print_key("background color", data["bg_color"])
+    print_key("background opacity", data["bg_alpha"])
+    print_key("bg corner radius", "%spx" % data["bg_radius"])
+
+    if icon_notes:
+        print(icon_notes)
 
 
 if __name__ == "__main__":
