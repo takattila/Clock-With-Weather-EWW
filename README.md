@@ -602,7 +602,7 @@ Example, the temperature label:
 | `.year-label`, `.date-label` | year, date line | `font-size: 20px`, `margin-left/margin-top` |
 | `.hour-label`, `.minutes-label` | hour / minute | `font-size: 145px`, `margin-left: 10/170`, `margin-top: 18` |
 | `.seconds-label` | seconds | `font-size: 20px`, `margin-left: 370`, `margin-top: 154` |
-| `.meridiem-label` / `.meridiem-chip` | AM/PM indicator (12h only) | `font-size: 28px`, bold, bottom of the hour digits; the chip masks the digit with the widget background color |
+| `.meridiem-label` / `.meridiem-chip` | AM/PM indicator (12h only) | `font-size: 28px`, bold, bottom of the hour digits; the 54x32 chip masks the digit with the widget background color — always at least 60% opaque, so it stays visible even when the widget background is fully transparent (`background.transparency: 0.0`) |
 | `.hdd-label`...`.swap-value` | system info, 2 lines | `.sys-label` (light, bold 15px) + `.sys-value` (dark 15px) |
 | `.divider` | divider line | `margin-left: 414`, `margin-top: 14` |
 | `.weather-icon` | weather icon | 64x64 via `:image-width/height` (in the yuck) |
