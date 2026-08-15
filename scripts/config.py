@@ -12,16 +12,22 @@ in the repository). It is resolved in this order:
   2. a local, git-ignored file .api_key (first line, chmod 600),
   3. an empty string (weather falls back to an API error message).
 
+The `weather` section of config.yaml accepts two forms:
+  1. a theme name: weather: { name: <name>, window: {...} } loads
+     themes/weather/<name>/weather.yaml (the classic behavior),
+  2. an inline map: weather: { city, language_code, lang, units, api_url }
+     used directly (a `name` key takes precedence over inline fields).
+
 Usage:
   ./config.py             merged JSON (for the `config` defpoll)
   ./config.py --key NAME  a single value
                           (api_key | appearance | weather | hour_format |
-                           city | language_code | lang | units |
+                           city | language_code | lang | units | api_url |
                            alignment | position_x | position_y |
                            panel_enabled | panel_alignment)
 
 Keys that are resolved from the selected weather theme: city, language_code,
-lang, units.
+lang, units, api_url.
 """
 
 import json
@@ -55,15 +61,21 @@ def load_config():
 
     appearance = cfg.get("appearance", "light")
     weather_cfg = cfg.get("weather") or {}
-    weather_name = weather_cfg.get("name", "default")
     system = cfg.get("system") or {}
     weather_window = weather_cfg.get("window") or {}
     panel = cfg.get("panel") or {}
     panel_window = panel.get("window") or {}
 
-    weather_path = os.path.join(CONFIG_DIR, "themes", "weather", weather_name, "weather.yaml")
-    with open(weather_path, "r", encoding="utf-8") as f:
-        weather = (yaml.safe_load(f) or {}).get("weather", {})
+    weather_name = weather_cfg.get("name", "")
+    if weather_name:
+        # Theme mode: load themes/weather/<name>/weather.yaml
+        weather_path = os.path.join(CONFIG_DIR, "themes", "weather", weather_name, "weather.yaml")
+        with open(weather_path, "r", encoding="utf-8") as f:
+            weather = (yaml.safe_load(f) or {}).get("weather", {})
+    else:
+        # Inline mode: use the weather map directly (minus the window key)
+        weather_name = "custom"
+        weather = {k: v for k, v in weather_cfg.items() if k != "window"}
 
     return {
         "api_key": resolve_api_key(),
@@ -74,6 +86,7 @@ def load_config():
         "language_code": weather.get("language_code", ""),
         "lang": weather.get("lang", ""),
         "units": weather.get("units", ""),
+        "api_url": weather.get("api_url", "https://api.openweathermap.org/data/2.5/weather"),
         "alignment": weather_window.get("alignment", "middle_middle"),
         "position_x": int(weather_window.get("position_x", 0)),
         "position_y": int(weather_window.get("position_y", 0)),

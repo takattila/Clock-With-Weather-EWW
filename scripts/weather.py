@@ -5,10 +5,10 @@ import requests
 import json
 from datetime import datetime
 
-# Usage: ./weather.py <api_key> <city> <lang> <units>
+# Usage: ./weather.py <api_key> <city> <lang> <units> <api_url>
 
 def get_weather():
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 6:
         print(json.dumps({"error": "Missing arguments"}))
         return
 
@@ -16,8 +16,9 @@ def get_weather():
     city = sys.argv[2]
     lang = sys.argv[3]
     units = sys.argv[4]
+    api_url = sys.argv[5].rstrip("/") or "https://api.openweathermap.org/data/2.5/weather"
 
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&lang={lang}&units={units}&appid={api_key}"
+    url = f"{api_url}?q={city}&lang={lang}&units={units}&appid={api_key}"
     
     try:
         response = requests.get(url)

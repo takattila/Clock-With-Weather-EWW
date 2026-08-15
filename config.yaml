@@ -39,11 +39,39 @@
 # appearance -> active appearance theme (see the options above).
 appearance: light
 
-# weather -> weather widget (clock) settings.
+# weather -> weather widget (clock) settings. Two forms are accepted:
+#
+#   1. A theme NAME (string) -> uses themes/weather/<name>/weather.yaml,
+#      e.g.: name: default | budapest | berlin | any directory name under
+#      themes/weather/<name>/weather.yaml
+#
+#   2. An inline map (object) -> the weather details are defined right here,
+#      WITHOUT loading any theme file (a `name` key, if present, takes
+#      precedence and the theme is loaded instead):
+#
+#          weather:
+#            city: Tatabánya
+#            language_code: hu
+#            lang: hu
+#            units: metric
+#            api_url: https://api.openweathermap.org/data/2.5/weather
+#
+#   The `window` sub-map (clock position) works in BOTH forms; in inline mode
+#   it is simply placed next to the city settings.
+#
 weather:
 
   # name -> which city settings to use. Options: default | budapest | berlin |
-  #         any directory name under themes/weather/<name>/weather.yaml
+  #         any directory name under themes/weather/<name>/weather.yaml.
+  #         OMIT this key to define the city settings inline below (see the
+  #         comment above), e.g.:
+  #
+  #         # weather:
+  #         #   city: Tatabánya
+  #         #   language_code: hu
+  #         #   lang: hu
+  #         #   units: metric
+  #         #   api_url: https://api.openweathermap.org/data/2.5/weather
   name: default
 
   # window -> position of the clock widget on the screen.

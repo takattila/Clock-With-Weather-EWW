@@ -325,14 +325,16 @@ cd ~/.conky/Clock-With-Weather-EWW
 
 The central config is **YAML**. It selects the active appearance and weather
 theme; the city, language and unit settings come from the selected
-`themes/weather/<name>/weather.yaml`:
+`themes/weather/<name>/weather.yaml` (or, alternatively, can be defined
+**inline** in `config.yaml`, see below):
 
 ```yaml
 # config.yaml
 appearance: light       # theme name -> themes/appearance/<name>/appearance.yaml,
                         # or a custom map (see the "Configuration" section)
 weather:
-  name: default         # -> themes/weather/<name>/weather.yaml
+  name: default         # -> themes/weather/<name>/weather.yaml,
+                        # or omit it and define the city settings inline (see below)
   window:               # clock widget position (same names as a Conky alignment)
     alignment: middle_middle   # top_left..middle_middle
     position_x: 0       # pixel offset of the clock from its anchor
@@ -352,6 +354,26 @@ panel:
                         #   bottom: 16
                         #   left: 16
 ```
+
+The `weather` field accepts **two forms**:
+
+1. **A theme name (`weather.name`)** — loads
+   `themes/weather/<name>/weather.yaml` (the classic behavior).
+2. **An inline map (no `name` key)** — the weather details are defined right in
+   `config.yaml` (a `name` key, if present, takes precedence):
+
+   ```yaml
+   weather:
+     city: Tatabánya
+     language_code: hu
+     lang: hu
+     units: metric
+     api_url: https://api.openweathermap.org/data/2.5/weather
+     window:               # optional clock position
+       alignment: middle_middle
+       position_x: 0
+       position_y: 0
+   ```
 
 The `appearance` field accepts **two forms**:
 
@@ -389,7 +411,12 @@ The `appearance` field accepts **two forms**:
 |---|---|---|
 | `appearance` | `light`, `dark`, `light-bg`, ... **or** a custom map | a theme name selects `themes/appearance/<name>/appearance.yaml`; a custom map (`theme`, `icon`, `font`, `background`) defines the appearance inline (see the "Configuration" section) |
 | `appearance.icon.color` | `#rrggbb` (light / dark) | icon color, tinted into the PNGs by `theme.py` (Pillow); `light` is used when the theme is "light", `dark` when "dark". Omit it to keep the icons' original colors |
-| `weather.name` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units` |
+| `weather.name` | `default`, `budapest`, `berlin`, ... | which `themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units`. Omit the `name` key to define the city settings **inline** in `config.yaml` (`city`, `language_code`, `lang`, `units`, `api_url`); a `name` key, if present, takes precedence |
+| `weather.city` | string | inline-mode only: the city queried from the weather API (when `weather.name` is absent) |
+| `weather.language_code` | `hu`, `en`, `fr`, ... | inline-mode only: the country code of the city (when `weather.name` is absent) |
+| `weather.lang` | `hu`, `en`, `fr`, ... | inline-mode only: the display language of the weather description (when `weather.name` is absent) |
+| `weather.units` | `metric` / `imperial` | inline-mode only: °C vs °F (when `weather.name` is absent) |
+| `weather.api_url` | URL | the OpenWeatherMap API endpoint used by `weather.py` (default: `https://api.openweathermap.org/data/2.5/weather`); taken from the selected theme or the inline map |
 | `weather.window.alignment` | `top_left`, `top_right`, `top_middle`, `bottom_left`, `bottom_right`, `bottom_middle`, `middle_left`, `middle_right`, `middle_middle` | where the clock widget is anchored |
 | `weather.window.position_x` / `position_y` | integer px | pixel offset of the clock widget from its anchor |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour`; `12` also shows a small AM/PM indicator under the hour digits |
@@ -503,7 +530,7 @@ The file has three main parts:
    | `date_year` | 1m | `date +%Y.` |
    | `date_day` | 1m | `date "+| %B %d. | %A"` (en_US locale) |
    | `system_info` | 5s | `./scripts/system.py` (JSON) |
-   | `weather_info` | 10m | `./scripts/weather.py <key> <city> <lang> <units>` (JSON) |
+   | `weather_info` | 10m | `./scripts/weather.py <key> <city> <lang> <units> <api_url>` (JSON) |
    | `panel` | 1s | `./scripts/panel.py` (JSON + SVG charts) |
    | `config` | 5s | `./scripts/config.py` (merged JSON from `config.yaml` + weather theme) |
    | `theme` | 5s | `cat eww.theme.json` |
@@ -531,10 +558,10 @@ The file has three main parts:
 | Script | Output | Responsibility |
 |---|---|---|
 | `system.py` | `{hdd, ram, cpu, swap}` | `psutil`/`shutil`-based system info, dynamic `format_bytes` (B/KB/MB/GB/TB) |
-| `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call, rounding, °C/°F |
+| `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call to the configured `api_url`, rounding, °C/°F |
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` + tinted icons under `generated/icons/` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme (+ PNG tinting when `appearance.icon.color` is set) |
-| `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` → the values for the `defpoll`s |
+| `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` **or** the inline `weather` map → the values for the `defpoll`s |
 | `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; also logs a human-readable summary to stderr |
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; a `config.yaml` change also triggers `start.sh --relayout`; log: `watch.log`, PID: `watch.pid` |
 | `start.sh` | — | starting the widget (section 3): Plasma check (Wayland only), theme generation, taskbar alignment + panel side (`panel.window.alignment`), `eww daemon` + opening windows, watcher start |

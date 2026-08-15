@@ -31,7 +31,7 @@
 
 ;; --- Weather ----------------------------------------------------------------
 (defpoll weather_info :interval "10m"
-  `./scripts/weather.py $(./scripts/config.py --key api_key) $(./scripts/config.py --key city) $(./scripts/config.py --key lang) $(./scripts/config.py --key units)`)
+  `./scripts/weather.py $(./scripts/config.py --key api_key) $(./scripts/config.py --key city) $(./scripts/config.py --key lang) $(./scripts/config.py --key units) $(./scripts/config.py --key api_url)`)
 
 ;; --- System monitor panel (CPU / MEMORY / NET UP / NET DOWN charts) ---------
 (defpoll panel :interval "1s"
