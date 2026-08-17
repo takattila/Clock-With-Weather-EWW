@@ -279,3 +279,162 @@
   margin-top: 4px;
   margin-left: 10px;
 }
+
+/* ============================================================
+   Context menu (right-click)
+   ============================================================ */
+
+.ctx-menu {
+  background-color: rgba($bg-color, 0.95);
+  border: 1px solid rgba($color-light, 0.15);
+  border-radius: $bg-radius;
+  padding: 6px;
+}
+
+.ctx-btn {
+  min-width: 140px;
+  margin: 2px;
+  background-color: transparent;
+  border-radius: 8px;
+}
+
+.ctx-btn:hover {
+  background-color: rgba($color-light, 0.12);
+}
+
+.ctx-btn:active {
+  background-color: rgba($color-light, 0.22);
+}
+
+.ctx-btn-box {
+  padding: 8px 14px;
+}
+
+.ctx-btn-box label {
+  font-size: 15px;
+  color: rgba($color-light, $color-light-alpha);
+}
+
+/* ============================================================
+   Move / Resize overlay
+   ============================================================ */
+
+.move-overlay {
+  background-color: rgba(0, 0, 0, 0.0);
+}
+
+.move-rect {
+  border-radius: 0px;
+}
+
+/* ============================================================
+   Move / Resize control panel
+   ============================================================ */
+
+.move-controls {
+  background-color: rgba($bg-color, 0.97);
+  border: 1px solid rgba($color-light, 0.15);
+  border-radius: $bg-radius;
+  padding: 10px;
+}
+
+.mc-title {
+  font-size: 12px;
+  font-weight: bold;
+  color: rgba($color-light, 0.6);
+  margin: 2px 4px;
+}
+
+.mc-row {
+  margin: 2px 0;
+}
+
+.mc-btn {
+  min-width: 48px;
+  min-height: 30px;
+  margin: 2px;
+  background-color: rgba($color-light, 0.08);
+  border-radius: 8px;
+}
+
+.mc-btn:hover {
+  background-color: rgba($color-light, 0.16);
+}
+
+.mc-btn:active {
+  background-color: rgba($color-light, 0.28);
+}
+
+.mc-btn-box label {
+  font-size: 18px;
+  color: rgba($color-light, $color-light-alpha);
+}
+
+.mc-save {
+  background-color: rgba(78, 154, 6, 0.25);
+}
+
+.mc-cancel {
+  background-color: rgba(204, 0, 0, 0.25);
+}
+
+.mc-size {
+  font-size: 14px;
+  color: rgba($color-light, $color-light-alpha);
+  margin: 0 6px;
+}
+
+.mc-sep {
+  min-height: 1px;
+  margin: 8px 2px;
+  background-color: rgba($color-light, 0.15);
+}
+
+/* ============================================================
+   About window
+   ============================================================ */
+
+.about-window {
+  background-color: rgba($bg-color, 0.97);
+  border: 1px solid rgba($color-light, 0.15);
+  border-radius: $bg-radius;
+  padding: 18px;
+}
+
+.about-title {
+  font-size: 17px;
+  font-weight: bold;
+  color: rgba($color-light, $color-light-alpha);
+}
+
+.about-sep {
+  min-height: 1px;
+  margin: 10px 0;
+  background-color: rgba($color-light, 0.15);
+}
+
+.about-row {
+  font-size: 14px;
+  color: rgba($color-dark, $color-dark-alpha);
+  margin: 2px 0;
+}
+
+.about-open {
+  margin-top: 8px;
+  background-color: rgba($color-light, 0.1);
+  border-radius: 8px;
+}
+
+.about-open:hover {
+  background-color: rgba($color-light, 0.2);
+}
+
+.about-open-box {
+  padding: 8px 14px;
+}
+
+.about-open-box label {
+  font-size: 14px;
+  font-weight: bold;
+  color: rgba($color-light, $color-light-alpha);
+}

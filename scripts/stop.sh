@@ -26,33 +26,39 @@ stop_monitor_watch() {
   fi
 }
 
-# Kill the eww daemon for this config directory (closes all windows).
-# A wedged daemon can ignore the IPC kill (and even SIGTERM), so verify the
-# process is really gone and force-stop it otherwise. This guarantees that
-# start.sh always brings up a fresh daemon.
+# Kill every eww process on the system (not just this config dir): the
+# "stop" action must leave nothing behind. A wedged daemon can ignore the IPC
+# kill (and even SIGTERM), so verify the processes are really gone and
+# force-stop them otherwise. This guarantees that start.sh always brings up a
+# fresh daemon.
 stop_eww() {
   eww --config "$DIR" kill 2>/dev/null
 
   sleep 0.3
   local pid
   for pid in $(pgrep -x eww 2>/dev/null); do
-    if tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq -- "--config ${DIR} daemon"; then
-      kill "$pid" 2>/dev/null || true
-      for _ in 1 2 3 4 5; do
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 0.3
-      done
-      if kill -0 "$pid" 2>/dev/null; then
-        kill -9 "$pid" 2>/dev/null || true
-      fi
-      echo "eww daemon force-stopped (PID $pid)"
+    kill "$pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+      kill -0 "$pid" 2>/dev/null || break
+      sleep 0.3
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null || true
     fi
+    echo "eww process stopped (PID $pid)"
   done
+}
+
+# Stop helper processes that may linger (ESC listener, move keys)
+stop_helpers() {
+  pkill -f "esc_listener.py" 2>/dev/null || true
+  pkill -f "move_keys.py" 2>/dev/null || true
 }
 
 main() {
   stop_watcher
   stop_monitor_watch
+  stop_helpers
   stop_eww
   echo "Clock + weather widget and system monitor panel stopped (eww)."
 }

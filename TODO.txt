@@ -1,0 +1,10 @@
+Resize / Scale / About
+
+Ha jobb egérgombbal kattintok a panel és vagy weather widgetekre, egy context menuben kiválaszthatom: mozgatás vagy méretezés és about menupontokat. 
+A méretezés és mozgatás widgetenként értendő monitoronként: Minden monitoron lévő weather és panel widgetek egyenként méretezhetőek és mozgathatóak.
+A mozgatás eredényeképp a koordináták, a mértezéssel pedig a scale értékei a config.yaml -be kerülnek.
+Amikor a mozgatást választom, bal/jobb/fel/le gombokkal mozgathatok egy SVG téglalapot, ami pontosan akkora mint a kiválasztott widget.
+ENTER-t nyomva a koordináták a config.yaml-be írodnak, ESC-et nyomva kilépünk ebből az üzemmódból.
+
+Az about a git repo adatait mutatja, URL-el.
+A megoldás waylanden és X11-en egyaránt működőképes kell legyen.

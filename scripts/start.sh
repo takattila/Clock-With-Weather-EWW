@@ -19,6 +19,41 @@ ensure_plasma_running() {
   }
 }
 
+# --- Display environment bootstrap ----------------------------------------
+# The widget is often started from a terminal/autostart context that does not
+# export the graphical session variables (DISPLAY / WAYLAND_DISPLAY /
+# XAUTHORITY / XDG_RUNTIME_DIR / XDG_SESSION_TYPE). The eww daemon (a GTK
+# application) needs them to connect to the compositor; without them every
+# window fails with "Display parsing error" and the defpolls stay empty.
+# Import the variables from a running desktop process (kwin_wayland first,
+# then plasma/x11/gnome shells) when they are missing.
+ensure_display_env() {
+  if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
+    return 0
+  fi
+  local pid line
+  for pid in $(pgrep -x kwin_wayland 2>/dev/null) \
+             $(pgrep -x plasmashell 2>/dev/null) \
+             $(pgrep -x gnome-shell 2>/dev/null) \
+             $(pgrep -x cinnamon 2>/dev/null) \
+             $(pgrep -x Xorg 2>/dev/null); do
+    [ -r "/proc/$pid/environ" ] || continue
+    while IFS= read -r -d '' line; do
+      case "$line" in
+        DISPLAY=*|WAYLAND_DISPLAY=*|XAUTHORITY=*|XDG_RUNTIME_DIR=*|XDG_SESSION_TYPE=*)
+          export "$line" ;;
+      esac
+    done < "/proc/$pid/environ"
+    if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
+      echo "display env imported from session process (PID $pid)"
+      break
+    fi
+  done
+  if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ]; then
+    echo "WARNING: no graphical session detected (no DISPLAY/WAYLAND_DISPLAY); the widget may not be visible."
+  fi
+}
+
 # Generate the theme (SCSS variables + JSON) from config.yaml + appearance.yaml
 generate_theme() {
   python3 "$DIR/scripts/theme.py" "$DIR" || { echo "ERROR: theme generation failed"; exit 1; }
@@ -32,7 +67,7 @@ generate_theme() {
 # once per monitor with `eww open --screen/--id/--arg`.
 layout_windows() {
   local monitors layout count compositor win_main win_panel
-  local alignment main_anchor main_x main_y panel_enabled
+  local panel_enabled
   monitors="$(python3 "$DIR/scripts/monitors.py")" || {
     echo "ERROR: monitors.py failed"; return 1
   }
@@ -57,35 +92,49 @@ layout_windows() {
     win_main="main_window"; win_panel="panel_window"
   fi
 
-  # Clock widget placement from config.yaml (conky-style alignment + pixel
-  # offset) and whether the system monitor panel should be started.
-  alignment="$(python3 "$DIR/scripts/config.py" --key alignment)"
-  main_x="$(python3 "$DIR/scripts/config.py" --key position_x)"
-  main_y="$(python3 "$DIR/scripts/config.py" --key position_y)"
+  # The clock widget is positioned with a "top left" anchor: scripts/widget_rect.py
+  # computes the top-left corner from config.yaml (window.alignment + pixel
+  # offsets, resolved per-monitor) using the same geometry rules as eww 0.5.0,
+  # so the anchor math lives in one place.
   panel_enabled="$(python3 "$DIR/scripts/config.py" --key panel_enabled)"
-  case "$alignment" in
-    top_left)     main_anchor="top left" ;;
-    top_right)    main_anchor="top right" ;;
-    top_middle)   main_anchor="top center" ;;
-    bottom_left)  main_anchor="bottom left" ;;
-    bottom_right) main_anchor="bottom right" ;;
-    bottom_middle) main_anchor="bottom center" ;;
-    middle_left)  main_anchor="center left" ;;
-    middle_right) main_anchor="center right" ;;
-    middle_middle) main_anchor="center" ;;
-    *)            main_anchor="center" ;;
-  esac
 
   count=0
   while IFS='|' read -r idx px py pw ph panchor; do
     [ -z "$idx" ] && continue
+
+    # Clock widget geometry (top-left position; the window keeps its natural
+    # 745x250 size and the transform widget scales the content, so the window
+    # size does NOT depend on the scale -- only the visual position/size do,
+    # which widget_rect.py computes).
+    local main_geom main_x main_y main_w main_h main_scale_perc panel_scale_perc panel_translate_x panel_translate_y
+    main_geom="$(python3 "$DIR/scripts/widget_rect.py" --widget clock --monitor "$idx")" || {
+      echo "ERROR: widget_rect.py (clock, monitor $idx) failed"; return 1
+    }
+    main_x="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["x"])')"
+    main_y="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["y"])')"
+    main_w="745"
+    main_h="250"
+    main_scale_perc="$(python3 -c "print(int(round($(python3 "$DIR/scripts/config.py" --key scale --monitor "$idx") * 100)))")"
+
     eww --config "$DIR" open --id "main_$idx" --screen "$idx" \
-      --arg "main_anchor=$main_anchor" --arg "main_x=$main_x" --arg "main_y=$main_y" \
+      --arg "main_x=$main_x" --arg "main_y=$main_y" \
+      --arg "main_w=$main_w" --arg "main_h=$main_h" \
+      --arg "main_scale_perc=$main_scale_perc" --arg "screen=$idx" \
       "$win_main"
+
     if [ "$panel_enabled" = "true" ]; then
+      panel_scale_perc="$(python3 -c "print(int(round($(python3 "$DIR/scripts/config.py" --key panel_scale --monitor "$idx") * 100)))")"
+      panel_translate_x="$(python3 -c "print(int(round(250 * (1.0/$(python3 "$DIR/scripts/config.py" --key panel_scale --monitor "$idx") - 1))))")"
+      case "$panchor" in
+        *bottom*) panel_translate_y="$(python3 -c "print(int(round($ph * (1.0/$(python3 "$DIR/scripts/config.py" --key panel_scale --monitor "$idx") - 1))))")" ;;
+        *)         panel_translate_y="0" ;;
+      esac
       eww --config "$DIR" open --id "panel_$idx" --screen "$idx" \
         --arg "screen=$idx" --arg "px=$px" --arg "py=$py" \
         --arg "pw=$pw" --arg "ph=$ph" --arg "panchor=$panchor" \
+        --arg "panel_scale_perc=$panel_scale_perc" \
+        --arg "panel_translate_x=$panel_translate_x" \
+        --arg "panel_translate_y=$panel_translate_y" \
         "$win_panel"
     fi
     count=$((count + 1))
@@ -138,6 +187,35 @@ start_monitor_watch() {
   echo "monitor watcher started (PID $(cat "$DIR/monitor_watch.pid"))"
 }
 
+# Start the invisible keyboard daemon (scripts/input_daemon.py). It reads the
+# physical keyboard through evdev (/dev/input/event*), which needs root or the
+# 'input' group, so it is started via passwordless sudo. The display variables
+# are passed explicitly because sudo resets the environment; the daemon drops
+# back to the invoking user after opening the devices so the eww commands it
+# spawns keep the user's display access. It creates NO window, so nothing ever
+# appears on screen or in the taskbar. Log goes to input_daemon.log, its PID to
+# input_daemon.pid.
+start_input_daemon() {
+  if [ -f "$DIR/input_daemon.pid" ]; then
+    local opid
+    opid="$(cat "$DIR/input_daemon.pid" 2>/dev/null)"
+    if [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null; then
+      echo "input daemon already running (PID $opid)"
+      return
+    fi
+  fi
+  sudo -n env DISPLAY="$DISPLAY" WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+    XAUTHORITY="$XAUTHORITY" XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+    setsid python3 "$DIR/scripts/input_daemon.py" >> "$DIR/input_daemon.log" 2>&1 &
+  disown 2>/dev/null || true
+  sleep 0.5
+  if [ -f "$DIR/input_daemon.pid" ]; then
+    echo "input daemon started (PID $(cat "$DIR/input_daemon.pid"))"
+  else
+    echo "input daemon: failed to start (passwordless sudo or evdev unavailable); keyboard control disabled"
+  fi
+}
+
 # Recompute the layout and reopen every window (keeps the daemon running).
 relayout() {
   eww --config "$DIR" close-all 2>/dev/null
@@ -145,6 +223,7 @@ relayout() {
 }
 
 main() {
+  ensure_display_env
   "$DIR/scripts/stop.sh"
   # KDE Plasma (plasmashell) is only relevant on Wayland: the widget does not
   # need a desktop shell on X11 (e.g. Linux Mint / Cinnamon), where the GTK

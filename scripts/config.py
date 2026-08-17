@@ -23,11 +23,18 @@ Usage:
   ./config.py --key NAME  a single value
                           (api_key | appearance | weather | hour_format |
                            city | language_code | lang | units | api_url |
-                           alignment | position_x | position_y |
-                           panel_enabled | panel_alignment)
+                           alignment | position_x | position_y | scale |
+                           panel_enabled | panel_alignment | panel_scale)
+  ./config.py --key NAME --monitor N
+                          resolve position_x/position_y/scale/panel_scale for
+                          monitor N (per_monitor overrides win over globals)
 
 Keys that are resolved from the selected weather theme: city, language_code,
 lang, units, api_url.
+
+The per-monitor override map lives in config.yaml as
+weather.window.per_monitor / panel.window.per_monitor (see the comments
+there). The monitor index matches `eww open --screen N`.
 """
 
 import json
@@ -77,7 +84,12 @@ def load_config():
         weather_name = "custom"
         weather = {k: v for k, v in weather_cfg.items() if k != "window"}
 
-    return {
+    weather_scale = float(weather_window.get("scale", 1.0) or 1.0)
+    panel_scale = float(panel_window.get("scale", 1.0) or 1.0)
+    weather_pm = weather_window.get("per_monitor") or {}
+    panel_pm = panel_window.get("per_monitor") or {}
+
+    merged = {
         "api_key": resolve_api_key(),
         "appearance": appearance,
         "weather": weather_name,
@@ -90,9 +102,30 @@ def load_config():
         "alignment": weather_window.get("alignment", "middle_middle"),
         "position_x": int(weather_window.get("position_x", 0)),
         "position_y": int(weather_window.get("position_y", 0)),
+        "scale": weather_scale,
+        "weather_per_monitor": weather_pm,
         "panel_enabled": str(panel.get("enabled", True)).lower(),
         "panel_alignment": str(panel_window.get("alignment", "right")).lower(),
+        "panel_scale": panel_scale,
+        "panel_per_monitor": panel_pm,
     }
+
+    monitor = None
+    if "--monitor" in sys.argv:
+        idx = sys.argv.index("--monitor")
+        if idx + 1 < len(sys.argv):
+            monitor = int(sys.argv[idx + 1])
+    if monitor is not None:
+        wpm = weather_pm.get(monitor)
+        if isinstance(wpm, dict):
+            merged["position_x"] = int(wpm.get("position_x", merged["position_x"]))
+            merged["position_y"] = int(wpm.get("position_y", merged["position_y"]))
+            merged["scale"] = float(wpm.get("scale", merged["scale"]))
+        ppm = panel_pm.get(monitor)
+        if isinstance(ppm, dict):
+            merged["panel_scale"] = float(ppm.get("scale", merged["panel_scale"]))
+
+    return merged
 
 
 def main():

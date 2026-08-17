@@ -1,10 +1,22 @@
 ;; ===========================================================================
 ;; Clock-With-Weather-EWW
 ;;
-;; Two windows:
-;;   1. main_window  -> Clock + Weather widget (745x250, centered)
-;;   2. panel_window -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
+;; Windows:
+;;   1. main_window     -> Clock + Weather widget (745x250 x scale)
+;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
+;;   3. ctx_menu        -> right-click context menu (Move / Resize / About)
+;;   4. move_overlay    -> full-monitor layer for the Move / Resize rectangle
+;;   5. move_controls   -> Move / Resize control panel (arrows, +/-, Save, Cancel)
+;;   6. about_window    -> repository information
 ;; ===========================================================================
+
+;; --- Context menu state (see PLAN.md, scripts/move.py) ----------------------
+(defvar move_x 0)
+(defvar move_y 0)
+(defvar move_w 100)
+(defvar move_h 100)
+(defvar move_pct 100)
+(defvar about_json "{}")
 
 ;; --- Clock data ------------------------------------------------------------
 (defpoll hour :interval "1s"
@@ -48,8 +60,10 @@
 ;; Image path helpers
 ;; ===========================================================================
 
-(defwidget widget_clock_weather []
-  (box :class "main-container" :orientation "h" :space-evenly false
+(defwidget widget_clock_weather [main_scale_perc screen]
+  (eventbox :timeout "10s" :onrightclick "./scripts/ctx.py --widget clock --monitor ${screen}"
+    (transform :scale-x "${main_scale_perc}%" :scale-y "${main_scale_perc}%"
+      (box :class "main-container" :orientation "h" :space-evenly false
 
     ;; ------------------------------------------------------------------
     ;; ABSOLUTE layout (745x250). Baseline coordinates converted to the
@@ -164,63 +178,179 @@
              :image-width 4 :image-height 10
              :halign "start" :valign "start")
       (label :class "stat-label stat-feels-label" :text {weather_info.feels_like_fmt + weather_info.unit_symbol}
-             :halign "start" :valign "start"))))
+             :halign "start" :valign "start"))))))
 
 
 ;; ===========================================================================
 ;; System monitor panel
 ;; ===========================================================================
 
-(defwidget widget_panel [ph]
-  (box :class "panel-container" :orientation "v" :space-evenly true
+(defwidget widget_panel [ph panel_scale_perc panel_translate_x panel_translate_y screen]
+  (eventbox :timeout "10s" :onrightclick "./scripts/ctx.py --widget panel --monitor ${screen}"
+    (transform :scale-x "${panel_scale_perc}%" :scale-y "${panel_scale_perc}%"
+               :translate-x {panel_translate_x}
+               :translate-y {panel_translate_y}
+      (box :class "panel-container" :orientation "v" :space-evenly true
 
-    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-      (label :class "panel-title" :text "CPU" :halign "start")
-      (label :class "panel-status" :text {panel.cpu_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.files[ph].cpu} :halign "start"))
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "CPU" :halign "start")
+          (label :class "panel-status" :text {panel.cpu_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].cpu} :halign "start"))
 
-    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-      (label :class "panel-title" :text "MEMORY" :halign "start")
-      (label :class "panel-status" :text {panel.mem_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.files[ph].mem} :halign "start"))
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "MEMORY" :halign "start")
+          (label :class "panel-status" :text {panel.mem_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].mem} :halign "start"))
 
-    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-      (label :class "panel-title" :text "NET DOWN" :halign "start")
-      (label :class "panel-status" :text {panel.down_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.files[ph].down} :halign "start"))
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "NET DOWN" :halign "start")
+          (label :class "panel-status" :text {panel.down_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].down} :halign "start"))
 
-    (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-      (label :class "panel-title" :text "NET UP" :halign "start")
-      (label :class "panel-status" :text {panel.up_txt} :halign "start")
-      (image :class "panel-chart" :path {panel.files[ph].up} :halign "start"))))
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "NET UP" :halign "start")
+          (label :class "panel-status" :text {panel.up_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].up} :halign "start"))))))
+
+;; ===========================================================================
+;; Context menu (Move / Resize / About)
+;; ===========================================================================
+
+(defwidget widget_ctx_menu [widget monitor]
+  (box :class "ctx-menu" :orientation "v"
+    ;; move.py opens the overlay + control panel and returns immediately, so it
+    ;; is backgrounded (nohup ... &) to keep the shell call instant.
+    (button :class "ctx-btn" :timeout "5s"
+            :onclick "nohup ./scripts/move.py --widget ${widget} --monitor ${monitor} --mode move >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box" (label :text "Move")))
+    (button :class "ctx-btn" :timeout "5s"
+            :onclick "nohup ./scripts/move.py --widget ${widget} --monitor ${monitor} --mode resize >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box" (label :text "Resize")))
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "./scripts/about.py --open --monitor ${monitor}"
+            (box :class "ctx-btn-box" (label :text "About")))))
+
+;; ===========================================================================
+;; Move / Resize overlay: full-monitor transparent layer showing the rectangle
+;; ===========================================================================
+
+(defwidget widget_move_overlay [widget monitor]
+  ;; Clicking anywhere on the overlay (outside the control panel) cancels the
+  ;; Move / Resize session; the control panel (move_controls) stacks above the
+  ;; overlay so its buttons still receive their clicks.
+  (eventbox :class "move-overlay" :timeout "5s"
+            :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action cancel"
+    (box :class "move-overlay"
+      (transform :translate-x {move_x} :translate-y {move_y}
+        ;; halign/valign "start" pin the image to the window's top-left: the
+        ;; homogeneous box allocates the image the full screen, and without this
+        ;; GtkImage would CENTER the pixbuf there, so translate(move_x, move_y)
+        ;; would be applied on top of a huge centering offset. With the image
+        ;; anchored at 0,0 the translate lands exactly on the widget.
+        (image :class "move-rect" :path "generated/move_rect.svg"
+               :image-width {move_w} :image-height {move_h}
+               :halign "start" :valign "start")))))
+
+;; Control panel for the Move / Resize session. Each button is handled by
+;; scripts/move_ctl.py (fast eww get/update calls), so the commands stay inside
+;; eww's command timeout; :timeout "5s" is set as a safety net. The resize
+;; label shows the current scale percentage (move_pct), re-rendering whenever
+;; move_ctl updates it together with move_w/move_h.
+(defwidget widget_move_controls [widget monitor]
+  (box :class "move-controls" :orientation "v"
+    (label :class "mc-title" :text "Move")
+    (button :class "mc-btn" :timeout "5s"
+            :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action up"
+            (box :class "mc-btn-box" (label :text "↑")))
+    (box :class "mc-row" :orientation "h"
+      (button :class "mc-btn" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action left"
+              (box :class "mc-btn-box" (label :text "←")))
+      (button :class "mc-btn" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action down"
+              (box :class "mc-btn-box" (label :text "↓")))
+      (button :class "mc-btn" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action right"
+              (box :class "mc-btn-box" (label :text "→"))))
+    (box :class "mc-sep")
+    (label :class "mc-title" :text "Resize")
+    (box :class "mc-row" :orientation "h"
+      (button :class "mc-btn" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action zoom_out"
+              (box :class "mc-btn-box" (label :text "−")))
+      (label :class "mc-size" :text {move_pct + "%"})
+      (button :class "mc-btn" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action zoom_in"
+              (box :class "mc-btn-box" (label :text "+"))))
+    (box :class "mc-sep")
+    (box :class "mc-row" :orientation "h"
+      (button :class "mc-btn" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
+              (box :class "mc-btn-box" (label :text "Reset")))
+      (button :class "mc-btn mc-save" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action save"
+              (box :class "mc-btn-box" (label :text "Save")))
+      (button :class "mc-btn mc-cancel" :timeout "5s"
+              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action cancel"
+              (box :class "mc-btn-box" (label :text "Cancel"))))))
+
+;; ===========================================================================
+;; About window
+;; ===========================================================================
+
+(defwidget widget_about []
+  (box :class "about-window" :orientation "v"
+    (label :class "about-title" :text "Clock + Weather + System Monitor")
+    (box :class "about-sep")
+    (label :class "about-row" :text {about_json.branch + "  (" + about_json.tag + ")"})
+    (label :class "about-row" :text {about_json.commit + "  " + about_json.date})
+    (label :class "about-row" :text {about_json.message})
+    (box :class "about-sep")
+    (button :class "about-open" :timeout "10s"
+            :onclick "xdg-open ${about_json.url}"
+            (box :class "about-open-box" (label :text "Open repository")))))
 
 ;; ===========================================================================
 ;; Windows
 ;; ===========================================================================
 
-;; main_window is parametrized like panel_window so scripts/start.sh can pass
-;; the clock widget's alignment (-> anchor) and pixel offsets from config.yaml
-;; (window.alignment / window.position_x / window.position_y).
+;; main_window is parametrized so scripts/start.sh can pass the clock widget's
+;; position and size. The clock uses a "top left" anchor: main_x/main_y are the
+;; top-left corner (workarea-local on Wayland, monitor-local on X11), computed
+;; from config.yaml (window.alignment / position_x / position_y) by
+;; scripts/widget_rect.py. main_w/main_h are the NATURAL window size (745x250,
+;; independent of the scale): the content is scaled with the transform widget
+;; (:scale-* takes a PERCENTAGE in eww 0.5.0, so main_scale_perc =
+;; round(scale * 100)). The transform's cairo origin is the widget's top-left,
+;; so the scaled content stays anchored at the window's top-left corner and the
+;; window position matches the visual (scaled) position reported by
+;; scripts/widget_rect.py.
 (defwindow main_window
-  [main_anchor main_x main_y]
-  :monitor 0
+  [main_x main_y main_w main_h main_scale_perc screen]
+  :monitor {screen}
   :geometry (geometry :x {main_x}
                       :y {main_y}
-                      :width "745px"
-                      :height "250px"
-                      :anchor {main_anchor})
+                      :width {main_w}
+                      :height {main_h}
+                      :anchor "top left")
   :stacking "bottom"
   :windowtype "normal"
   :wm-ignore true
-  (widget_clock_weather))
+  (widget_clock_weather :main_scale_perc main_scale_perc :screen screen))
 
 ;; panel_window is parametrized so start.sh can open one instance per monitor
 ;; with `eww open --id panel_<N> --screen <N> --arg "screen=<N>" ... panel_window`.
-;; `screen` is both the monitor selector and the :monitor value; the rest are
-;; the panel geometry (px/py/pw/ph) and its anchor, computed per monitor by
-;; scripts/workarea.py --per-monitor.
+;; `screen` is both the monitor selector and the :monitor value; px/py/pw/ph are
+;; the panel geometry (px/py the gaps, pw/ph the NATURAL size: 250 x panel
+;; height) and panchor its anchor, computed per monitor by
+;; scripts/workarea.py --per-monitor. The content is scaled with the transform
+;; widget (panel_scale_perc = round(scale * 100)); the transform's cairo origin
+;; is the top-left, so the scaled content is shifted by panel_translate_x/y
+;; (= size*(1/scale-1), 0 when the panel is top-anchored) to keep the panel
+;; hugging its anchored edge (right, and bottom when bottom-anchored). ph (the
+;; unscaled height) is also passed for the chart selector (panel.files[ph]).
 (defwindow panel_window
-  [screen px py pw ph panchor]
+  [screen px py pw ph panchor panel_scale_perc panel_translate_x panel_translate_y]
   :monitor {screen}
   :geometry (geometry :x {px}
                       :y {py}
@@ -230,7 +360,9 @@
   :stacking "bottom"
   :windowtype "normal"
   :wm-ignore true
-  (widget_panel :ph ph))
+  (widget_panel :ph ph :panel_scale_perc panel_scale_perc
+                :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
+                :screen screen))
 
 ;; X11 variants: eww 0.5.0 only honours `:stacking "foreground"`/`"background"` on
 ;; X11 ("bottom" is a no-op there), so these windows use "background"
@@ -242,20 +374,20 @@
 ;; definitions when the compositor is x11; the Wayland ones above use "bottom"
 ;; (Layer::Bottom).
 (defwindow main_window_x11
-  [main_anchor main_x main_y]
-  :monitor 0
+  [main_x main_y main_w main_h main_scale_perc screen]
+  :monitor {screen}
   :geometry (geometry :x {main_x}
                       :y {main_y}
-                      :width "745px"
-                      :height "250px"
-                      :anchor {main_anchor})
+                      :width {main_w}
+                      :height {main_h}
+                      :anchor "top left")
   :stacking "background"
   :windowtype "utility"
   :wm-ignore false
-  (widget_clock_weather))
+  (widget_clock_weather :main_scale_perc main_scale_perc :screen screen))
 
 (defwindow panel_window_x11
-  [screen px py pw ph panchor]
+  [screen px py pw ph panchor panel_scale_perc panel_translate_x panel_translate_y]
   :monitor {screen}
   :geometry (geometry :x {px}
                       :y {py}
@@ -265,4 +397,94 @@
   :stacking "background"
   :windowtype "utility"
   :wm-ignore false
-  (widget_panel :ph ph))
+  (widget_panel :ph ph :panel_scale_perc panel_scale_perc
+                :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
+                :screen screen))
+
+;; ===========================================================================
+;; Context menu window
+;; ===========================================================================
+
+;; On X11 `:stacking "overlay"` keeps the window a normal toplevel (no
+;; set_keep_above/below), so it floats above the keep-below widget windows.
+;; :focusable true lets the buttons receive clicks on Wayland.
+(defwindow ctx_menu
+  [screen widget monitor pos_x pos_y]
+  :monitor {screen}
+  :geometry (geometry :x {pos_x}
+                      :y {pos_y}
+                      :width "180px"
+                      :height "150px"
+                      :anchor "top left")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable true
+  (widget_ctx_menu :widget widget :monitor monitor))
+
+;; ===========================================================================
+;; Move / Resize overlay window (full monitor, not focusable)
+;; ===========================================================================
+
+(defwindow move_overlay
+  [screen widget monitor]
+  :monitor {screen}
+  :geometry (geometry :width "100%" :height "100%")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable true
+  (widget_move_overlay :widget widget :monitor monitor))
+
+;; Control panel window. Opened AFTER move_overlay so it stacks above it and
+;; its buttons stay clickable on the overlay layer. Positioned near the cursor
+;; by scripts/move.py; Save / Cancel (and clicking the overlay) end the session.
+(defwindow move_controls
+  [screen widget monitor pos_x pos_y]
+  :monitor {screen}
+  :geometry (geometry :x {pos_x}
+                      :y {pos_y}
+                      :width "200px"
+                      :height "250px"
+                      :anchor "top left")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable true
+  (widget_move_controls :widget widget :monitor monitor))
+
+;; ===========================================================================
+;; Dismiss overlay: transparent, full-monitor layer opened UNDER the context
+;; menu / About window. Clicking anywhere outside them hits this surface and
+;; closes the popups (eww 0.5.0 has no built-in click-outside-to-close).
+;; It is opened before the popup so the popup stacks above it; the popup
+;; scripts close it again (scripts/ctx.py, about.py --open, move.py,
+;; close_popup.py).
+;; ===========================================================================
+
+(defwindow dismiss_overlay
+  [screen]
+  :monitor {screen}
+  :geometry (geometry :width "100%" :height "100%")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable true
+  (eventbox :timeout "10s" :onclick "./scripts/close_popup.py"
+    (box :class "move-overlay")))
+
+;; ===========================================================================
+;; About window
+;; ===========================================================================
+
+(defwindow about_window
+  [monitor]
+  :monitor {monitor}
+  :geometry (geometry :width "420px"
+                      :height "240px"
+                      :anchor "center")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable true
+  (widget_about))
