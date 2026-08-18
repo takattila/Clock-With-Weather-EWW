@@ -6,20 +6,23 @@ it (window geometry is fixed at open time) and the keyboard daemon handled the
 arrow/+/-/ENTER/ESC keys. This panel is a small GTK3 window instead, which makes
 mouse-dragging possible on both compositors:
 
-  * X11        - the window is a normal undecorated toplevel; dragging hands
-                 the move to the window manager (GtkWindow.begin_move_drag),
-                 which tracks the pointer natively.
+  * X11        - the window is an override-redirect toplevel, so it stacks
+                 ABOVE the (also override-redirect) full-screen eww move
+                 overlay; otherwise that surface would swallow every click and
+                 the panel could never be dragged. Dragging moves the window
+                 directly (GtkWindow.move, absolute screen coordinates).
   * Wayland    - a plain toplevel cannot position itself, so the window is a
                  layer-shell surface (GtkLayerShell, already a system
                  dependency via eww): anchored top-left on the monitor and
                  positioned with set_margin().
 
 Dragging the title bar moves the panel live (on Wayland the grab point stays
-under the pointer via margin updates); releasing keeps it there. The buttons
-run scripts/move_ctl.py exactly like the old eww buttons did (arrows move the
-overlay rectangle, +/- zoom, Reset returns to the defaults, Save writes
-config.yaml and closes, Cancel discards). The resize percentage is polled from
-the eww variable move_pct (set by move_ctl.py together with move_w/move_h).
+under the pointer via margin updates; on X11 via gtk_window_move); releasing
+keeps it there. The buttons run scripts/move_ctl.py exactly like the old eww
+buttons did (arrows move the overlay rectangle, +/- zoom, Reset returns to the
+defaults, Save writes config.yaml and closes, Cancel discards). The resize
+percentage is polled from the eww variable move_pct (set by move_ctl.py
+together with move_w/move_h).
 
 Keyboard control (arrows, +/-/Shift+3, ENTER=save, ESC=cancel) is deliberately
 left to the invisible evdev daemon (scripts/input_daemon.py) so no key is
@@ -207,8 +210,22 @@ class MovePanel:
         self.win_x = x
         self.win_y = y
         self.drag = False
-        self.grab_x = 0
-        self.grab_y = 0
+        self.grab_root_x = 0.0
+        self.grab_root_y = 0.0
+        self.start_x = x
+        self.start_y = y
+
+        # Absolute screen origin of the target monitor: on X11 the drag clamps
+        # the panel to this rectangle (win.move uses absolute coordinates).
+        self.mon_ox = 0
+        self.mon_oy = 0
+        try:
+            display = Gdk.Display.get_default()
+            if display is not None and monitor < display.get_n_monitors():
+                geo = display.get_monitor(monitor).get_geometry()
+                self.mon_ox, self.mon_oy = geo.x, geo.y
+        except Exception:
+            pass
 
         bg, light, alpha, radius, font = theme_values()
         self.win = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
@@ -241,6 +258,17 @@ class MovePanel:
 
         self.build_ui(bg, light, alpha, radius, font)
         self.win.connect("destroy", lambda *_: Gtk.main_quit())
+        # On X11 the full-screen eww move overlay is override-redirect, which
+        # always floats above managed windows - so the panel must be
+        # override-redirect too to receive clicks and be draggable at all.
+        self.win.connect("realize", self.on_realize)
+
+    def on_realize(self, widget):
+        if not WAYLAND:
+            try:
+                widget.get_window().set_override_redirect(True)
+            except Exception:
+                pass
 
     def build_ui(self, bg, light, alpha, radius, font):
         css = build_css(bg, light, alpha, radius, font)
@@ -339,29 +367,23 @@ class MovePanel:
         action(self.widget, self.monitor, act)
 
     # ---- dragging ----------------------------------------------------------
+    # Both compositors drag the same way: the pointer is grabbed and the panel
+    # chases it, keeping the grab point (pressed on the title strip) under the
+    # cursor. Deltas come from the ROOT coordinates because the window itself
+    # moves: window-relative event.x/y would shrink as the window slides under
+    # the pointer and the drag would stall.
     def on_press(self, widget, event):
         if event.button != 1 or event.y > TITLE_H:
             return False
-        if not WAYLAND:
-            # X11: hand the interactive move to the window manager (native,
-            # smooth, WM does the tracking).
-            try:
-                self.win.begin_move_drag(
-                    int(event.button), int(event.x_root), int(event.y_root),
-                    int(event.time),
-                )
-            except Exception:
-                pass
-            return False
-        # Wayland: a layer-shell surface cannot ask the WM to move it, so the
-        # panel chases the pointer through margin updates.
         self.drag = True
-        self.grab_x = event.x
-        self.grab_y = event.y
+        self.grab_root_x = event.x_root
+        self.grab_root_y = event.y_root
+        self.start_x = self.win_x
+        self.start_y = self.win_y
         try:
             if self.win.get_window() is not None:
-                self.win.get_window().pointer_grab(
-                    False,
+                Gdk.pointer_grab(
+                    self.win.get_window(), False,
                     Gdk.EventMask.BUTTON_PRESS_MASK
                     | Gdk.EventMask.BUTTON_RELEASE_MASK
                     | Gdk.EventMask.POINTER_MOTION_MASK,
@@ -374,12 +396,16 @@ class MovePanel:
     def on_motion(self, widget, event):
         if not self.drag:
             return False
-        dx = event.x - self.grab_x
-        dy = event.y - self.grab_y
-        nx = self.win_x + dx
-        ny = self.win_y + dy
-        nx = max(0, min(nx, max(0, self.frame_w - MC_W)))
-        ny = max(0, min(ny, max(0, self.frame_h - MC_H)))
+        nx = self.start_x + int(event.x_root - self.grab_root_x)
+        ny = self.start_y + int(event.y_root - self.grab_root_y)
+        if WAYLAND:
+            # Margins are monitor-relative.
+            nx = max(0, min(nx, max(0, self.frame_w - MC_W)))
+            ny = max(0, min(ny, max(0, self.frame_h - MC_H)))
+        else:
+            # win.move uses absolute screen coordinates.
+            nx = max(self.mon_ox, min(nx, self.mon_ox + max(0, self.frame_w - MC_W)))
+            ny = max(self.mon_oy, min(ny, self.mon_oy + max(0, self.frame_h - MC_H)))
         if nx != self.win_x or ny != self.win_y:
             self.win_x, self.win_y = nx, ny
             set_position(self.win, nx, ny)
@@ -390,8 +416,7 @@ class MovePanel:
             return False
         self.drag = False
         try:
-            if self.win.get_window() is not None:
-                self.win.get_window().pointer_ungrab(Gdk.CURRENT_TIME)
+            Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
         except Exception:
             pass
         return False
