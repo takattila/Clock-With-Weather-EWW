@@ -6,19 +6,20 @@ it (window geometry is fixed at open time) and the keyboard daemon handled the
 arrow/+/-/ENTER/ESC keys. This panel is a small GTK3 window instead, which makes
 mouse-dragging possible on both compositors:
 
-  * X11        - the window is a normal undecorated toplevel; it is moved with
-                 gtk_window_move (absolute screen coordinates).
+  * X11        - the window is a normal undecorated toplevel; dragging hands
+                 the move to the window manager (GtkWindow.begin_move_drag),
+                 which tracks the pointer natively.
   * Wayland    - a plain toplevel cannot position itself, so the window is a
                  layer-shell surface (GtkLayerShell, already a system
                  dependency via eww): anchored top-left on the monitor and
                  positioned with set_margin().
 
-Dragging the title bar moves the panel live (the grab point stays under the
-pointer); releasing keeps it there. The buttons run scripts/move_ctl.py exactly
-like the old eww buttons did (arrows move the overlay rectangle, +/- zoom, Reset
-returns to the defaults, Save writes config.yaml and closes, Cancel discards).
-The resize percentage is polled from the eww variable move_pct (set by
-move_ctl.py together with move_w/move_h).
+Dragging the title bar moves the panel live (on Wayland the grab point stays
+under the pointer via margin updates); releasing keeps it there. The buttons
+run scripts/move_ctl.py exactly like the old eww buttons did (arrows move the
+overlay rectangle, +/- zoom, Reset returns to the defaults, Save writes
+config.yaml and closes, Cancel discards). The resize percentage is polled from
+the eww variable move_pct (set by move_ctl.py together with move_w/move_h).
 
 Keyboard control (arrows, +/-/Shift+3, ENTER=save, ESC=cancel) is deliberately
 left to the invisible evdev daemon (scripts/input_daemon.py) so no key is
@@ -60,6 +61,7 @@ if WAYLAND:
 
 MC_W = 200
 MC_H = 250
+TITLE_H = 30
 
 
 def theme_values():
@@ -262,10 +264,14 @@ class MovePanel:
         title.set_events(Gdk.EventMask.BUTTON_PRESS_MASK
                          | Gdk.EventMask.BUTTON_RELEASE_MASK
                          | Gdk.EventMask.POINTER_MOTION_MASK)
-        title.connect("button-press-event", self.on_press)
-        title.connect("button-release-event", self.on_release)
-        title.connect("motion-notify-event", self.on_motion)
         title.connect("realize", lambda w: self._grab_cursor(w))
+        # Drag events are handled on the toplevel window, not the title
+        # eventbox: during a pointer grab GDK delivers button/motion events to
+        # the grabbed (toplevel) window, so an eventbox-only handler would
+        # never see them. The press is gated to the title strip below.
+        self.win.connect("button-press-event", self.on_press)
+        self.win.connect("button-release-event", self.on_release)
+        self.win.connect("motion-notify-event", self.on_motion)
         root.pack_start(title, False, False, 0)
 
         root.pack_start(self.btn("↑", "up"), False, False, 0)
@@ -334,8 +340,21 @@ class MovePanel:
 
     # ---- dragging ----------------------------------------------------------
     def on_press(self, widget, event):
-        if event.button != 1:
+        if event.button != 1 or event.y > TITLE_H:
             return False
+        if not WAYLAND:
+            # X11: hand the interactive move to the window manager (native,
+            # smooth, WM does the tracking).
+            try:
+                self.win.begin_move_drag(
+                    int(event.button), int(event.x_root), int(event.y_root),
+                    int(event.time),
+                )
+            except Exception:
+                pass
+            return False
+        # Wayland: a layer-shell surface cannot ask the WM to move it, so the
+        # panel chases the pointer through margin updates.
         self.drag = True
         self.grab_x = event.x
         self.grab_y = event.y
