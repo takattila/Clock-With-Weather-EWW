@@ -371,7 +371,7 @@ function installEwwDependencies() {
     #   - python3-gi + GTK3 typelibs (move_keys.py keyboard grab)
     #   - xdotool               (menu_pos.py / move_keys.py cursor on X11)
     #   - xdg-utils             (xdg-open for the About window)
-    #   - librsvg               (SVG loader for the panel charts + move_rect.svg)
+    #   - librsvg               (SVG loader for the panel charts)
     # qt6-tools provides qdbus6, used by workarea.py to query the KDE taskbar
     # frame for the panel gaps (optional: geometry falls back without it).
     if [[ "$(helperExistsProgram yum)" = "0" ]]; then

@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """Move / Resize session launcher for the context menu.
 
-Opens the full-monitor transparent overlay (move_overlay) with the rectangle
-pre-set to the widget's current position/size, plus the draggable GTK control
-panel (scripts/move_panel.py) with buttons (arrows, +/- zoom, Save, Cancel).
+Opens the full-monitor transparent rectangle overlay (scripts/move_rect.py)
+with the rectangle pre-set to the widget's current position/size, plus the
+draggable GTK control panel (scripts/move_panel.py) with buttons (arrows, +/-
+zoom, Save, Cancel).
 
 Unlike the old arrow-key version this script does NOT run an interactive loop:
-it sets the overlay values, opens the overlay, starts the control panel and
+it sets the overlay values, starts the rectangle window + control panel and
 returns immediately, so eww's command timeout (200ms) cannot kill it. The
 buttons are handled by scripts/move_ctl.py; the arrow keys / +/- / ENTER / ESC
-by the invisible evdev daemon (scripts/input_daemon.py); clicking anywhere
-outside the panel (on the overlay) cancels the session.
+by the invisible evdev daemon (scripts/input_daemon.py); dragging/resizing the
+rectangle with the mouse directly (scripts/move_rect.py); clicking anywhere
+outside the rectangle cancels the session.
 
-The overlay values are written BEFORE opening move_overlay so the rectangle
+The overlay values are written BEFORE opening the windows so the rectangle
 renders at the widget's size right away (previously the overlay appeared with
 the 100x100 defvar defaults until the update propagated -> looked like a
-square).
+square). The rectangle window is spawned before the control panel so the panel
+stacks above it and stays clickable.
 
 Usage:
   ./move.py --widget clock --monitor 0 --mode move
@@ -96,25 +99,18 @@ def main():
     w = int(round(rect["width"]))
     h = int(round(rect["height"]))
 
-    # Close popups and any stale session windows; the control panel owns the
-    # Move/Resize session.
+    # Close popups and any stale session windows; the rectangle window + the
+    # control panel own the Move/Resize session.
     eww("close", "ctx_menu")
     eww("close", "dismiss_overlay")
-    eww("close", "move_overlay")
 
     # Activate the keyboard daemon first (scripts/session.py starts it if
     # needed and writes generated/input_session.json): the daemon then maps
-    # arrows / +/- / ENTER / ESC to move_ctl.py actions, and the control panel
-    # watches the same file to know when to close.
+    # arrows / +/- / ENTER / ESC to move_ctl.py actions, and the rectangle +
+    # control panel watch the same file to know when to close.
     session.set_session({"mode": "move", "widget": args.widget, "monitor": args.monitor})
 
-    # Regenerate the rectangle SVG with the widget's aspect ratio: the overlay
-    # renders it via Pixbuf::from_file_at_size(move_w, move_h), which FITS the
-    # image into that box preserving the aspect ratio. A square SVG would
-    # therefore always render as a square regardless of move_w/move_h.
-    run(["python3", os.path.join(SCRIPT_DIR, "gen_rect_svg.py"), "--width", str(w), "--height", str(h)])
-
-    # Set the overlay values BEFORE opening the window so the rectangle has the
+    # Set the overlay values BEFORE opening the windows so the rectangle has the
     # correct size/position on the first frame.
     base_w = CLOCK_W if args.widget == "clock" else PANEL_WIDTH
     pct = int(round(w / base_w * 100)) if base_w else 100
@@ -126,12 +122,31 @@ def main():
         "move_h=%d" % h,
         "move_pct=%d" % pct,
     )
-    eww(
-        "open", "--id", "move_overlay", "--screen", str(args.monitor),
-        "--arg", "screen=%d" % args.monitor,
-        "--arg", "widget=%s" % args.widget,
-        "--arg", "monitor=%d" % args.monitor,
-        "move_overlay",
+
+    # Rectangle overlay first, so the control panel stacks above it. base_w/
+    # base_h are the NATURAL (scale 1.0) sizes, used by the mouse resize to
+    # keep the aspect ratio; ox/oy is the frame's top-left inside the monitor
+    # (workarea vs monitor on Wayland, 0/0 on X11).
+    if base_w:
+        scale = w / base_w
+        base_h = int(round(h / scale)) if scale else h
+    else:
+        base_h = h
+    subprocess.Popen(
+        [
+            sys.executable, os.path.join(SCRIPT_DIR, "move_rect.py"),
+            "--widget", args.widget,
+            "--monitor", str(args.monitor),
+            "--x", str(int(round(rect["left"]))),
+            "--y", str(int(round(rect["top"]))),
+            "--w", str(w), "--h", str(h),
+            "--ox", str(int(round(rect["frame_ox"]))),
+            "--oy", str(int(round(rect["frame_oy"]))),
+            "--base-w", str(int(base_w)), "--base-h", str(int(base_h)),
+            "--frame-w", str(frame_w), "--frame-h", str(frame_h),
+        ],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, start_new_session=True, cwd=CONFIG_DIR,
     )
 
     # Control panel near the cursor (the user just clicked the menu button);

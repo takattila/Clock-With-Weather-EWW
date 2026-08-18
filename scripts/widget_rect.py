@@ -147,6 +147,8 @@ def clock_rect(monitor, compositor, workarea, monitor_index):
         "height": int(round(h)),
         "frame_w": int(frame_w),
         "frame_h": int(frame_h),
+        "frame_ox": frame_x - mx,
+        "frame_oy": frame_y - my,
         "right_gap": None,
         "anchor": "top left",
     }
@@ -204,6 +206,8 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
         "height": int(round(h)),
         "frame_w": int(frame_w),
         "frame_h": int(frame_h),
+        "frame_ox": frame_x - mx,
+        "frame_oy": frame_y - my,
         "right_gap": int(off_x),
         "anchor": anchor,
     }

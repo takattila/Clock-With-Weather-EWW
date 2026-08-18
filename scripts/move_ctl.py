@@ -124,13 +124,11 @@ def save_value(widget, monitor, key, value):
     run(cmd)
 
 
-def finish(close_overlay=True):
-    # The control panel is a GTK window (scripts/move_panel.py) that watches the
-    # session file and quits by itself when it disappears, so only the overlay
-    # and the keyboard-daemon session need to be ended here.
-    if close_overlay:
-        eww("close", "move_overlay")
-    # Deactivate the keyboard daemon session: ESC/ENTER/arrows stop mapping.
+def finish():
+    # The rectangle window (scripts/move_rect.py) and the control panel
+    # (scripts/move_panel.py) both watch the session file and quit by
+    # themselves when it disappears, so only the keyboard-daemon session needs
+    # to be ended here.
     session.clear_session()
 
 

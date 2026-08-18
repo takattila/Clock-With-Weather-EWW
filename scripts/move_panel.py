@@ -274,6 +274,20 @@ class MovePanel:
             except Exception:
                 pass
 
+    def raise_above(self):
+        # Both the rectangle window and the panel are override-redirect
+        # toplevels on X11, so their stacking follows the X server's map order
+        # and the slower-starting rectangle window can map on top of the panel
+        # and swallow its clicks. Raising every tick keeps the panel
+        # deterministically above it for the whole session.
+        if not WAYLAND:
+            try:
+                window = self.win.get_window()
+                if window is not None:
+                    window.raise_()
+            except Exception:
+                pass
+
     def build_ui(self, bg, light, alpha, radius, font):
         css = build_css(bg, light, alpha, radius, font)
         provider = Gtk.CssProvider()
@@ -453,6 +467,7 @@ class MovePanel:
         if not session_active():
             Gtk.main_quit()
             return False
+        self.raise_above()
         pct = eww_get("move_pct")
         if pct:
             try:

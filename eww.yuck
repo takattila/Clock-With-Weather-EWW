@@ -5,8 +5,10 @@
 ;;   1. main_window     -> Clock + Weather widget (745x250 x scale)
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
 ;;   3. ctx_menu        -> right-click context menu (Move / Resize / About)
-;;   4. move_overlay    -> full-monitor layer for the Move / Resize rectangle
-;;   5. about_window    -> repository information
+;;   4. about_window    -> repository information
+;;
+;; The Move/Resize rectangle + control panel are GTK3 windows (scripts/
+;; move_rect.py + move_panel.py), not eww windows.
 ;; ===========================================================================
 
 ;; --- Context menu state (see PLAN.md, scripts/move.py) ----------------------
@@ -230,28 +232,6 @@
             (box :class "ctx-btn-box" (label :text "About")))))
 
 ;; ===========================================================================
-;; Move / Resize overlay: full-monitor transparent layer showing the rectangle
-;; ===========================================================================
-
-(defwidget widget_move_overlay [widget monitor]
-  ;; Clicking anywhere on the overlay (outside the control panel) cancels the
-  ;; Move / Resize session; the control panel (a GTK window, scripts/
-  ;; move_panel.py) stacks above the overlay so its buttons still receive their
-  ;; clicks.
-  (eventbox :class "move-overlay" :timeout "5s"
-            :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action cancel"
-    (box :class "move-overlay"
-      (transform :translate-x {move_x} :translate-y {move_y}
-        ;; halign/valign "start" pin the image to the window's top-left: the
-        ;; homogeneous box allocates the image the full screen, and without this
-        ;; GtkImage would CENTER the pixbuf there, so translate(move_x, move_y)
-        ;; would be applied on top of a huge centering offset. With the image
-        ;; anchored at 0,0 the translate lands exactly on the widget.
-        (image :class "move-rect" :path "generated/move_rect.svg"
-               :image-width {move_w} :image-height {move_h}
-               :halign "start" :valign "start")))))
-
-;; ===========================================================================
 ;; About window
 ;; ===========================================================================
 
@@ -378,20 +358,6 @@
   :wm-ignore true
   :focusable true
   (widget_ctx_menu :widget widget :monitor monitor))
-
-;; ===========================================================================
-;; Move / Resize overlay window (full monitor, not focusable)
-;; ===========================================================================
-
-(defwindow move_overlay
-  [screen widget monitor]
-  :monitor {screen}
-  :geometry (geometry :width "100%" :height "100%")
-  :stacking "overlay"
-  :windowtype "normal"
-  :wm-ignore true
-  :focusable true
-  (widget_move_overlay :widget widget :monitor monitor))
 
 ;; ===========================================================================
 ;; Dismiss overlay: transparent, full-monitor layer opened UNDER the context

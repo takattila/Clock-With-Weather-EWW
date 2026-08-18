@@ -1,108 +1,67 @@
 # PLAN: Context menu – Move / Resize / About
 
 ## 1. Goal
-Right-clicking the **weather/clock** widget or the **panel** widget (on any monitor) opens a context menu with: **Move**, **Resize**, **About**. Every action works **per widget and per monitor** individually; coordinates / `scale` values are written to `config.yaml`. It must work on both Wayland and X11.
+Right-clicking the **weather/clock** widget or the **panel** widget (on any monitor) opens a context menu with: **Move**, **Resize**, **About**. Every action works **per widget and per monitor** individually; coordinates / `scale` values are written to `config.yaml`. Works on both Wayland and X11. The Move/Resize session can be driven by the mouse (dragging/resizing the rectangle) as well as by the keyboard.
 
-## 2. Research findings (eww 0.5.0)
-- **Right click**: the `eventbox`/`button` widget supports `:onrightclick` → native solution, works on both compositors.
-- **Keyboard**: eww 0.5.0 **cannot** capture arrow keys/ENTER/ESC (no keybinding support). A small **PyGObject GTK3 helper window** must therefore capture the keys (available on the system).
-- **Positioning**: eww window geometry is fixed at open time; it can be overridden via `eww open ... --arg pos="x y" --arg size="w h" --arg screen=N --arg anchor=...`.
-- **Dynamic movement**: the `transform` widget (`:translate-x/:translate-y/:scale-x/:scale-y`) can be bound to a `defvar` → `eww update move_x=...` moves smoothly inside a full-monitor overlay.
-- **Commit mechanism**: the `watch.py` inotify watcher auto-reloads + runs `start.sh --relayout` when `config.yaml` changes → writing the file moves/resizes the widget.
-- **Multi-monitor** infrastructure already exists: `monitors.py`, `workarea.py`, `.layout.json`, `start.sh` per-monitor open.
-- **X11/Wayland equivalence**: the plan builds on both backends of eww 0.5.0. The positioning math (X11: absolute coordinates vs. Wayland: workarea-relative layer-shell margins) reuses the `workarea.py` logic.
+## 2. Current architecture (implemented)
 
-## 3. New dependencies + `install.sh` changes
-New programs required:
-- **PyGObject GTK3** (keyboard helper): `import gi; from gi.repository import Gtk`
-- **xdotool** (X11 cursor position for the menu)
-- **xdg-utils** (`xdg-open` for the About URL)
+**Context menu**
+- Right click (`eventbox`/`button :onrightclick`) → `scripts/ctx.py` opens `ctx_menu` (Move / Resize / About) above a transparent `dismiss_overlay`; clicking outside the menu closes it.
+- `scripts/about.py` opens the `about_window` with git data (remote, branch, commit, date, message); the button opens the repo URL.
 
-Extend the package lists of the `installEwwDependencies()` function in `scripts/install.sh` (following the existing per-distro structure):
+**Move / Resize session**
+- `scripts/move.py` computes the widget rectangle (`scripts/widget_rect.py`), activates the keyboard daemon session, sets the `move_x/move_y/move_w/move_h/move_pct` eww defvars, spawns the rectangle window (`scripts/move_rect.py`, BEFORE the panel so the panel stacks above) and the control panel. It returns immediately (eww command timeout), the rest runs in the background.
+- The **rectangle** (`scripts/move_rect.py`) is a full-monitor transparent GTK3 window that draws the dashed rectangle itself from `move_x/move_y/move_w/move_h`. Dragging inside moves it, dragging a corner/edge resizes it (aspect ratio kept, scale 0.3..1.5), clicking outside cancels the session. While not dragging it re-syncs from the eww defvars (arrows / +/- keep working).
+- The **control panel** (`scripts/move_panel.py`) is a GTK3 window (not eww: eww 0.5.0 cannot move windows and a `transform`-wrapped panel loses button clicks). Buttons call `scripts/move_ctl.py`; the title bar is mouse-draggable on both backends (X11: `GtkWindow.begin_move_drag` / WM-driven; Wayland: layer-shell margins, pointer-chasing). It polls `move_pct` for the % label and quits when the session file is cleared.
+- `scripts/move_ctl.py` actions: `left/right/up/down` (move ±10 px, clamped to the frame), `zoom_in/zoom_out` (±0.05 scale, clamped 0.3..1.5, anchor / right-gap preserved), `reset` (defaults), `save`, `cancel`. Save writes `position_x`/`position_y`/`scale` via `scripts/config_set.py` (line-aware YAML write that preserves comments) → the `watch.py` watcher triggers `start.sh --relayout` → the widget moves/resizes.
+- The `move`/`resize` menu modes are currently identical (both open the same combined session).
 
-| Distro | Packages to add |
-|---|---|
-| apt (Debian/Ubuntu) | `python3-gi gir1.2-gtk-3.0 xdotool xdg-utils` |
-| dnf / yum (Fedora/RHEL/EPEL) | `python3-gobject gtk3 xdotool xdg-utils` |
-| pacman (Arch) | `python-gobject gtk3 xdotool xdg-utils` |
-| zypper (openSUSE) | `python3-gobject gtk3 xdotool xdg-utils` |
+**Keyboard handling**
+- `scripts/input_daemon.py` reads `/dev/input/event*` via evdev (started by `start.sh` through passwordless sudo, drops to the user afterwards). It creates **no window**. While `generated/input_session.json` exists it maps keys, then goes idle:
+  - ctx mode: `ESC` → close popups.
+  - move mode: arrows → move, `Shift+3`/numpad `+` → zoom_in, `-` → zoom_out, `Enter` → save, `ESC` → cancel.
+- `scripts/session.py` manages the session file and lazily restarts the daemon.
 
-`requirements.txt` stays **unchanged** (PyGObject is a system package, not pip). The GTK3 runtime typelib (`gir1.2-gtk-3.0`) guarantees that `gi.repository.Gtk` can be imported.
+**Configuration** (`config.yaml`)
+- `weather.window`: `position_x`, `position_y`, `scale`, optional `per_monitor` overrides; `panel.window`: `scale` (+ `per_monitor`). Per-monitor keys override the globals.
+- Scale is a single uniform factor: window size = base × scale (clock 745×250, panel width 250) and the widget root is wrapped in `transform :scale-x {scale} :scale-y {scale}`.
 
-## 4. Configuration (`config.yaml`)
-New keys (commented), global default + optional per-monitor override:
+**Environment / dependencies**
+- PyGObject GTK3 (`python3-gi`, `gir1.2-gtk-3.0`), `gir1.2-gtk-layer-shell-0.1` for Wayland layer-shell, `xdotool` (X11 cursor position), `xdg-utils`, `librsvg` (SVG loader), evdev access (root / `input` group).
 
-```yaml
-weather:
-  window:
-    alignment: middle_middle
-    position_x: 0
-    position_y: 0
-    scale: 1.0                 # new
-    per_monitor: {}            # new: {0: {position_x, position_y, scale}}
+## 3. Implemented – mouse-dragging the rectangle (move + resize)
+Goal: during a Move/Resize session the **weather** and **panel** rectangles must be draggable **and** resizable with the mouse, and a click **outside** the rectangle still cancels. eww 0.5.0 has no drag support, so the eww `move_overlay` is replaced by a GTK3 window that draws the rectangle itself.
 
-panel:
-  window:
-    alignment: right
-    scale: 1.0                 # new
-    per_monitor: {}            # new: {0: {scale}}
-```
+**New `scripts/move_rect.py`** – full-monitor transparent GTK3 window:
+- Positioning: Wayland → layer-shell `TOP` anchored to all four edges of the monitor; X11 → undecorated `override-redirect` toplevel at the monitor origin/size from `Gdk.Monitor.get_geometry()`, `keep_above`. Transparency via `app-paintable` + rgba visual.
+- Stacking so the control panel stays clickable: the panel is a layer-shell **OVERLAY** surface on Wayland (the protocol guarantees OVERLAY > TOP, so it is always above this full-monitor window regardless of the map order – with both in OVERLAY the slower-starting rectangle window mapped last, swallowed every panel click and turned Save/Cancel into "click outside -> cancel"). On X11 both are override-redirect toplevels (required to float above the eww widgets), so the panel **raises itself every tick** to stay above the rectangle.
+- Drawing: Cairo renders the dashed white outline + faint fill at `(move_x, move_y, move_w, move_h)` (same style as `generated/move_rect.svg`).
+- Hit-test on press (≈8-10 px):
+  - **corner** → resize keeping the opposite corner fixed;
+  - **edge** → resize keeping the opposite edge fixed;
+  - **inside** → move;
+  - **outside** → `move_ctl.py ... --action cancel`.
+- Resize preserves the aspect ratio: `scale = clamp(s0 · dist(pointer, anchor) / dist(pointer₀, anchor), 0.3, 1.5)` → `w = base_w·scale`, `h = base_h·scale`, `x/y` recomputed from the fixed anchor; updates `move_w/move_h/move_pct` (the panel's % label follows).
+- Move: `eww update move_x/move_y`, throttled to ≈50 ms + a final flush on release.
+- 250 ms tick: while not dragging, sync from `move_x/move_y/move_w/move_h/move_pct` (keyboard arrows / +− buttons keep working), and quit when `generated/input_session.json` is cleared.
+- Cursor feedback per hit-test (`grab` / resize arrows); `set_accept_focus(False)`.
+- The `move_*` eww defvars stay the single shared state for keyboard, panel buttons and mouse.
 
-Merge rule: `per_monitor[monitor]` keys override the global keys.
+**Modified files**
+- `scripts/move.py` – drop the eww `move_overlay` open/close and the `gen_rect_svg.py` call; spawn `move_rect.py` **before** `move_panel.py` (panel stacks above and stays clickable); the `move_*` updates remain.
+- `scripts/move_ctl.py` – `finish()` no longer closes `move_overlay` (the rect window exits via the session file).
+- `scripts/widget_rect.py` – report `frame_ox`/`frame_oy` (frame origin inside the monitor) for the full-monitor rect window.
+- `eww.yuck` – remove the `move_overlay` defwindow and `widget_move_overlay` defwidget (+ header comment); keep the `move_x/y/w/h/pct` defvars.
+- `eww.scss` – remove `.move-overlay` / `.move-rect`.
+- `PLAN.md` – this section.
 
-## 5. Scale semantics ("single object")
-The relative distances of the inner elements are preserved because the scale is applied uniformly in two places:
-1. **Window size** = base size × scale (computed by `start.sh`: clock 745×250×s; panel 250×s wide, height ×s).
-2. **Content**: the widget root is wrapped in `transform :scale-x {scale} :scale-y {scale}` → fonts, icons and margins scale proportionally.
+**Notes**
+- The full-screen transparent window is modal while the session is active (intended, same as today).
+- Mouse resize mirrors the scale model of the +− buttons (aspect ratio preserved, scale bounds 0.3..1.5).
+- Splitting the unused `--mode move|resize` into move-only / resize-only sessions is possible later but not required.
 
-`panel.py` stays unchanged (the charts are generated for the scaled height; the transform scales them).
-
-## 6. New / modified files
-
-**New scripts**
-| Script | Role |
-|---|---|
-| `scripts/ctx.py` | `--widget clock\|panel --monitor N` → opens the `ctx_menu` at the cursor / widget corner |
-| `scripts/widget_rect.py` | Absolute rectangle of the widget on the monitor (handles X11/Wayland differences, reusing `workarea.py` logic) |
-| `scripts/menu_pos.py` | Menu position: on X11 at the cursor (`xdotool getmouselocation`), on Wayland anchored to the widget corner |
-| `scripts/move.py` | Move/resize mode controller: opens the overlay, spawns the control panel, starts the key daemon, ENTER→save, ESC→exit |
-| `scripts/move_panel.py` | GTK3 Move/Resize control panel (buttons + mouse-draggable title bar; layer-shell on Wayland, win.move on X11) |
-| `scripts/about.py` | Git repo data as JSON (remote URL, branch, commit, date, message, tag) |
-| `scripts/config_set.py` | **Line-aware** YAML writing (only touches the target key lines, PRESERVES the comments – a plain YAML dump would destroy the file) |
-
-**Files to modify**
-- `config.yaml` – new keys.
-- `scripts/config.py` – new keys (`scale`, per-monitor resolution).
-- `scripts/install.sh` – dependencies (see section 3).
-- `scripts/start.sh` – per-monitor merge, scaled window sizes, new `--arg`s (`screen`, `main_w`, `main_h`, `main_scale`; panel `pw/ph` × scale).
-- `eww.yuck` – new windows, eventboxes, defvars, transform scaling.
-- `eww.scss` – menu / overlay / about styles.
-- `generated/move_rect.svg` – SVG rectangle file (sized for the weather and panel widgets).
-
-## 7. New windows in `eww.yuck`
-- **`ctx_menu`** `[widget monitor]`: 3 buttons – "Move", "Resize", "About"; `:onclick` points to the corresponding scripts.
-- **`move_overlay`** `[screen]`: full-monitor transparent layer, `:stacking "overlay"` (Wayland) / `"foreground"` (X11), not focusable; content: `transform :translate-x {move_x} ...` + `image :path "generated/move_rect.svg" :image-width {move_w} :image-height {move_h}`.
-- **Control panel**: NOT an eww window anymore (eww 0.5.0 cannot move windows, and a `transform`-wrapped panel would lose button clicks). It is a GTK3 window (`scripts/move_panel.py`) positioned near the cursor; its title bar is mouse-draggable on both backends (layer-shell margins on Wayland, `win.move` on X11). Buttons still call `scripts/move_ctl.py`; arrows/+/-/ENTER/ESC stay with the invisible evdev daemon so no key is handled twice. The panel watches `generated/input_session.json` and quits when Save/Cancel clears it.
-- defvars: `move_x`, `move_y`, `move_w`, `move_h`, `about_json`.
-- The clock/panel root is wrapped in `eventbox :onrightclick "scripts/ctx.py ..."` and `transform`; `main_window` also gets a `screen` argument.
-
-## 8. Interaction flow
-1. Right-click the widget → `ctx.py` opens the menu.
-2. **Move**: `move.py` computes the current rectangle, opens the overlay, starts the key helper. Arrows (±10px) → `eww update move_x/move_y`; **ENTER** → `config_set.py` writes `position_x/y` to `config.yaml` (per-monitor or global) → watcher relayout → the widget moves; **ESC** → exit without saving.
-3. **Resize**: arrows ±0.05 scale (Shift: ±0.01), `move_w/h` = base×scale live; **ENTER** → scale saved to `config.yaml`; **ESC** → exit.
-4. **About**: `about.py` JSON → `about_window`; the button opens the repo URL.
-
-## 9. X11 vs Wayland – differences
-Functionally identical on both compositors, with two planned UX differences:
-1. **Menu position**: on X11 exactly at the cursor (`xdotool`); on Wayland anchored to the widget corner (no global cursor position API). Optionally improvable via KWin scripting.
-2. **Keyboard focus**: on X11 the key helper performs a keyboard grab (receives the arrows immediately); on Wayland the compositor decides, so one click on the helper window may be needed.
-
-## 10. Risks / notes
-- `config_set.py` preserves the `config.yaml` comments via line-aware editing.
-- During move/resize the overlay covers the monitor modally (intended).
-- If the dynamic `transform` update turns out not to be smooth, fallback: reopen the overlay with `--arg pos/size` per step.
-
-## 11. Testing
-- On both compositors: right-click → menu; move → widget relocates (watcher); resize → proportional scaling; About → URL opens.
-- Regression: `config.py --key ...`, `start.sh` layout, panel charts, monitor changes.
-- Debug: `eww logs`.
+## 4. Testing
+- `python3 -m py_compile` on all touched scripts; `eww reload` / `start.sh --relayout`.
+- X11 (XWayland, `DISPLAY=:0` via xdotool): drag inside → `move_x/move_y` change; drag a corner/edge → `move_w/move_h` + `move_pct` change; click outside → session ends.
+- Wayland smoke test: rect + panel start, run cleanly, quit when the session file is removed (mouse synthesis is not possible on Wayland, but the logic is backend-independent because the rectangle is drawn, not a window).
+- Regression: `config.py --key ...`, `start.sh` layout, panel charts, monitor changes. Debug: `eww logs`.
