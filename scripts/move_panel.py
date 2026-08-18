@@ -18,8 +18,10 @@ mouse-dragging possible on both compositors:
 
 Dragging the title bar moves the panel live (on Wayland the grab point stays
 under the pointer via margin updates; on X11 via gtk_window_move); releasing
-keeps it there. The buttons run scripts/move_ctl.py exactly like the old eww
-buttons did (arrows move the overlay rectangle, +/- zoom, Reset returns to the
+keeps it there. On X11 the drag delta comes from root coordinates, on Wayland
+from window-relative coordinates (the GDK layer-shell root coords are "fake"
+there). The buttons run scripts/move_ctl.py exactly like the old eww buttons
+did (arrows move the overlay rectangle, +/- zoom, Reset returns to the
 defaults, Save writes config.yaml and closes, Cancel discards). The resize
 percentage is polled from the eww variable move_pct (set by move_ctl.py
 together with move_w/move_h).
@@ -212,6 +214,8 @@ class MovePanel:
         self.drag = False
         self.grab_root_x = 0.0
         self.grab_root_y = 0.0
+        self.grab_x = 0.0
+        self.grab_y = 0.0
         self.start_x = x
         self.start_y = y
 
@@ -367,43 +371,65 @@ class MovePanel:
         action(self.widget, self.monitor, act)
 
     # ---- dragging ----------------------------------------------------------
-    # Both compositors drag the same way: the pointer is grabbed and the panel
-    # chases it, keeping the grab point (pressed on the title strip) under the
-    # cursor. Deltas come from the ROOT coordinates because the window itself
-    # moves: window-relative event.x/y would shrink as the window slides under
-    # the pointer and the drag would stall.
+    # Both compositors drag the panel live, keeping the grab point (pressed on
+    # the title strip) under the cursor. The coordinate basis differs:
+    #
+    #   * X11     - deltas come from the ROOT coordinates. win.move uses
+    #               absolute screen coordinates and root coords are real there,
+    #               so the panel can be clamped to the monitor rectangle. The
+    #               pointer is grabbed so motion keeps coming even when the
+    #               cursor leaves the small panel.
+    #   * Wayland - GDK reports only "fake root" coords for a layer-shell
+    #               toplevel (always (0,0) offset + window-local), so root
+    #               deltas would be wrong. The delta is computed from the
+    #               window-relative event.x/y instead: the wl_pointer implicit
+    #               grab (button pressed on the surface) keeps every motion
+    #               event tied to the panel surface, so win_x + (event.x -
+    #               grab_x) simplifies to the pointer position minus the grab
+    #               offset, a true chase. NO Gdk.pointer_grab here: it would
+    #               route events to the panel even while the cursor is over the
+    #               full-monitor eww overlay, and those events carry overlay-
+    #               relative (monitor) coordinates instead of panel-relative
+    #               ones, making the position oscillate.
     def on_press(self, widget, event):
         if event.button != 1 or event.y > TITLE_H:
             return False
         self.drag = True
         self.grab_root_x = event.x_root
         self.grab_root_y = event.y_root
+        self.grab_x = event.x
+        self.grab_y = event.y
         self.start_x = self.win_x
         self.start_y = self.win_y
-        try:
-            if self.win.get_window() is not None:
-                Gdk.pointer_grab(
-                    self.win.get_window(), False,
-                    Gdk.EventMask.BUTTON_PRESS_MASK
-                    | Gdk.EventMask.BUTTON_RELEASE_MASK
-                    | Gdk.EventMask.POINTER_MOTION_MASK,
-                    None, None, Gdk.CURRENT_TIME,
-                )
-        except Exception:
-            pass
+        if not WAYLAND:
+            try:
+                if self.win.get_window() is not None:
+                    Gdk.pointer_grab(
+                        self.win.get_window(), False,
+                        Gdk.EventMask.BUTTON_PRESS_MASK
+                        | Gdk.EventMask.BUTTON_RELEASE_MASK
+                        | Gdk.EventMask.POINTER_MOTION_MASK,
+                        None, None, Gdk.CURRENT_TIME,
+                    )
+            except Exception:
+                pass
         return False
 
     def on_motion(self, widget, event):
         if not self.drag:
             return False
-        nx = self.start_x + int(event.x_root - self.grab_root_x)
-        ny = self.start_y + int(event.y_root - self.grab_root_y)
         if WAYLAND:
+            dx = event.x - self.grab_x
+            dy = event.y - self.grab_y
+            nx = self.win_x + dx
+            ny = self.win_y + dy
             # Margins are monitor-relative.
             nx = max(0, min(nx, max(0, self.frame_w - MC_W)))
             ny = max(0, min(ny, max(0, self.frame_h - MC_H)))
         else:
             # win.move uses absolute screen coordinates.
+            nx = self.start_x + int(event.x_root - self.grab_root_x)
+            ny = self.start_y + int(event.y_root - self.grab_root_y)
             nx = max(self.mon_ox, min(nx, self.mon_ox + max(0, self.frame_w - MC_W)))
             ny = max(self.mon_oy, min(ny, self.mon_oy + max(0, self.frame_h - MC_H)))
         if nx != self.win_x or ny != self.win_y:
@@ -415,10 +441,11 @@ class MovePanel:
         if event.button != 1:
             return False
         self.drag = False
-        try:
-            Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
-        except Exception:
-            pass
+        if not WAYLAND:
+            try:
+                Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
         return False
 
     # ---- periodic session watch + pct refresh ------------------------------
