@@ -10,8 +10,9 @@ Actions:
   left/right/up/down  move the rectangle by STEP px (clamped to the frame)
   zoom_in/zoom_out    scale by SCALE_STEP (clamped 0.3..1.5), keeping the
                       widget's anchored corner / right gap fixed
-  reset               jump back to the defaults: scale 1.0 at the configured
-                      position
+  reset               write the defaults (position 0, scale 1.0) to config.yaml
+                      via scripts/config_set.py and close, like save but with
+                      the default values
   save                write position_x/position_y (move) or scale (resize)
                       to config.yaml via scripts/config_set.py, then close
   cancel              close without saving
@@ -201,22 +202,14 @@ def main():
         return
 
     if args.action == "reset":
-        # Jump the preview back to the defaults: scale 1.0 (natural size) and
-        # the configured position (anchor offset + position_x/position_y, or the
-        # right gap for right-gap panels).
-        base_w, base_h, _, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
-        scale = 1.0
-        w = int(round(base_w * scale))
-        h = int(round(base_h * scale))
-        if right_gap is not None:
-            x = frame_w - right_gap - w
-        else:
-            pos_x = float(config("position_x", args.monitor) or 0)
-            pos_y = float(config("position_y", args.monitor) or 0)
-            x = int(align_pos(w, frame_w, h_align) + pos_x)
-            y = int(align_pos(h, frame_h, v_align) + pos_y)
-        eww("update", "move_x=%d" % x, "move_y=%d" % y, "move_w=%d" % w, "move_h=%d" % h,
-            "move_pct=%d" % int(round(scale * 100)))
+        # Restore the factory defaults immediately (like save, but with the
+        # default values): position (0, 0) at scale 1.0 for the weather and the
+        # panel window. The config watcher then reloads + relayouts, so the
+        # widget actually moves/resizes on screen.
+        save_value(args.widget, args.monitor, "position_x", 0)
+        save_value(args.widget, args.monitor, "position_y", 0)
+        save_value(args.widget, args.monitor, "scale", "1.00")
+        finish()
         return
 
     if args.action == "save":
