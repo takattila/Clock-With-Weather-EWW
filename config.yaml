@@ -84,6 +84,10 @@ weather:
     #                    0: { position_x: 0, position_y: 0, scale: 1.0 }
     #                    1: { position_x: -40, position_y: 20, scale: 0.8 }
     per_monitor: {}
+
+# system -> global configuration affecting all widgets.
+#           Controls shared behavior such as time format and background
+#           corner rounding for both the weather widget and the system panel.
 system:
 
   # hour_format -> how the hour is displayed.
@@ -108,11 +112,18 @@ panel:
     # alignment -> horizontal side of the full-height panel.
     #              Options: right (default, flush right) | left (flush left)
     alignment: right
+    # position_x -> horizontal pixel offset of the clock from its anchor.
+    #               Options: any integer (negative moves left/up)
+    position_x: 0
+
+    # position_y -> vertical pixel offset of the clock from its anchor.
+    #               Options: any integer (negative moves up)
+    position_y: 0
 
     # scale -> overall zoom factor of the panel (window size AND content,
     #          see PLAN.md section 5). Options: any positive number,
     #          e.g. 0.8 (smaller) | 1.0 (default) | 1.5 (bigger)
-    scale: 1.0
+    scale: 1.00
 
     # per_monitor -> per-monitor overrides of the keys above (same syntax as
     #                weather.window.per_monitor), e.g.:
@@ -133,7 +144,7 @@ panel:
   #                   right: 0
   #        Missing sides default to 16 px.
   gap:
-    top: 5
-    bottom: 10
+    top: 15
+    bottom: 15
     left: 0
     right: 0
