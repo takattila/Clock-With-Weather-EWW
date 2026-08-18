@@ -217,6 +217,56 @@ def kde_panel_frame(screen):
         return None
 
 
+def kde_cursor():
+    """Global pointer position via the KWin scripting API (KDE Wayland only).
+
+    xdotool getmouselocation is unreliable on Wayland: the pointer is only
+    tracked over XWayland surfaces, so its position goes stale over the native
+    layer-shell eww widgets. KWin exposes the real global cursor through the
+    scripting API, queried with the same qdbus6 + journalctl mechanism as
+    kde_panel_frame. Returns (x, y) in the global virtual-desktop coordinate
+    space (same space as monitors.py x/y), or None when unavailable.
+    """
+    try:
+        script = os.path.join(tempfile.gettempdir(), "kwin_cursor_dump.js")
+        with open(script, "w", encoding="utf-8") as f:
+            f.write(
+                "print('KCURSOR ' + workspace.cursorPos.x + ',' + workspace.cursorPos.y);\n"
+            )
+        env = dict(os.environ)
+        env.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/%d/bus" % os.getuid())
+        env.setdefault("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
+        subprocess.run(
+            ["qdbus6", "org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.loadScript", script],
+            env=env, capture_output=True, text=True, timeout=5,
+        )
+        subprocess.run(
+            ["qdbus6", "org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting.start"],
+            env=env, capture_output=True, text=True, timeout=5,
+        )
+        best = None
+        for _ in range(20):
+            time.sleep(0.1)
+            try:
+                out = subprocess.check_output(
+                    ["journalctl", "--user", "-o", "cat", "--since", "5 seconds ago"],
+                    stderr=subprocess.DEVNULL, text=True, timeout=5,
+                )
+            except Exception:
+                continue
+            for line in out.splitlines():
+                m = re.match(r"^KCURSOR\s+(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$", line.strip())
+                if m:
+                    # Keep the LAST marker: a previous invocation's print can
+                    # still be inside the journalctl window.
+                    best = (int(float(m.group(1))), int(float(m.group(2))))
+            if best is not None:
+                return best
+        return None
+    except Exception:
+        return None
+
+
 def get_xrandr_resolution():
     try:
         out = subprocess.check_output(

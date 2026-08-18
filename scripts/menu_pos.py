@@ -3,8 +3,11 @@
 
 - On X11 the menu is placed exactly at the cursor (xdotool getmouselocation),
   on the monitor that contains the cursor.
-- On Wayland there is no global cursor position API, so the menu is anchored to
-  the widget's top-left corner (from scripts/widget_rect.py).
+- On Wayland the global cursor is read through the KWin scripting API (KDE
+  only, scripts/workarea.py kde_cursor; xdotool is stale over the native
+  layer-shell widgets), so the menu opens at the click point. On non-KDE
+  compositors there is no cursor API, so the menu is anchored to the widget's
+  top-left corner (from scripts/widget_rect.py).
 
 Output (stdout, JSON):
   {"x": eww x offset, "y": eww y offset, "screen": monitor index,
@@ -24,7 +27,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import widget_rect as wr  # noqa: E402
 
-MENU_W, MENU_H = 180, 150
+MENU_W, MENU_H = 180, 190
 
 
 def get_cursor():
@@ -49,6 +52,18 @@ def monitor_for_point(monitors, px, py):
 
 def clamp(value, lo, hi):
     return max(lo, min(value, hi))
+
+
+def frame_for(mon, workarea):
+    """(wx, wy, ww, wh): the workarea intersected with monitor `mon` in the
+    monitor's local coordinates (falls back to the full monitor)."""
+    if workarea:
+        wx = max(workarea[0], mon["x"])
+        wy = max(workarea[1], mon["y"])
+        ww = min(workarea[0] + workarea[2], mon["x"] + mon["width"]) - wx
+        wh = min(workarea[1] + workarea[3], mon["y"] + mon["height"]) - wy
+        return wx, wy, ww, wh
+    return mon["x"], mon["y"], mon["width"], mon["height"]
 
 
 def main():
@@ -81,15 +96,27 @@ def main():
         print(json.dumps({"x": x, "y": y, "screen": mon["index"], "anchor": "top left"}))
         return
 
-    # Wayland: widget corner (workarea-relative margins).
+    # Wayland: open at the click point when KDE exposes the global pointer
+    # (KWin scripting, workarea.kde_cursor). The cursor can sit on a different
+    # monitor than the widget, so its own monitor is used. On non-KDE
+    # compositors there is no cursor API -> fall back to the widget corner.
+    try:
+        import workarea as _wa
+        cursor = _wa.kde_cursor()
+    except Exception:
+        cursor = None
+    if cursor:
+        mon = monitor_for_point(monitors, cursor[0], cursor[1]) or wmon
+        wx, wy, ww, wh = frame_for(mon, workarea)
+        x = clamp(cursor[0] - wx, 0, ww - MENU_W)
+        y = clamp(cursor[1] - wy, 0, wh - MENU_H)
+        print(json.dumps({"x": x, "y": y, "screen": mon["index"], "anchor": "top left"}))
+        return
+
+    # Fallback: widget corner (workarea-relative margins).
     rect = wr.clock_rect(wmon, compositor, workarea, monitor) if widget == "clock" \
         else wr.panel_rect(wmon, compositor, workarea, monitor)
-    if workarea:
-        wx, wy = max(workarea[0], wmon["x"]), max(workarea[1], wmon["y"])
-        ww = min(workarea[0] + workarea[2], wmon["x"] + wmon["width"]) - wx
-        wh = min(workarea[1] + workarea[3], wmon["y"] + wmon["height"]) - wy
-    else:
-        wx, wy, ww, wh = wmon["x"], wmon["y"], wmon["width"], wmon["height"]
+    wx, wy, ww, wh = frame_for(wmon, workarea)
     x = clamp(rect["abs_x"] - wx + 4, 0, ww - MENU_W)
     y = clamp(rect["abs_y"] - wy + 4, 0, wh - MENU_H)
     print(json.dumps({"x": x, "y": y, "screen": monitor, "anchor": "top left"}))
