@@ -6,8 +6,7 @@
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
 ;;   3. ctx_menu        -> right-click context menu (Move / Resize / About)
 ;;   4. move_overlay    -> full-monitor layer for the Move / Resize rectangle
-;;   5. move_controls   -> Move / Resize control panel (arrows, +/-, Save, Cancel)
-;;   6. about_window    -> repository information
+;;   5. about_window    -> repository information
 ;; ===========================================================================
 
 ;; --- Context menu state (see PLAN.md, scripts/move.py) ----------------------
@@ -236,8 +235,9 @@
 
 (defwidget widget_move_overlay [widget monitor]
   ;; Clicking anywhere on the overlay (outside the control panel) cancels the
-  ;; Move / Resize session; the control panel (move_controls) stacks above the
-  ;; overlay so its buttons still receive their clicks.
+  ;; Move / Resize session; the control panel (a GTK window, scripts/
+  ;; move_panel.py) stacks above the overlay so its buttons still receive their
+  ;; clicks.
   (eventbox :class "move-overlay" :timeout "5s"
             :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action cancel"
     (box :class "move-overlay"
@@ -250,49 +250,6 @@
         (image :class "move-rect" :path "generated/move_rect.svg"
                :image-width {move_w} :image-height {move_h}
                :halign "start" :valign "start")))))
-
-;; Control panel for the Move / Resize session. Each button is handled by
-;; scripts/move_ctl.py (fast eww get/update calls), so the commands stay inside
-;; eww's command timeout; :timeout "5s" is set as a safety net. The resize
-;; label shows the current scale percentage (move_pct), re-rendering whenever
-;; move_ctl updates it together with move_w/move_h.
-(defwidget widget_move_controls [widget monitor]
-  (box :class "move-controls" :orientation "v"
-    (label :class "mc-title" :text "Move")
-    (button :class "mc-btn" :timeout "5s"
-            :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action up"
-            (box :class "mc-btn-box" (label :text "↑")))
-    (box :class "mc-row" :orientation "h"
-      (button :class "mc-btn" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action left"
-              (box :class "mc-btn-box" (label :text "←")))
-      (button :class "mc-btn" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action down"
-              (box :class "mc-btn-box" (label :text "↓")))
-      (button :class "mc-btn" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action right"
-              (box :class "mc-btn-box" (label :text "→"))))
-    (box :class "mc-sep")
-    (label :class "mc-title" :text "Resize")
-    (box :class "mc-row" :orientation "h"
-      (button :class "mc-btn" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action zoom_out"
-              (box :class "mc-btn-box" (label :text "−")))
-      (label :class "mc-size" :text {move_pct + "%"})
-      (button :class "mc-btn" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action zoom_in"
-              (box :class "mc-btn-box" (label :text "+"))))
-    (box :class "mc-sep")
-    (box :class "mc-row" :orientation "h"
-      (button :class "mc-btn" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
-              (box :class "mc-btn-box" (label :text "Reset")))
-      (button :class "mc-btn mc-save" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action save"
-              (box :class "mc-btn-box" (label :text "Save")))
-      (button :class "mc-btn mc-cancel" :timeout "5s"
-              :onclick "./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action cancel"
-              (box :class "mc-btn-box" (label :text "Cancel"))))))
 
 ;; ===========================================================================
 ;; About window
@@ -435,23 +392,6 @@
   :wm-ignore true
   :focusable true
   (widget_move_overlay :widget widget :monitor monitor))
-
-;; Control panel window. Opened AFTER move_overlay so it stacks above it and
-;; its buttons stay clickable on the overlay layer. Positioned near the cursor
-;; by scripts/move.py; Save / Cancel (and clicking the overlay) end the session.
-(defwindow move_controls
-  [screen widget monitor pos_x pos_y]
-  :monitor {screen}
-  :geometry (geometry :x {pos_x}
-                      :y {pos_y}
-                      :width "200px"
-                      :height "250px"
-                      :anchor "top left")
-  :stacking "overlay"
-  :windowtype "normal"
-  :wm-ignore true
-  :focusable true
-  (widget_move_controls :widget widget :monitor monitor))
 
 ;; ===========================================================================
 ;; Dismiss overlay: transparent, full-monitor layer opened UNDER the context

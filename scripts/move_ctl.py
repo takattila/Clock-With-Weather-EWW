@@ -124,7 +124,9 @@ def save_value(widget, monitor, key, value):
 
 
 def finish(close_overlay=True):
-    eww("close", "move_controls")
+    # The control panel is a GTK window (scripts/move_panel.py) that watches the
+    # session file and quits by itself when it disappears, so only the overlay
+    # and the keyboard-daemon session need to be ended here.
     if close_overlay:
         eww("close", "move_overlay")
     # Deactivate the keyboard daemon session: ESC/ENTER/arrows stop mapping.

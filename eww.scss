@@ -328,69 +328,6 @@
 }
 
 /* ============================================================
-   Move / Resize control panel
-   ============================================================ */
-
-.move-controls {
-  background-color: rgba($bg-color, 0.97);
-  border: 1px solid rgba($color-light, 0.15);
-  border-radius: $bg-radius;
-  padding: 10px;
-}
-
-.mc-title {
-  font-size: 12px;
-  font-weight: bold;
-  color: rgba($color-light, 0.6);
-  margin: 2px 4px;
-}
-
-.mc-row {
-  margin: 2px 0;
-}
-
-.mc-btn {
-  min-width: 48px;
-  min-height: 30px;
-  margin: 2px;
-  background-color: rgba($color-light, 0.08);
-  border-radius: 8px;
-}
-
-.mc-btn:hover {
-  background-color: rgba($color-light, 0.16);
-}
-
-.mc-btn:active {
-  background-color: rgba($color-light, 0.28);
-}
-
-.mc-btn-box label {
-  font-size: 18px;
-  color: rgba($color-light, $color-light-alpha);
-}
-
-.mc-save {
-  background-color: rgba(78, 154, 6, 0.25);
-}
-
-.mc-cancel {
-  background-color: rgba(204, 0, 0, 0.25);
-}
-
-.mc-size {
-  font-size: 14px;
-  color: rgba($color-light, $color-light-alpha);
-  margin: 0 6px;
-}
-
-.mc-sep {
-  min-height: 1px;
-  margin: 8px 2px;
-  background-color: rgba($color-light, 0.15);
-}
-
-/* ============================================================
    About window
    ============================================================ */
 

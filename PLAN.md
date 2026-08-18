@@ -65,8 +65,8 @@ The relative distances of the inner elements are preserved because the scale is 
 | `scripts/ctx.py` | `--widget clock\|panel --monitor N` → opens the `ctx_menu` at the cursor / widget corner |
 | `scripts/widget_rect.py` | Absolute rectangle of the widget on the monitor (handles X11/Wayland differences, reusing `workarea.py` logic) |
 | `scripts/menu_pos.py` | Menu position: on X11 at the cursor (`xdotool getmouselocation`), on Wayland anchored to the widget corner |
-| `scripts/move.py` | Move/resize mode controller: opens the overlay, starts the key helper, ENTER→save, ESC→exit |
-| `scripts/move_keys.py` | GTK3 key helper window (arrows/ENTER/ESC) |
+| `scripts/move.py` | Move/resize mode controller: opens the overlay, spawns the control panel, starts the key daemon, ENTER→save, ESC→exit |
+| `scripts/move_panel.py` | GTK3 Move/Resize control panel (buttons + mouse-draggable title bar; layer-shell on Wayland, win.move on X11) |
 | `scripts/about.py` | Git repo data as JSON (remote URL, branch, commit, date, message, tag) |
 | `scripts/config_set.py` | **Line-aware** YAML writing (only touches the target key lines, PRESERVES the comments – a plain YAML dump would destroy the file) |
 
@@ -82,7 +82,7 @@ The relative distances of the inner elements are preserved because the scale is 
 ## 7. New windows in `eww.yuck`
 - **`ctx_menu`** `[widget monitor]`: 3 buttons – "Move", "Resize", "About"; `:onclick` points to the corresponding scripts.
 - **`move_overlay`** `[screen]`: full-monitor transparent layer, `:stacking "overlay"` (Wayland) / `"foreground"` (X11), not focusable; content: `transform :translate-x {move_x} ...` + `image :path "generated/move_rect.svg" :image-width {move_w} :image-height {move_h}`.
-- **`about_window`**: repo data + "Open" button (`xdg-open <url>`, with `.git` stripped).
+- **Control panel**: NOT an eww window anymore (eww 0.5.0 cannot move windows, and a `transform`-wrapped panel would lose button clicks). It is a GTK3 window (`scripts/move_panel.py`) positioned near the cursor; its title bar is mouse-draggable on both backends (layer-shell margins on Wayland, `win.move` on X11). Buttons still call `scripts/move_ctl.py`; arrows/+/-/ENTER/ESC stay with the invisible evdev daemon so no key is handled twice. The panel watches `generated/input_session.json` and quits when Save/Cancel clears it.
 - defvars: `move_x`, `move_y`, `move_w`, `move_h`, `about_json`.
 - The clock/panel root is wrapped in `eventbox :onrightclick "scripts/ctx.py ..."` and `transform`; `main_window` also gets a `screen` argument.
 

@@ -2,14 +2,15 @@
 """Move / Resize session launcher for the context menu.
 
 Opens the full-monitor transparent overlay (move_overlay) with the rectangle
-pre-set to the widget's current position/size, plus a small control panel
-(move_controls) with buttons (arrows, +/- zoom, Save, Cancel).
+pre-set to the widget's current position/size, plus the draggable GTK control
+panel (scripts/move_panel.py) with buttons (arrows, +/- zoom, Save, Cancel).
 
 Unlike the old arrow-key version this script does NOT run an interactive loop:
-it sets the overlay values, opens the two windows and returns immediately, so
-eww's command timeout (200ms) cannot kill it. The buttons are handled by
-scripts/move_ctl.py; clicking anywhere outside the panel (on the overlay)
-cancels the session.
+it sets the overlay values, opens the overlay, starts the control panel and
+returns immediately, so eww's command timeout (200ms) cannot kill it. The
+buttons are handled by scripts/move_ctl.py; the arrow keys / +/- / ENTER / ESC
+by the invisible evdev daemon (scripts/input_daemon.py); clicking anywhere
+outside the panel (on the overlay) cancels the session.
 
 The overlay values are written BEFORE opening move_overlay so the rectangle
 renders at the widget's size right away (previously the overlay appeared with
@@ -100,7 +101,12 @@ def main():
     eww("close", "ctx_menu")
     eww("close", "dismiss_overlay")
     eww("close", "move_overlay")
-    eww("close", "move_controls")
+
+    # Activate the keyboard daemon first (scripts/session.py starts it if
+    # needed and writes generated/input_session.json): the daemon then maps
+    # arrows / +/- / ENTER / ESC to move_ctl.py actions, and the control panel
+    # watches the same file to know when to close.
+    session.set_session({"mode": "move", "widget": args.widget, "monitor": args.monitor})
 
     # Regenerate the rectangle SVG with the widget's aspect ratio: the overlay
     # renders it via Pixbuf::from_file_at_size(move_w, move_h), which FITS the
@@ -129,25 +135,25 @@ def main():
     )
 
     # Control panel near the cursor (the user just clicked the menu button);
-    # fall back to the widget's corner when the cursor cannot be read.
+    # fall back to the widget's corner when the cursor cannot be read. It is a
+    # GTK window (scripts/move_panel.py) so it can be dragged around with the
+    # mouse; its position is clamped to the monitor frame.
     px, py = cursor_position()
     if px <= 0 and py <= 0:
         px, py = int(round(rect["left"])), int(round(rect["top"]))
     px = clamp(px, 0, max(0, frame_w - MC_W))
     py = clamp(py, 0, max(0, frame_h - MC_H))
-    eww(
-        "open", "--id", "move_controls", "--screen", str(args.monitor),
-        "--arg", "screen=%d" % args.monitor,
-        "--arg", "widget=%s" % args.widget,
-        "--arg", "monitor=%d" % args.monitor,
-        "--arg", "pos_x=%d" % px, "--arg", "pos_y=%d" % py,
-        "move_controls",
+    subprocess.Popen(
+        [
+            sys.executable, os.path.join(SCRIPT_DIR, "move_panel.py"),
+            "--widget", args.widget,
+            "--monitor", str(args.monitor),
+            "--x", str(px), "--y", str(py),
+            "--frame-w", str(frame_w), "--frame-h", str(frame_h),
+        ],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, start_new_session=True, cwd=CONFIG_DIR,
     )
-
-    # Activate the invisible keyboard daemon (scripts/input_daemon.py): while
-    # the session file exists, arrow keys move the preview, +/- zoom, ENTER
-    # saves and ESC cancels. No window is involved, so nothing visible appears.
-    session.set_session({"mode": "move", "widget": args.widget, "monitor": args.monitor})
 
 
 if __name__ == "__main__":
