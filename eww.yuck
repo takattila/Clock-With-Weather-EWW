@@ -4,7 +4,7 @@
 ;; Windows:
 ;;   1. main_window     -> Clock + Weather widget (745x250 x scale)
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
-;;   3. ctx_menu        -> right-click context menu (Move / Resize / About)
+;;   3. ctx_menu        -> right-click context menu (Move / Resize / Reset / About)
 ;;   4. about_window    -> repository information
 ;;
 ;; The Move/Resize rectangle + control panel are GTK3 windows (scripts/
@@ -227,6 +227,12 @@
     (button :class "ctx-btn" :timeout "5s"
             :onclick "nohup ./scripts/move.py --widget ${widget} --monitor ${monitor} --mode resize >/dev/null 2>&1 &"
             (box :class "ctx-btn-box" (label :text "Resize")))
+    ;; Reset writes the factory defaults to config.yaml directly (scripts/
+    ;; move_ctl.py --action reset: position 0 + scale 1.0 for the clock, all
+    ;; 16 px gaps + scale 1.0 for the panel) and closes the popups.
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "./scripts/close_popup.py && ./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
+            (box :class "ctx-btn-box" (label :text "Reset")))
     (button :class "ctx-btn" :timeout "10s"
             :onclick "./scripts/about.py --open --monitor ${monitor}"
             (box :class "ctx-btn-box" (label :text "About")))))
@@ -351,7 +357,7 @@
   :geometry (geometry :x {pos_x}
                       :y {pos_y}
                       :width "180px"
-                      :height "150px"
+                      :height "190px"
                       :anchor "top left")
   :stacking "overlay"
   :windowtype "normal"
