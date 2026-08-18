@@ -10,11 +10,17 @@ Actions:
   left/right/up/down  move the rectangle by STEP px (clamped to the frame)
   zoom_in/zoom_out    scale by SCALE_STEP (clamped 0.3..1.5), keeping the
                       widget's anchored corner / right gap fixed
-  reset               write the defaults (position 0, scale 1.0) to config.yaml
-                      via scripts/config_set.py and close, like save but with
-                      the default values
-  save                write position_x/position_y (move) or scale (resize)
-                      to config.yaml via scripts/config_set.py, then close
+  reset               write the defaults to config.yaml via scripts/
+                      config_set.py and close, like save but with the default
+                      values (clock: position 0, scale 1.0; panel: all 16 px
+                      gaps, scale 1.0)
+  save                write the position to config.yaml via scripts/
+                      config_set.py, then close. The clock stores
+                      position_x/position_y; the panel is positioned by its
+                      per-side panel.gap (scripts/workarea.py), so its dragged
+                      rectangle is inverted back into the gaps via
+                      workarea.py --gaps-for-rect. The resize scale is saved
+                      for both.
   cancel              close without saving
 
 The resize percentage shown in the panel (move_pct) is updated together with
@@ -47,10 +53,11 @@ MIN_SCALE = 0.3
 MAX_SCALE = 1.5
 
 
-def run(cmd, capture=False):
+def run(cmd, capture=False, input_data=None):
     try:
         if capture:
-            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True).strip()
+            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True,
+                                           input=input_data).strip()
         subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return ""
     except Exception:
@@ -112,16 +119,46 @@ def widget_rect(widget, monitor):
 
 
 def save_value(widget, monitor, key, value):
-    pm_key = "weather_per_monitor" if widget == "clock" else "panel_per_monitor"
-    pm = config_json(pm_key)
     cmd = [
         "python3", os.path.join(SCRIPT_DIR, "config_set.py"),
         "--widget", "clock" if widget == "clock" else "panel",
         "--key", key, "--value", str(value),
     ]
-    if isinstance(pm, dict) and monitor in pm:
-        cmd += ["--monitor", str(monitor)]
+    if not key.startswith("gap_"):
+        pm_key = "weather_per_monitor" if widget == "clock" else "panel_per_monitor"
+        pm = config_json(pm_key)
+        if isinstance(pm, dict) and monitor in pm:
+            cmd += ["--monitor", str(monitor)]
     run(cmd)
+
+
+def panel_gaps(monitor, x, y, w, h):
+    """Per-side panel.gap values reproducing the dragged rectangle.
+
+    The panel position is derived from panel.gap (scripts/workarea.py), so the
+    Move / Resize Save inverts the rectangle back into the gaps via
+    workarea.py --gaps-for-rect instead of writing a position. Returns the
+    workarea.py output JSON: {"taskbar": .., "frame_w": .., "frame_h": ..,
+    "gap": {"top": .., "right": .., "bottom": .., "left": ..}}.
+    """
+    monitors = run(["python3", os.path.join(SCRIPT_DIR, "monitors.py")], capture=True)
+    if not monitors:
+        sys.exit("ERROR: monitors.py failed")
+    out = run(
+        [
+            "python3", os.path.join(SCRIPT_DIR, "workarea.py"), "--gaps-for-rect",
+            "--monitor", str(monitor),
+            "--x", str(x), "--y", str(y), "--w", str(w), "--h", str(h),
+        ],
+        capture=True, input_data=monitors,
+    )
+    try:
+        data = json.loads(out)
+        if not isinstance(data.get("gap"), dict) or not data["gap"]:
+            raise ValueError(out)
+        return data
+    except Exception:
+        sys.exit("ERROR: workarea.py --gaps-for-rect failed:\n%s" % out)
 
 
 def finish():
@@ -201,11 +238,15 @@ def main():
 
     if args.action == "reset":
         # Restore the factory defaults immediately (like save, but with the
-        # default values): position (0, 0) at scale 1.0 for the weather and the
-        # panel window. The config watcher then reloads + relayouts, so the
-        # widget actually moves/resizes on screen.
-        save_value(args.widget, args.monitor, "position_x", 0)
-        save_value(args.widget, args.monitor, "position_y", 0)
+        # default values): position (0, 0) at scale 1.0 for the weather, all
+        # 16 px gaps at scale 1.0 for the panel. The config watcher then
+        # reloads + relayouts, so the widget actually moves/resizes on screen.
+        if args.widget == "panel":
+            for side in ("top", "right", "bottom", "left"):
+                save_value(args.widget, args.monitor, "gap_%s" % side, 16)
+        else:
+            save_value(args.widget, args.monitor, "position_x", 0)
+            save_value(args.widget, args.monitor, "position_y", 0)
         save_value(args.widget, args.monitor, "scale", "1.00")
         finish()
         return
@@ -214,14 +255,21 @@ def main():
         base_w, base_h, scale, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
         if base_w:
             scale = clamp(w / base_w, MIN_SCALE, MAX_SCALE)
-        if right_gap is not None:
-            new_x = frame_w - right_gap - w
-            new_y = y
+        if args.widget == "panel":
+            # Write only the gaps the forward geometry actually consumes: the
+            # top/bottom gaps always, and the horizontal gap of the anchored
+            # side (right for every taskbar except a right-edge one, which
+            # anchors the panel on the left).
+            inv = panel_gaps(args.monitor, x, y, w, h)
+            for side in ("top", "bottom"):
+                save_value(args.widget, args.monitor, "gap_%s" % side, inv["gap"][side])
+            hside = "left" if inv.get("taskbar") == "right" else "right"
+            save_value(args.widget, args.monitor, "gap_%s" % hside, inv["gap"][hside])
         else:
             new_x = int(round(x - align_pos(w, frame_w, h_align)))
             new_y = int(round(y - align_pos(h, frame_h, v_align)))
-        save_value(args.widget, args.monitor, "position_x", new_x)
-        save_value(args.widget, args.monitor, "position_y", new_y)
+            save_value(args.widget, args.monitor, "position_x", new_x)
+            save_value(args.widget, args.monitor, "position_y", new_y)
         save_value(args.widget, args.monitor, "scale", "%.2f" % scale)
         finish()
         return

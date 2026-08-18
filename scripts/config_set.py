@@ -15,9 +15,13 @@ Usage:
   ./config_set.py --widget clock --key scale --value 0.8
   ./config_set.py --widget clock --monitor 0 --key position_x --value 120
   ./config_set.py --widget panel --monitor 1 --key scale --value 0.7
+  ./config_set.py --widget panel --key gap_right --value 0
 
 --widget is `clock` (weather window) or `panel`. Without --monitor the global
-key is written; with --monitor the value is written into per_monitor[N].
+key is written; with --monitor the value is written into per_monitor[N]. The
+panel position is derived from panel.gap (scripts/workarea.py), so the
+position keys are unavailable for the panel: use gap_top / gap_right /
+gap_bottom / gap_left instead (global only, written into panel.gap).
 """
 
 import argparse
@@ -176,21 +180,32 @@ def main():
     args = ap.parse_args()
 
     section = ["weather", "window"] if args.widget == "clock" else ["panel", "window"]
-    if args.key not in ("position_x", "position_y", "scale"):
-        sys.exit("ERROR: unsupported key: %s" % args.key)
-
+    gap_sides = ("top", "right", "bottom", "left")
     lines = read_lines()
-    if args.monitor is None:
-        set_global(lines, section, args.key, args.value)
+    if args.key.startswith("gap_") and args.key[4:] in gap_sides:
+        if args.widget != "panel":
+            sys.exit("ERROR: gap keys apply to the panel only")
+        if args.monitor is not None:
+            sys.exit("ERROR: panel gaps are global (no --monitor)")
+        section_path = ["panel", "gap"]
+        key_written = args.key[4:]
+        set_global(lines, section_path, key_written, args.value)
+    elif args.key in ("position_x", "position_y", "scale"):
+        section_path = section
+        key_written = args.key
+        if args.monitor is None:
+            set_global(lines, section, args.key, args.value)
+        else:
+            set_per_monitor(lines, section, args.monitor, args.key, args.value)
     else:
-        set_per_monitor(lines, section, args.monitor, args.key, args.value)
+        sys.exit("ERROR: unsupported key: %s" % args.key)
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         f.writelines(lines)
     print("wrote %s.%s%s=%s" % (
-        ".".join(section),
+        ".".join(section_path),
         ("per_monitor[%d]." % args.monitor) if args.monitor is not None else "",
-        args.key, args.value,
+        key_written, args.value,
     ))
 
 

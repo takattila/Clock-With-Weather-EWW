@@ -71,6 +71,17 @@ overlaps keeps the taskbar inset while monitors outside the taskbar keep the
 symmetric-gap full-height geometry. The panel height always stays inside the
 monitor's own height, so a smaller secondary monitor gets a matching panel.
 
+Inverse mode (--gaps-for-rect) turns a rectangle from the Move / Resize
+overlay (scripts/move_rect.py frame coordinates) back into the panel.gap
+values that reproduce it:
+
+  ./monitors.py | ./workarea.py --gaps-for-rect --monitor 0 --x 100 --y 50 \
+                 --w 250 --h 1019 [config_dir]
+
+Output (stdout, JSON):
+  {"taskbar": "top", "frame_w": 1920, "frame_h": 1050,
+   "gap": {"top": .., "right": .., "bottom": .., "left": ..}}
+
 Usage: ./workarea.py [config_dir]
 """
 
@@ -355,6 +366,118 @@ def monitor_screen(m):
     return m["width"], m["height"]
 
 
+def gaps_for_rect(monitors, monitor_index, x, y, w, h, compositor):
+    """Invert the panel geometry: derive the per-side panel.gap values from a
+    rectangle in the same FRAME coordinates the Move / Resize overlay uses
+    (workarea-local on Wayland, monitor-local on X11).
+
+    The panel position is NOT stored directly: workarea.py recomputes it from
+    panel.gap + taskbar + kde_panel_frame, so saving a dragged position means
+    converting the rectangle back into the gaps that reproduce it (the inverse
+    of compute_panel). The same workarea/taskbar/frame preprocessing as
+    compute_per_monitor is used, so a monitor the taskbar does not overlap
+    falls back to the taskbar-free full-height geometry.
+
+    Returns {"taskbar": .., "frame_w": .., "frame_h": .., "gap": {top, right,
+    bottom, left}}.
+    """
+    workarea = get_net_workarea()
+    global_screen = global_bounds(monitors)
+    global_workarea = workarea if workarea else (0, 0, global_screen[0], global_screen[1])
+    taskbar = detect_taskbar(global_screen, global_workarea)
+    frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
+
+    m = next((mm for mm in monitors if mm["index"] == monitor_index), None)
+    if m is None:
+        sys.exit("ERROR: monitor %d not found" % monitor_index)
+    mx, my, sw, sh = m["x"], m["y"], m["width"], m["height"]
+
+    wx0 = max(global_workarea[0] - mx, 0)
+    wy0 = max(global_workarea[1] - my, 0)
+    wx1 = min(global_workarea[0] + global_workarea[2], mx + sw) - mx
+    wy1 = min(global_workarea[1] + global_workarea[3], my + sh) - my
+    if wx1 > wx0 and wy1 > wy0:
+        local_workarea = (wx0, wy0, wx1 - wx0, wy1 - wy0)
+        local_taskbar = detect_taskbar((sw, sh), local_workarea)
+    else:
+        local_workarea = (0, 0, sw, sh)
+        local_taskbar = "none"
+    local_frame = None
+    if frame:
+        fx, fy, fw, fh = frame
+        if fx < mx + sw and fx + fw > mx and fy < my + sh and fy + fh > my:
+            local_frame = (fx - mx, fy - my, fw, fh)
+
+    _, wy, ww, wh = local_workarea
+    x11 = compositor == "x11"
+    frame_w = ww if not x11 else sw
+    top_origin = wy if x11 else 0
+
+    gl = x
+    gr = frame_w - (x + w)
+
+    frame_edge = None
+    if local_frame:
+        if local_taskbar == "top":
+            frame_edge = local_frame[1] + local_frame[3]
+        elif local_taskbar == "bottom":
+            frame_edge = local_frame[1]
+
+    if local_taskbar == "bottom":
+        if frame_edge is not None:
+            gb = (y - sh + frame_edge) if x11 else (y - (wy + wh - frame_edge))
+            gt = frame_edge - gb - wy - h
+        else:
+            gb = y - sh + wy + wh
+            gt = wh - gb - h
+    elif local_taskbar in ("right", "left"):
+        gt = y - top_origin
+        gb = wh - gt - h
+    elif local_taskbar == "none":
+        gt = y - top_origin
+        gb = sh - gt - h
+    else:  # local_taskbar == "top"
+        if frame_edge is not None:
+            gt = (y - frame_edge) if x11 else (y - (frame_edge - wy))
+            gb = sh - frame_edge - gt - h
+        else:
+            gt = y - top_origin
+            gb = wh - gt - h
+
+    # Raw (possibly negative) values are kept so the round trip is exact: the
+    # forward geometry (compute_panel) reproduces the rectangle unchanged, even
+    # when the panel was dragged past the taskbar's visual frame (gt/gb can go
+    # negative there; the horizontal gaps are naturally >= 0 because the drag
+    # is clamped to the frame).
+    gaps = {
+        "top": int(round(gt)),
+        "right": int(round(gr)),
+        "bottom": int(round(gb)),
+        "left": int(round(gl)),
+    }
+    return {
+        "taskbar": local_taskbar,
+        "frame_w": frame_w,
+        "frame_h": wh if not x11 else sh,
+        "gap": gaps,
+    }
+
+
+def parse_int_arg(name, default=0):
+    for i, a in enumerate(sys.argv):
+        if a == name and i + 1 < len(sys.argv):
+            try:
+                return int(sys.argv[i + 1])
+            except ValueError:
+                return default
+        elif a.startswith(name + "="):
+            try:
+                return int(a.split("=", 1)[1])
+            except ValueError:
+                return default
+    return default
+
+
 def align_panel_side(panel, gaps, side):
     """Force the panel onto the left or right screen edge.
 
@@ -456,7 +579,13 @@ def compute_per_monitor(monitors, gaps, compositor, panel_alignment="right"):
 
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    config_dir = os.path.abspath(args[-1] if args else os.getcwd())
+    # The last positional arg is the config dir when given (start.sh passes
+    # "$DIR"); option VALUES (e.g. `--align right`) must not be mistaken for
+    # it, so fall back to the cwd unless it is an existing directory.
+    if args and os.path.isdir(os.path.abspath(args[-1])):
+        config_dir = os.path.abspath(args[-1])
+    else:
+        config_dir = os.path.abspath(os.getcwd())
     gaps = load_gaps(config_dir)
 
     if "--per-monitor" in sys.argv:
@@ -464,6 +593,24 @@ def main():
         monitors = json.load(sys.stdin).get("monitors", [])
         panel_alignment = parse_align_arg()
         print(json.dumps(compute_per_monitor(monitors, gaps, compositor, panel_alignment)))
+        return
+
+    if "--gaps-for-rect" in sys.argv:
+        compositor = detect_compositor()
+        monitors = json.load(sys.stdin).get("monitors", [])
+        print(
+            json.dumps(
+                gaps_for_rect(
+                    monitors,
+                    parse_int_arg("--monitor", 0),
+                    parse_int_arg("--x", 0),
+                    parse_int_arg("--y", 0),
+                    parse_int_arg("--w", 100),
+                    parse_int_arg("--h", 100),
+                    compositor,
+                )
+            )
+        )
         return
 
     screen = get_xrandr_resolution()
