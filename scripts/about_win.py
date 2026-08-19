@@ -186,31 +186,6 @@ def os_name():
         return ""
 
 
-def cursor_position():
-    if WAYLAND:
-        try:
-            import workarea as _wa
-            return _wa.kde_cursor()
-        except Exception:
-            return None
-    try:
-        out = subprocess.check_output(
-            ["xdotool", "getmouselocation"],
-            stderr=subprocess.DEVNULL, text=True, timeout=5,
-        )
-    except Exception:
-        return None
-    m = {}
-    for part in out.split():
-        if ":" in part:
-            k, v = part.split(":", 1)
-            m[k] = v
-    try:
-        return int(m.get("x", 0)), int(m.get("y", 0))
-    except ValueError:
-        return None
-
-
 def set_position(win, x, y):
     if WAYLAND:
         try:
@@ -586,17 +561,11 @@ def main():
     if mon is None:
         mon = {"index": 0, "x": 0, "y": 0, "width": 1920, "height": 1080}
 
-    # Clamp within the monitor's bounds (the layer-shell margins on Wayland and
-    # the X11 screen coordinates are both monitor-relative through mon's origin).
+    # Center on the monitor (the layer-shell margins on Wayland and the X11
+    # screen coordinates are both monitor-relative through mon's origin).
     mx, my, mw, mh = mon["x"], mon["y"], mon["width"], mon["height"]
-    pos = cursor_position()
-    if pos:
-        px, py = pos
-        cx = clamp(px - mx, 0, max(0, mw - ABOUT_W))
-        cy = clamp(py - my, 0, max(0, mh - ABOUT_H))
-    else:
-        cx = clamp((mw - ABOUT_W) // 2, 0, max(0, mw - ABOUT_W))
-        cy = clamp((mh - ABOUT_H) // 2, 0, max(0, mh - ABOUT_H))
+    cx = clamp((mw - ABOUT_W) // 2, 0, max(0, mw - ABOUT_W))
+    cy = clamp((mh - ABOUT_H) // 2, 0, max(0, mh - ABOUT_H))
 
     win = AboutWin(args.monitor, cx, cy, mx, my, mw, mh)
     win.win.show_all()
