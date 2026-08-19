@@ -135,7 +135,7 @@ panel:
   #                   right: 0
   #        Missing sides default to 16 px.
   gap:
-    top: 5
+    top: 0
     bottom: 5
     left: 0
     right: 0
