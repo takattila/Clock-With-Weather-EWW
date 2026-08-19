@@ -20,7 +20,7 @@
 - **Interactive context menu**: right-click the clock or the panel to **Move**, **Resize**, **Reset** or open the **About** dialog (see the "Interactive features" section).
 - **Move / Resize with live preview**: a GTK control panel (arrow buttons, ± zoom, Save/Cancel) plus keyboard control (arrow keys, `+`/`-`, `Enter`, `Esc`); the clock and panel can also be dragged/resized directly with the mouse on a full-screen overlay rectangle.
 - **About dialog**: a GTK window showing the repository, runtime and configuration info, centered on the screen and draggable; opens the project page with one click.
-- **Scaling**: both widgets have an overall zoom factor (`scale`), from 0.3x to 1.5x, set globally or **per monitor**.
+- **Scaling**: both widgets have an overall zoom factor (`scale`), from 0.3x to 1.5x, set **per monitor**.
 - **Multi-monitor**: one clock and one panel instance per monitor, each with its own position/scale; display hotplug and resolution changes are detected and the layout is re-applied automatically.
 - **Hot reload**: an inotify watcher regenerates the theme and reloads EWW the moment `config.yaml` / a theme YAML is saved — no restart needed.
 - **Taskbar-aware panel**: the panel aligns to the taskbar with per-side gaps (`panel.gap`), defaulting to the same spacing on every side.
@@ -67,10 +67,12 @@ Both the clock and the panel have a **context menu** — right-click them and ch
 |---|---|
 | **Move** | Opens a full-screen transparent overlay with a rectangle around the widget plus a GTK control panel. Move the widget with the mouse (drag the rectangle), the arrow buttons, or the **arrow keys**. Save or Cancel when done. |
 | **Resize** | The same overlay and panel, but the rectangle's corners/size are changed instead. Use the mouse, the **`+` / `-`** buttons (zoom, 0.3x–1.5x) or the keyboard (**`+`**/**`-`**). Enter saves, Esc cancels. |
-| **Reset** | Restores the factory defaults directly in `config.yaml` (clock: position 0/0, scale 1.0; panel: 16 px gaps on every side, scale 1.0). |
+| **Reset** | Restores the factory defaults directly in `config.yaml` (clock: position 0/0, scale 1.0; panel: 16 px gaps on every side, scale 1.0) — written into `per_monitor[N]` for the current monitor. |
 | **About** | Opens the About dialog (below). |
 
-The saved position/scale are written to `config.yaml` and picked up instantly by the config watcher (the widget re-lays-out itself).
+The saved position/scale are written into `per_monitor[N]` (the per-monitor
+block of `config.yaml`, `N` = the monitor index) and picked up instantly by the
+config watcher (the widget re-lays-out itself).
 
 **Keyboard control** during a Move/Resize session is handled by an invisible evdev daemon (`scripts/input_daemon.py`): it reads the physical keyboard through `/dev/input/event*`, creates **no window**, and only acts while a session is active (a small `generated/input_session.json` file). Keys: arrows = move, `+`/`-` = zoom in/out, `Enter` = save, `Esc` = cancel. Clicking outside the rectangle also cancels.
 
@@ -149,10 +151,10 @@ Use the above command to **change** the following **settings**:
 - hour format (12 or 24)
 - **Shortcuts**: enable/disable Desktop icon creation
 
-The panel side (`panel.window.alignment`) and the clock position
-(`weather.window.*`) are edited directly in `config.yaml` (see the
-"Configuration" section) — the running widget picks both up automatically
-via the config watcher.
+The panel side (`panel.window.alignment`) and the clock position / scale are
+edited directly in `config.yaml` (per monitor, under
+`weather.window.per_monitor`, see the "Configuration" section) — the running
+widget picks both up automatically via the config watcher.
 
 [Back to top](#clock-with-weather-eww)
 
@@ -306,7 +308,8 @@ cd ~/.conky/Clock-With-Weather-EWW
    the "Panel alignment" section). The layout is written to `.layout.json`.
 4. **`widget_rect.py`** — computes the clock widget's top-left position and its
    **natural** (unscaled, dynamic) size for every monitor from
-   `weather.window.alignment` / `position_x/y` / `scale` (resolved per monitor).
+   `weather.window.alignment` + the per-monitor `position_x/y` / `scale`
+   (`weather.window.per_monitor`).
 5. Kills the old daemon: `eww --config . kill`
 6. `eww --config . daemon`, then for **every** monitor
    `eww --config . open --id main_<N> --screen N main_window` (+
@@ -364,10 +367,9 @@ weather:
                         # or omit it and define the city settings inline (see below)
   window:               # clock widget position (same names as a Conky alignment)
     alignment: middle_middle   # top_left..middle_middle
-    position_x: 0       # pixel offset of the clock from its anchor
-    position_y: 0
-    scale: 1.0          # overall zoom factor of the clock (0.3..1.5)
-    per_monitor: {}     # per-monitor overrides, e.g. {0: {scale: 1.0}, 1: {position_x: -40, scale: 0.8}}
+    per_monitor:        # per-monitor position/scale (the ONLY place they live)
+                        0: { position_x: 0, position_y: 0, scale: 1.0 }
+                        1: { position_x: -40, scale: 0.8 }
 system:
   hour_format: "24"     # "24" | "12"
   corner_radius: 20     # bg corner rounding (px) for BOTH widgets; 0 = square
@@ -375,10 +377,9 @@ panel:
   enabled: true         # start the system monitor panel? true | false
   window:
     alignment: right    # right (default) | left — full-height panel side
-    position_x: 0       # pixel offset of the panel from its anchor
-    position_y: 0
-    scale: 1.0          # overall zoom factor of the panel (0.3..1.5)
-    per_monitor: {}     # per-monitor overrides (same syntax as above)
+    per_monitor:        # per-monitor scale (same syntax as above)
+                        0: { scale: 1.0 }
+                        1: { scale: 0.7 }
   gap: 16               # spacing (px) on every side of the panel (Req 2)
                         # or per-side: gap: { top: 16, right: 16, bottom: 16, left: 16 }
                         # or block style (braces/commas optional):
@@ -403,11 +404,8 @@ The `weather` field accepts **two forms**:
      lang: hu
      units: metric
      api_url: https://api.openweathermap.org/data/2.5/weather
-     window:               # optional clock position
+     window:               # optional clock position (per monitor)
        alignment: middle_middle
-       position_x: 0
-       position_y: 0
-       scale: 1.0
        per_monitor: {}
    ```
 
@@ -454,16 +452,12 @@ The `appearance` field accepts **two forms**:
 | `weather.units` | `metric` / `imperial` | inline-mode only: °C vs °F (when `weather.name` is absent) |
 | `weather.api_url` | URL | the OpenWeatherMap API endpoint used by `weather.py` (default: `https://api.openweathermap.org/data/2.5/weather`); taken from the selected theme or the inline map |
 | `weather.window.alignment` | `top_left`, `top_right`, `top_middle`, `bottom_left`, `bottom_right`, `bottom_middle`, `middle_left`, `middle_right`, `middle_middle` | where the clock widget is anchored |
-| `weather.window.position_x` / `position_y` | integer px | pixel offset of the clock widget from its anchor |
-| `weather.window.scale` | float, 0.3–1.5 | overall zoom factor of the clock (window size AND content); e.g. `0.8` smaller, `1.5` bigger |
-| `weather.window.per_monitor` | map of monitor index → overrides | per-monitor values for `position_x` / `position_y` / `scale` / `alignment`; monitor index matches `eww open --screen N` (see `scripts/monitors.py`). Any listed key overrides the global value on that monitor only |
+| `weather.window.per_monitor` | map of monitor index → overrides | per-monitor `position_x` / `position_y` / `scale`; the **only** place these keys are stored (the right-click Move/Resize → Save writes here). Monitor index matches `eww open --screen N` (see `scripts/monitors.py`). Monitors without an entry fall back to the defaults: position 0/0, scale 1.0 |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour`; `12` also shows a small AM/PM indicator under the hour digits |
 | `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
 | `panel.enabled` | `true` / `false` | whether the system monitor panel is started (default `true`) |
 | `panel.window.alignment` | `right` / `left` | the horizontal side of the full-height panel (see the "Panel alignment" section) |
-| `panel.window.position_x` / `position_y` | integer px | pixel offset of the panel widget from its anchor |
-| `panel.window.scale` | float, 0.3–1.5 | overall zoom factor of the panel (window size AND content) |
-| `panel.window.per_monitor` | map of monitor index → overrides | per-monitor values for `scale` (and the other `panel.window.*` keys), same syntax as `weather.window.per_monitor` |
+| `panel.window.per_monitor` | map of monitor index → overrides | per-monitor `scale` (same syntax as `weather.window.per_monitor`); the **only** place the panel scale is stored. Monitors without an entry use scale 1.0. The panel position is derived from `panel.gap`, not from a per-monitor offset |
 | `panel.gap` | integer px **or** map | the panel is inset from the taskbar, the opposite screen edge and the lateral edge. A single number applies to every side; a map `{ top:, right:, bottom:, left: }` sets each side independently (braces/commas optional, e.g. block style) — missing sides default to 16 px. See the "Panel alignment" section |
 
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
@@ -614,7 +608,7 @@ The file has three main parts:
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` + tinted icons under `generated/icons/` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme (+ PNG tinting when `appearance.icon.color` is set) |
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` **or** the inline `weather` map → the values for the `defpoll`s; `--key <name> [--monitor N]` returns a single (per-monitor resolved) value |
 | `monitors.py` | JSON (compositor + monitor list) | compositor detection (Wayland/X11) and per-compositor monitor enumeration (index matches `eww open --screen N`); `--signature` mode reads only `/sys/class/drm` for the hotplug watcher |
-| `widget_rect.py` | JSON (clock/panel rect + natural size) | computing the top-left position and the **natural** (unscaled, dynamic) size of the clock/panel window from `config.yaml` (`alignment` / `position_x/y` / `scale`, resolved per monitor) — the same anchor math eww uses |
+| `widget_rect.py` | JSON (clock/panel rect + natural size) | computing the top-left position and the **natural** (unscaled, dynamic) size of the clock/panel window from `config.yaml` (`alignment` + the per-monitor `position_x/y` / `scale` in `weather.window.per_monitor` / `panel.window.per_monitor`) — the same anchor math eww uses |
 | `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; `--per-monitor` lays out every monitor, `--gaps-for-rect` inverts a dragged rectangle back into per-side gaps; also logs a human-readable summary to stderr |
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; a `config.yaml` change also triggers `start.sh --relayout`; log: `watch.log`, PID: `watch.pid` |
 | `monitor_watch.py` | — | monitor hotplug watcher: detects connect/disconnect / resolution changes (udev DRM events + a cheap `/sys/class/drm` signature poll) and re-lays-out the windows via `start.sh --relayout`; log: `monitor_watch.log`, PID: `monitor_watch.pid` |
@@ -637,8 +631,8 @@ These GTK/popup helpers implement the interactive features (see the
 | `move.py` | Move/Resize session launcher: reads the current widget rect (`widget_rect.py`), sets the overlay preview values, opens the rectangle overlay + the control panel and activates the keyboard daemon |
 | `move_rect.py` | the full-screen transparent **rectangle overlay** (GTK): drag/resize the widget with the mouse; writes the preview to `eww update move_*`; watching the session file to quit |
 | `move_panel.py` | the draggable GTK **control panel** with Move/Resize buttons |
-| `move_ctl.py` | handles the control-panel buttons / keyboard actions: `left/right/up/down`, `zoom_in/zoom_out` (0.3–1.5x), `reset`, `save`, `cancel`; Save/Reset write the result to `config.yaml` via `config_set.py` |
-| `config_set.py` | writes a single `config.yaml` value (used by Save/Reset; supports per-monitor overrides) |
+| `move_ctl.py` | handles the control-panel buttons / keyboard actions: `left/right/up/down`, `zoom_in/zoom_out` (0.3–1.5x), `reset`, `save`, `cancel`; Save/Reset write the result to `config.yaml` via `config_set.py` (position/scale always into `per_monitor[N]`) |
+| `config_set.py` | writes a single `config.yaml` value (used by Save/Reset; position/scale are per-monitor only, the panel gaps stay global) |
 | `input_daemon.py` | the invisible evdev keyboard daemon (arrow keys / `+`/`-` / `Enter` / `Esc`) — reads `/dev/input/event*` directly, creates **no window** |
 | `session.py` | shared session-file helpers (`generated/input_session.json`) for the popup / Move-Resize daemon, plus lazy daemon (re)start |
 | `about.py` | collects the git repository metadata (`--open` spawns the About window + the dismiss overlay + the ESC session) |

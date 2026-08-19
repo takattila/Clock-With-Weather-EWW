@@ -32,9 +32,12 @@ Usage:
 Keys that are resolved from the selected weather theme: city, language_code,
 lang, units, api_url.
 
-The per-monitor override map lives in config.yaml as
-weather.window.per_monitor / panel.window.per_monitor (see the comments
-there). The monitor index matches `eww open --screen N`.
+position_x / position_y / scale / panel_scale live ONLY in
+weather.window.per_monitor / panel.window.per_monitor (see the comments in
+config.yaml): the right-click Move/Resize -> Save always writes per-monitor
+entries. Without --monitor those keys return the default (0/0/1.0); with
+--monitor the per_monitor[N] entry is returned (or the default when the monitor
+has no entry). The monitor index matches `eww open --screen N`.
 """
 
 import json

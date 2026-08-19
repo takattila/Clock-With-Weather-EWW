@@ -20,7 +20,9 @@ Actions:
                       per-side panel.gap (scripts/workarea.py), so its dragged
                       rectangle is inverted back into the gaps via
                       workarea.py --gaps-for-rect. The resize scale is saved
-                      for both.
+                      for both. position/scale are always written into
+                      per_monitor[N] (there are no global position/scale keys
+                      anymore; only the panel gaps stay global).
   cancel              close without saving
 
 The resize percentage shown in the panel (move_pct) is updated together with
@@ -79,14 +81,6 @@ def config(key, monitor=None):
     return run(cmd, capture=True)
 
 
-def config_json(key):
-    out = config(key)
-    try:
-        return json.loads(out)
-    except Exception:
-        return {}
-
-
 def split_anchor(alignment):
     if not alignment:
         return "center", "middle"
@@ -124,11 +118,10 @@ def save_value(widget, monitor, key, value):
         "--widget", "clock" if widget == "clock" else "panel",
         "--key", key, "--value", str(value),
     ]
+    # position/scale are always written into per_monitor[N] (there are no
+    # global position/scale keys anymore); only the panel gaps stay global.
     if not key.startswith("gap_"):
-        pm_key = "weather_per_monitor" if widget == "clock" else "panel_per_monitor"
-        pm = config_json(pm_key)
-        if isinstance(pm, dict) and monitor in pm:
-            cmd += ["--monitor", str(monitor)]
+        cmd += ["--monitor", str(monitor)]
     run(cmd)
 
 

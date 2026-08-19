@@ -249,9 +249,10 @@
 ;; main_window is parametrized so scripts/start.sh can pass the clock widget's
 ;; position and size. The clock uses a "top left" anchor: main_x/main_y are the
 ;; top-left corner (workarea-local on Wayland, monitor-local on X11), computed
-;; from config.yaml (window.alignment / position_x / position_y) by
-;; scripts/widget_rect.py. main_w/main_h are the NATURAL window size (dynamic
-;; width ending at the city name x 247, independent of the scale): the content
+;; from config.yaml (window.alignment + the per-monitor position/scale in
+;; weather.window.per_monitor) by scripts/widget_rect.py. main_w/main_h are
+;; the NATURAL window size (dynamic width ending at the city name x 247,
+;; independent of the scale): the content
 ;; is scaled with the transform widget (:scale-* takes a PERCENTAGE in eww
 ;; 0.5.0, so main_scale_perc = round(scale * 100)). The transform's cairo
 ;; origin is the widget's top-left, so the scaled content stays anchored at the

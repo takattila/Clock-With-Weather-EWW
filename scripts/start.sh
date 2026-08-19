@@ -93,9 +93,9 @@ layout_windows() {
   fi
 
   # The clock widget is positioned with a "top left" anchor: scripts/widget_rect.py
-  # computes the top-left corner from config.yaml (window.alignment + pixel
-  # offsets, resolved per-monitor) using the same geometry rules as eww 0.5.0,
-  # so the anchor math lives in one place.
+  # computes the top-left corner from config.yaml (window.alignment + the
+  # per-monitor position/scale from weather.window.per_monitor) using the same
+  # geometry rules as eww 0.5.0, so the anchor math lives in one place.
   panel_enabled="$(python3 "$DIR/scripts/config.py" --key panel_enabled)"
 
   count=0

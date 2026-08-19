@@ -101,8 +101,8 @@ try:
 except ValueError:
     print(9)
 ' "$(python3 "${DIR}/scripts/config.py" --key alignment)" )"
-DEFAULT_POSITION_X="$(           [[ -n "${ARG_POSITION_X}" ]]        && echo "${ARG_POSITION_X}"        || python3 "${DIR}/scripts/config.py" --key position_x )"
-DEFAULT_POSITION_Y="$(           [[ -n "${ARG_POSITION_Y}" ]]        && echo "${ARG_POSITION_Y}"        || python3 "${DIR}/scripts/config.py" --key position_y )"
+DEFAULT_POSITION_X="$(           [[ -n "${ARG_POSITION_X}" ]]        && echo "${ARG_POSITION_X}"        || python3 "${DIR}/scripts/config.py" --key position_x --monitor 0 )"
+DEFAULT_POSITION_Y="$(           [[ -n "${ARG_POSITION_Y}" ]]        && echo "${ARG_POSITION_Y}"        || python3 "${DIR}/scripts/config.py" --key position_y --monitor 0 )"
 DEFAULT_START_PANEL="$(          [[ -n "${ARG_START_PANEL}" ]]       && echo "${ARG_START_PANEL}"       || python3 -c 'import sys; print(1 if sys.argv[1] == "true" else 2)' "$(python3 "${DIR}/scripts/config.py" --key panel_enabled)" )"
 DEFAULT_CREATE_DESKTOP_ICONS="$( [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]] && echo "${ARG_CREATE_DESKTOP_ICONS}" || echo "1" )"
 
@@ -391,9 +391,14 @@ open(path, "w", encoding="utf-8").write(text)
 ' "${CONFIG_FILE}" "${DEFAULT_APPEARANCE}"
     sed -i "s/^  hour_format: .*/  hour_format: \"${DEFAULT_HOUR_FORMAT}\"/" "${CONFIG_FILE}"
     sed -i "s/^  alignment: .*/  alignment: ${alignment}/" "${CONFIG_FILE}"
-    sed -i "s/^  position_x: .*/  position_x: ${DEFAULT_POSITION_X}/" "${CONFIG_FILE}"
-    sed -i "s/^  position_y: .*/  position_y: ${DEFAULT_POSITION_Y}/" "${CONFIG_FILE}"
     sed -i "s/^  enabled: .*/  enabled: ${panelEnabled}/" "${CONFIG_FILE}"
+
+    # The clock position is stored per monitor only (there are no global
+    # position_x/position_y keys anymore); the wizard writes monitor 0's entry.
+    python3 "${DIR}/scripts/config_set.py" --widget clock --monitor 0 \
+        --key position_x --value "${DEFAULT_POSITION_X}"
+    python3 "${DIR}/scripts/config_set.py" --widget clock --monitor 0 \
+        --key position_y --value "${DEFAULT_POSITION_Y}"
 }
 
 function setupIconSettings() {

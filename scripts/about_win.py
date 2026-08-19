@@ -142,11 +142,13 @@ def monitor_resolution(monitor_index):
     return ""
 
 
-def config_value(key):
+def config_value(key, monitor=None):
+    cmd = [sys.executable, os.path.join(SCRIPT_DIR, "config.py"), "--key", key]
+    if monitor is not None:
+        cmd += ["--monitor", str(monitor)]
     try:
         out = subprocess.check_output(
-            [sys.executable, os.path.join(SCRIPT_DIR, "config.py"), "--key", key],
-            stderr=subprocess.DEVNULL, text=True, timeout=5,
+            cmd, stderr=subprocess.DEVNULL, text=True, timeout=5,
         )
         return out.strip()
     except Exception:
@@ -417,7 +419,7 @@ class AboutWin:
         content.pack_start(self.kv("Units", config_value("units")), False, False, 0)
         content.pack_start(self.kv("Language", config_value("lang")), False, False, 0)
         content.pack_start(self.kv("Hour format", config_value("hour_format")), False, False, 0)
-        content.pack_start(self.kv("Scale", config_value("scale")), False, False, 0)
+        content.pack_start(self.kv("Scale", config_value("scale", self.monitor)), False, False, 0)
 
         scrolled.add(content)
         root.pack_start(scrolled, True, True, 0)

@@ -53,7 +53,13 @@ weather:
   #           lang: hu
   #           units: metric
   #           api_url: https://api.openweathermap.org/data/2.5/weather
-  name: default
+  # name: default
+  city: Tatabánya
+  language_code: hu
+  lang: hu
+  units: metric
+  api_url: https://api.openweathermap.org/data/2.5/weather
+
 
   # window -> position of the clock widget on the screen.
   window:
@@ -63,27 +69,21 @@ weather:
     #          bottom_middle | middle_left | middle_right | middle_middle
     alignment: middle_middle
 
-    # position_x -> horizontal pixel offset of the clock from its anchor.
-    #               Options: any integer (negative moves left/up)
-    position_x: 0
-
-    # position_y -> vertical pixel offset of the clock from its anchor.
-    #               Options: any integer (negative moves up)
-    position_y: 0
-
-    # scale -> overall zoom factor of the clock widget (window size AND
-    #          content, see PLAN.md section 5). Options: any positive number,
-    #          e.g. 0.8 (smaller) | 1.0 (default) | 1.5 (bigger)
-    scale: 0.90
-
-    # per_monitor -> per-monitor overrides of the keys above. The monitor index
-    #                matches the one used by `eww open --screen N` (see
-    #                scripts/monitors.py). Any listed key overrides the global
-    #                value on that monitor only, e.g.:
-    #                  per_monitor:
-    #                    0: { position_x: 0, position_y: 0, scale: 1.0 }
-    #                    1: { position_x: -40, position_y: 20, scale: 0.8 }
-    per_monitor: {}
+    # position_x / position_y / scale are NOT set globally anymore: they are
+    # stored per monitor only, under per_monitor below (the right-click
+    # Move/Resize -> Save always writes there). Monitors without an entry use
+    # the defaults: position 0/0, scale 1.0.
+    #
+    # The monitor index matches `eww open --screen N` (scripts/monitors.py),
+    # e.g.:
+    #   per_monitor:
+    #     0: { position_x: 0, position_y: 0, scale: 0.90 }
+    #     1: { position_x: -40, position_y: 20, scale: 0.8 }
+    per_monitor:
+      0:
+        position_x: 0
+        position_y: 0
+        scale: 0.90
 
 # system -> global configuration affecting all widgets.
 #           Controls shared behavior such as time format and background
@@ -112,25 +112,16 @@ panel:
     # alignment -> horizontal side of the full-height panel.
     #              Options: right (default, flush right) | left (flush left)
     alignment: right
-    # position_x -> horizontal pixel offset of the clock from its anchor.
-    #               Options: any integer (negative moves left/up)
-    position_x: 0
-
-    # position_y -> vertical pixel offset of the clock from its anchor.
-    #               Options: any integer (negative moves up)
-    position_y: 0
-
-    # scale -> overall zoom factor of the panel (window size AND content,
-    #          see PLAN.md section 5). Options: any positive number,
-    #          e.g. 0.8 (smaller) | 1.0 (default) | 1.5 (bigger)
-    scale: 1.00
-
-    # per_monitor -> per-monitor overrides of the keys above (same syntax as
-    #                weather.window.per_monitor), e.g.:
-    #                  per_monitor:
-    #                    0: { scale: 1.0 }
-    #                    1: { scale: 0.7 }
-    per_monitor: {}
+    # The panel position is derived from panel.gap (scripts/workarea.py); the
+    # scale is stored per monitor only, under per_monitor below (same syntax
+    # as weather.window.per_monitor). Monitors without an entry use the
+    # default scale 1.0, e.g.:
+    #   per_monitor:
+    #     0: { scale: 1.0 }
+    #     1: { scale: 0.7 }
+    per_monitor:
+      0:
+        scale: 1.00
 
   # gap -> spacing (px) between the panel and the screen/taskbar edges.
   #        Options: a single number (applies to every side), e.g. gap: 16
