@@ -33,6 +33,8 @@ Output (stdout, JSON):
     "abs_y": absolute screen top-left y,
     "width": widget width (scaled),
     "height": widget height (scaled),
+    "natural_w": natural (scale 1.0) width,
+    "natural_h": natural (scale 1.0) height,
     "anchor": window anchor ("top left" for the clock; panel anchor on X11)
   }
 """
@@ -45,11 +47,54 @@ import sys
 
 import yaml
 
+try:
+    from PIL import ImageFont
+except Exception:
+    ImageFont = None
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 LAYOUT_FILE = os.path.join(CONFIG_DIR, ".layout.json")
-CLOCK_W, CLOCK_H = 745, 250
+# The clock widget's natural height equals the visible background (.widget-bg)
+# height, so the Move/Resize rectangle matches the widget bottom exactly.
+CLOCK_H = 247
 PANEL_WIDTH = 250
+
+# The clock widget's natural width is dynamic: it hugs the content and ends
+# right after the city name (the rightmost element). Layout constants:
+CITY_X = 465            # .city-label margin-left
+CITY_FONT_SIZE = 30
+CITY_FONT_BOLD = True
+# Rightmost FIXED element: .stat-feels-label (x=550, font 15, e.g. "23°C").
+RIGHT_FIXED_END = 584
+CLOCK_PAD = 8           # small gap after the city name for the bg corner
+
+
+def measure_text(text, size, bold=False):
+    """Rendered width (px) of `text` at `size` in Noto Sans.
+
+    Uses the system Noto Sans Bold for the bold labels, falling back to the
+    repo-bundled Noto Sans Regular (close enough; eww synthesizes bold).
+    """
+    if ImageFont is not None:
+        paths = []
+        if bold:
+            paths.append("/usr/share/fonts/noto/NotoSans-Bold.ttf")
+        paths.append(os.path.join(CONFIG_DIR, "fonts", "NotoSans-Regular.ttf"))
+        for path in paths:
+            try:
+                return ImageFont.truetype(path, size).getlength(text)
+            except Exception:
+                continue
+    return len(text) * size * 0.6
+
+
+def clock_natural_size(monitor_index):
+    """Natural (scale = 1.0) clock window size, ending at the city name."""
+    city = config_value("city", monitor_index) or "Budapest"
+    city_w = measure_text(city, CITY_FONT_SIZE, bold=CITY_FONT_BOLD)
+    natural_w = max(CITY_X + city_w, RIGHT_FIXED_END) + CLOCK_PAD
+    return int(round(natural_w)), CLOCK_H
 
 
 def _run(cmd):
@@ -118,8 +163,9 @@ def align_pos(size, frame_size, alignment):
 
 def clock_rect(monitor, compositor, workarea, monitor_index):
     scale = float(config_value("scale", monitor_index) or 1.0)
-    w = CLOCK_W * scale
-    h = CLOCK_H * scale
+    natural_w, natural_h = clock_natural_size(monitor_index)
+    w = natural_w * scale
+    h = natural_h * scale
     alignment = config_value("alignment") or "middle_middle"
     pos_x = int(float(config_value("position_x", monitor_index) or 0))
     pos_y = int(float(config_value("position_y", monitor_index) or 0))
@@ -145,10 +191,17 @@ def clock_rect(monitor, compositor, workarea, monitor_index):
         "abs_y": frame_y + top_left_y,
         "width": int(round(w)),
         "height": int(round(h)),
+        "natural_w": int(natural_w),
+        "natural_h": int(natural_h),
         "frame_w": int(frame_w),
         "frame_h": int(frame_h),
-        "frame_ox": frame_x - mx,
-        "frame_oy": frame_y - my,
+        # ox/oy are the frame's top-left inside the Move/Resize rectangle
+        # window's own coordinate space. On Wayland that window is a layer-shell
+        # surface covering the WORKAREA (same frame the widget uses), so its
+        # coordinates are already workarea-local: 0. On X11 the rectangle window
+        # covers the whole monitor, so the workarea->monitor offset applies.
+        "frame_ox": 0 if compositor == "wayland" else frame_x - mx,
+        "frame_oy": 0 if compositor == "wayland" else frame_y - my,
         "right_gap": None,
         "anchor": "top left",
     }
@@ -206,8 +259,8 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
         "height": int(round(h)),
         "frame_w": int(frame_w),
         "frame_h": int(frame_h),
-        "frame_ox": frame_x - mx,
-        "frame_oy": frame_y - my,
+        "frame_ox": 0 if compositor == "wayland" else frame_x - mx,
+        "frame_oy": 0 if compositor == "wayland" else frame_y - my,
         "right_gap": int(off_x),
         "anchor": anchor,
     }

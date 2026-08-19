@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Close the popup windows (context menu / About).
+"""Close the popup windows (context menu).
 
 The `dismiss_overlay` window is a transparent, full-monitor layer that is
-opened *under* the context menu / About window. Clicking anywhere outside them
-hits this overlay, which closes ctx_menu, about_window and itself.
+opened *under* the context menu / the GTK About window (scripts/about_win.py).
+Clicking anywhere outside them hits this overlay, which closes ctx_menu,
+dismiss_overlay and clears the session file (the GTK About window watches the
+same file and quits).
 
 Usage:
   ./close_popup.py
@@ -20,7 +22,7 @@ import session
 
 
 def main():
-    for window in ("ctx_menu", "about_window", "dismiss_overlay"):
+    for window in ("ctx_menu", "dismiss_overlay"):
         try:
             subprocess.run(
                 ["eww", "--config", CONFIG_DIR, "close", window],
@@ -29,7 +31,8 @@ def main():
         except Exception:
             pass
     # Deactivate the keyboard daemon session (ESC / click-outside closed the
-    # popups), so the daemon goes back to idle.
+    # popups), so the daemon goes back to idle. The GTK About window polls this
+    # file and quits once it is gone.
     session.clear_session()
 
 

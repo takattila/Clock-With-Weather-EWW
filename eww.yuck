@@ -2,22 +2,21 @@
 ;; Clock-With-Weather-EWW
 ;;
 ;; Windows:
-;;   1. main_window     -> Clock + Weather widget (745x250 x scale)
+;;   1. main_window     -> Clock + Weather widget (dynamic width x 247 x scale)
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
 ;;   3. ctx_menu        -> right-click context menu (Move / Resize / Reset / About)
-;;   4. about_window    -> repository information
 ;;
-;; The Move/Resize rectangle + control panel are GTK3 windows (scripts/
-;; move_rect.py + move_panel.py), not eww windows.
+;; The Move/Resize rectangle + control panel and the About dialog are GTK3
+;; windows (scripts/move_rect.py + move_panel.py + about_win.py), not eww
+;; windows.
 ;; ===========================================================================
 
-;; --- Context menu state (see PLAN.md, scripts/move.py) ----------------------
+;; --- Context menu state (see scripts/move.py) -------------------------------
 (defvar move_x 0)
 (defvar move_y 0)
 (defvar move_w 100)
 (defvar move_h 100)
 (defvar move_pct 100)
-(defvar about_json "{}")
 
 ;; --- Clock data ------------------------------------------------------------
 (defpoll hour :interval "1s"
@@ -61,22 +60,24 @@
 ;; Image path helpers
 ;; ===========================================================================
 
-(defwidget widget_clock_weather [main_scale_perc screen]
+(defwidget widget_clock_weather [main_w main_h main_scale_perc screen]
   (eventbox :timeout "10s" :onrightclick "./scripts/ctx.py --widget clock --monitor ${screen}"
     (transform :scale-x "${main_scale_perc}%" :scale-y "${main_scale_perc}%"
       (box :class "main-container" :orientation "h" :space-evenly false
 
     ;; ------------------------------------------------------------------
-    ;; ABSOLUTE layout (745x250). Baseline coordinates converted to the
-    ;; label top: CSS margin-top = baseline_y - 0.73*font_size (cap height);
-    ;; images anchored to the top-left corner (pos - size/2).
+    ;; ABSOLUTE layout (main_w x main_h; main_w = dynamic natural width ending
+    ;; at the city name, main_h = natural height = the visible bg). Baseline
+    ;; coordinates converted to the label top: CSS margin-top =
+    ;; baseline_y - 0.73*font_size (cap height); images anchored to the top-left
+    ;; corner (pos - size/2).
     ;; ------------------------------------------------------------------
     (overlay :class "widget-overlay"
-      (box :class "section-sizer" :width 745 :height 250)
+      (box :class "section-sizer" :width {main_w} :height {main_h})
 
-      ;; Background hugging the content with an inner gap (térköz); the
-      ;; window canvas (745x250) stays transparent around it.
-      (box :class "widget-bg" :halign "start" :valign "start")
+      ;; Background filling the window canvas exactly, so the widget (bg),
+      ;; the window and the Move/Resize rectangle are the same size.
+      (box :class "widget-bg" :halign "start" :valign "start" :width {main_w} :height {main_h})
 
       ;; Date / year --- text(20,45) / text(70,45), font 20
       (label :class "year-label" :text date_year
@@ -101,7 +102,12 @@
              :visible {config.hour_format == "12"}
              :halign "start" :valign "start")
 
-      ;; System info row 1 (HDD, RAM) --- baseline y=180, font 15
+      ;; System info table (HDD/CPU | values | RAM/SWAP | values)
+      ;; Column X positions: col1=16, col2=65, col3=219, col4=276 -> gap 15px
+      ;; between columns and between the last column and the divider (x=414),
+      ;; computed from the current value widths (HDD "339.8 GB / 455.4 GB" 139px,
+      ;; SWAP "0% (size: 62.6 GB)" 123px). Rows at y=178 / 192 (14px pitch, the
+      ;; same as the weather description/MIN-MAX-feels rows).
       (label :class "sys-label hdd-label" :text "HDD"
              :halign "start" :valign "start")
       (label :class "sys-value hdd-value" :text {system_info.hdd}
@@ -110,8 +116,6 @@
              :halign "start" :valign "start")
       (label :class "sys-value ram-value" :text {system_info.ram}
              :halign "start" :valign "start")
-
-      ;; System info row 2 (CPU, SWAP) --- baseline y=200, font 15
       (label :class "sys-label cpu-label" :text "CPU"
              :halign "start" :valign "start")
       (label :class "sys-value cpu-value" :text {system_info.cpu}
@@ -238,22 +242,6 @@
             (box :class "ctx-btn-box" (label :text "About")))))
 
 ;; ===========================================================================
-;; About window
-;; ===========================================================================
-
-(defwidget widget_about []
-  (box :class "about-window" :orientation "v"
-    (label :class "about-title" :text "Clock + Weather + System Monitor")
-    (box :class "about-sep")
-    (label :class "about-row" :text {about_json.branch + "  (" + about_json.tag + ")"})
-    (label :class "about-row" :text {about_json.commit + "  " + about_json.date})
-    (label :class "about-row" :text {about_json.message})
-    (box :class "about-sep")
-    (button :class "about-open" :timeout "10s"
-            :onclick "xdg-open ${about_json.url}"
-            (box :class "about-open-box" (label :text "Open repository")))))
-
-;; ===========================================================================
 ;; Windows
 ;; ===========================================================================
 
@@ -261,13 +249,13 @@
 ;; position and size. The clock uses a "top left" anchor: main_x/main_y are the
 ;; top-left corner (workarea-local on Wayland, monitor-local on X11), computed
 ;; from config.yaml (window.alignment / position_x / position_y) by
-;; scripts/widget_rect.py. main_w/main_h are the NATURAL window size (745x250,
-;; independent of the scale): the content is scaled with the transform widget
-;; (:scale-* takes a PERCENTAGE in eww 0.5.0, so main_scale_perc =
-;; round(scale * 100)). The transform's cairo origin is the widget's top-left,
-;; so the scaled content stays anchored at the window's top-left corner and the
-;; window position matches the visual (scaled) position reported by
-;; scripts/widget_rect.py.
+;; scripts/widget_rect.py. main_w/main_h are the NATURAL window size (dynamic
+;; width ending at the city name x 247, independent of the scale): the content
+;; is scaled with the transform widget (:scale-* takes a PERCENTAGE in eww
+;; 0.5.0, so main_scale_perc = round(scale * 100)). The transform's cairo
+;; origin is the widget's top-left, so the scaled content stays anchored at the
+;; window's top-left corner and the window position matches the visual (scaled)
+;; position reported by scripts/widget_rect.py.
 (defwindow main_window
   [main_x main_y main_w main_h main_scale_perc screen]
   :monitor {screen}
@@ -279,7 +267,7 @@
   :stacking "bottom"
   :windowtype "normal"
   :wm-ignore true
-  (widget_clock_weather :main_scale_perc main_scale_perc :screen screen))
+  (widget_clock_weather :main_w main_w :main_h main_h :main_scale_perc main_scale_perc :screen screen))
 
 ;; panel_window is parametrized so start.sh can open one instance per monitor
 ;; with `eww open --id panel_<N> --screen <N> --arg "screen=<N>" ... panel_window`.
@@ -327,7 +315,7 @@
   :stacking "background"
   :windowtype "utility"
   :wm-ignore false
-  (widget_clock_weather :main_scale_perc main_scale_perc :screen screen))
+  (widget_clock_weather :main_w main_w :main_h main_h :main_scale_perc main_scale_perc :screen screen))
 
 (defwindow panel_window_x11
   [screen px py pw ph panchor panel_scale_perc panel_translate_x panel_translate_y]
@@ -367,11 +355,11 @@
 
 ;; ===========================================================================
 ;; Dismiss overlay: transparent, full-monitor layer opened UNDER the context
-;; menu / About window. Clicking anywhere outside them hits this surface and
-;; closes the popups (eww 0.5.0 has no built-in click-outside-to-close).
-;; It is opened before the popup so the popup stacks above it; the popup
-;; scripts close it again (scripts/ctx.py, about.py --open, move.py,
-;; close_popup.py).
+;; menu / the GTK About window. Clicking anywhere outside them hits this
+;; surface and closes the popups (eww 0.5.0 has no built-in
+;; click-outside-to-close). It is opened before the popup so the popup stacks
+;; above it; the popup scripts close it again (scripts/ctx.py, about.py --open,
+;; move.py, close_popup.py).
 ;; ===========================================================================
 
 (defwindow dismiss_overlay
@@ -384,19 +372,3 @@
   :focusable true
   (eventbox :timeout "10s" :onclick "./scripts/close_popup.py"
     (box :class "move-overlay")))
-
-;; ===========================================================================
-;; About window
-;; ===========================================================================
-
-(defwindow about_window
-  [monitor]
-  :monitor {monitor}
-  :geometry (geometry :width "420px"
-                      :height "240px"
-                      :anchor "center")
-  :stacking "overlay"
-  :windowtype "normal"
-  :wm-ignore true
-  :focusable true
-  (widget_about))

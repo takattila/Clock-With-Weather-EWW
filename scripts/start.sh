@@ -102,18 +102,20 @@ layout_windows() {
   while IFS='|' read -r idx px py pw ph panchor; do
     [ -z "$idx" ] && continue
 
-    # Clock widget geometry (top-left position; the window keeps its natural
-    # 745x250 size and the transform widget scales the content, so the window
-    # size does NOT depend on the scale -- only the visual position/size do,
-    # which widget_rect.py computes).
+    # Clock widget geometry (top-left position; the window keeps its NATURAL
+    # size and the transform widget scales the content, so the window size does
+    # NOT depend on the scale -- only the visual position/size do, which
+    # widget_rect.py computes). The natural width is dynamic: it hugs the
+    # content and ends right after the city name, so the Move/Resize rectangle
+    # matches the visible widget.
     local main_geom main_x main_y main_w main_h main_scale_perc panel_scale_perc panel_translate_x panel_translate_y
     main_geom="$(python3 "$DIR/scripts/widget_rect.py" --widget clock --monitor "$idx")" || {
       echo "ERROR: widget_rect.py (clock, monitor $idx) failed"; return 1
     }
     main_x="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["x"])')"
     main_y="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["y"])')"
-    main_w="745"
-    main_h="250"
+    main_w="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["natural_w"])')"
+    main_h="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["natural_h"])')"
     main_scale_perc="$(python3 -c "print(int(round($(python3 "$DIR/scripts/config.py" --key scale --monitor "$idx") * 100)))")"
 
     eww --config "$DIR" open --id "main_$idx" --screen "$idx" \

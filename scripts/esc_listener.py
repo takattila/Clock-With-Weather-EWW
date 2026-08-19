@@ -22,8 +22,8 @@ The window sits off-screen (at -32000,-32000), fully transparent, so it is
 invisible on screen and in the taskbar.
 
 Modes:
-  ctx   ESC runs scripts/close_popup.py (closes ctx_menu / about_window /
-        dismiss_overlay).
+  ctx   ESC runs scripts/close_popup.py (closes ctx_menu /
+        dismiss_overlay; the GTK About window quits on its own).
   move  ESC runs move_ctl.py --action cancel, ENTER runs move_ctl.py --action
         save (closes the Move/Resize session); --widget/--monitor are passed
         through to move_ctl.py.

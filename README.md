@@ -630,7 +630,7 @@ Example, the temperature label:
 | `.hour-label`, `.minutes-label` | hour / minute | `font-size: 145px`, `margin-left: 10/170`, `margin-top: 18` |
 | `.seconds-label` | seconds | `font-size: 20px`, `margin-left: 370`, `margin-top: 154` |
 | `.meridiem-label` / `.meridiem-chip` | AM/PM indicator (12h only) | `font-size: 28px`, bold, bottom of the hour digits; the 54x32 chip masks the digit with the widget background color — always at least 60% opaque, so it stays visible even when the widget background is fully transparent (`background.transparency: 0.0`) |
-| `.hdd-label`...`.swap-value` | system info, 2 lines | `.sys-label` (light, bold 15px) + `.sys-value` (dark 15px) |
+| `.hdd-label`...`.swap-value` | system info table (HDD/CPU \| values \| RAM/SWAP \| values), 2 lines | 4 columns (x=16/65/219/276, ~15px equal gaps, last gap to the divider), rows y=178/192 (14px pitch, like the weather rows); `.sys-label` (light, bold 15px) + `.sys-value` (dark 15px) |
 | `.divider` | divider line | `margin-left: 414`, `margin-top: 14` |
 | `.weather-icon` | weather icon | 64x64 via `:image-width/height` (in the yuck) |
 | `.city-icon`, `.city-label` | city icon + name | icon 20x20; label `font-size: 30px`, bold |

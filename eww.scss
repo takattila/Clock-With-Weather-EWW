@@ -6,23 +6,16 @@
 }
 
 /* ============================================================
-   Main widget (Clock + Weather) - 745x250, absolute layout
+   Main widget (Clock + Weather) - dynamic width x 250, absolute
+   layout. The overlay/bg sizes come from eww.yuck (main_w), so no
+   fixed min-widths here.
    ============================================================ */
 
 .main-container {
   color: rgba($color-light, $color-light-alpha);
 }
 
-.widget-overlay {
-  min-width: 745px;
-  min-height: 250px;
-}
-
-/* Background hugging the clock/weather content with an inner gap;
-   the radius comes from config.yaml system.corner_radius. */
 .widget-bg {
-  min-width: 630px;
-  min-height: 247px;
   background-color: rgba($bg-color, $bg-alpha);
   border-radius: $bg-radius;
 }
@@ -91,7 +84,11 @@
   margin-top: 144px;
 }
 
-/* ---------- System info row 1 (HDD, RAM) - baseline y=180, font 15 ---------- */
+/* ---------- System info table (HDD/CPU | values | RAM/SWAP | values) ----------
+   Column X: col1=16, col2=65, col3=219, col4=276 -> 15px gap between columns
+   and between the last column and the divider (x=414), computed from the
+   current value widths. Rows: y=178 / 192 (14px pitch, like the weather
+   description / MIN-MAX-feels rows). */
 
 .hdd-label {
   margin-left: 16px;
@@ -99,21 +96,19 @@
 }
 
 .hdd-value {
-  margin-left: 50px;
+  margin-left: 65px;
   margin-top: 178px;
 }
 
 .ram-label {
-  margin-left: 211px;
+  margin-left: 219px;
   margin-top: 178px;
 }
 
 .ram-value {
-  margin-left: 259px;
+  margin-left: 276px;
   margin-top: 178px;
 }
-
-/* ---------- System info row 2 (CPU, SWAP) - baseline y=200, font 15 ---------- */
 
 .cpu-label {
   margin-left: 16px;
@@ -121,17 +116,17 @@
 }
 
 .cpu-value {
-  margin-left: 50px;
+  margin-left: 65px;
   margin-top: 192px;
 }
 
 .swap-label {
-  margin-left: 211px;
+  margin-left: 219px;
   margin-top: 192px;
 }
 
 .swap-value {
-  margin-left: 259px;
+  margin-left: 276px;
   margin-top: 192px;
 }
 
@@ -312,54 +307,5 @@
 
 .ctx-btn-box label {
   font-size: 15px;
-  color: rgba($color-light, $color-light-alpha);
-}
-
-/* ============================================================
-   About window
-   ============================================================ */
-
-.about-window {
-  background-color: rgba($bg-color, 0.97);
-  border: 1px solid rgba($color-light, 0.15);
-  border-radius: $bg-radius;
-  padding: 18px;
-}
-
-.about-title {
-  font-size: 17px;
-  font-weight: bold;
-  color: rgba($color-light, $color-light-alpha);
-}
-
-.about-sep {
-  min-height: 1px;
-  margin: 10px 0;
-  background-color: rgba($color-light, 0.15);
-}
-
-.about-row {
-  font-size: 14px;
-  color: rgba($color-dark, $color-dark-alpha);
-  margin: 2px 0;
-}
-
-.about-open {
-  margin-top: 8px;
-  background-color: rgba($color-light, 0.1);
-  border-radius: 8px;
-}
-
-.about-open:hover {
-  background-color: rgba($color-light, 0.2);
-}
-
-.about-open-box {
-  padding: 8px 14px;
-}
-
-.about-open-box label {
-  font-size: 14px;
-  font-weight: bold;
   color: rgba($color-light, $color-light-alpha);
 }

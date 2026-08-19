@@ -40,8 +40,8 @@ import session
 MC_W = 200
 MC_H = 250
 
-# Natural (scale = 1.0) sizes, used to show the resize scale percentage.
-CLOCK_W, CLOCK_H = 745, 250
+# Natural (scale = 1.0) panel width. The clock's natural width is dynamic
+# (ends at the city name) and comes from widget_rect.py ("natural_w").
 PANEL_WIDTH = 250
 
 
@@ -112,7 +112,13 @@ def main():
 
     # Set the overlay values BEFORE opening the windows so the rectangle has the
     # correct size/position on the first frame.
-    base_w = CLOCK_W if args.widget == "clock" else PANEL_WIDTH
+    if args.widget == "clock":
+        base_w = rect["natural_w"]
+        base_h = rect["natural_h"]
+    else:
+        base_w = PANEL_WIDTH
+        scale = w / base_w if base_w else 1.0
+        base_h = int(round(h / scale)) if scale else h
     pct = int(round(w / base_w * 100)) if base_w else 100
     eww(
         "update",
@@ -127,11 +133,6 @@ def main():
     # base_h are the NATURAL (scale 1.0) sizes, used by the mouse resize to
     # keep the aspect ratio; ox/oy is the frame's top-left inside the monitor
     # (workarea vs monitor on Wayland, 0/0 on X11).
-    if base_w:
-        scale = w / base_w
-        base_h = int(round(h / scale)) if scale else h
-    else:
-        base_h = h
     subprocess.Popen(
         [
             sys.executable, os.path.join(SCRIPT_DIR, "move_rect.py"),

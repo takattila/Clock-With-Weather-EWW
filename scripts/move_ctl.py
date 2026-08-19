@@ -45,7 +45,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import session
 
-CLOCK_W, CLOCK_H = 745, 250
+CLOCK_H = 247
 PANEL_WIDTH = 250
 STEP = 10
 SCALE_STEP = 0.05
@@ -175,7 +175,10 @@ def base_sizes(widget, monitor, rect):
     alignment = config("alignment") or "middle_middle"
     h_align, v_align = split_anchor(alignment)
     if widget == "clock":
-        base_w, base_h = CLOCK_W, CLOCK_H
+        # The clock's natural width is dynamic (ends at the city name), so the
+        # resize base comes from widget_rect.py, not a fixed constant.
+        base_w = rect.get("natural_w") or 745
+        base_h = rect.get("natural_h") or CLOCK_H
     else:
         base_w = PANEL_WIDTH
         base_h = int(round(rect["height"] / scale)) if scale else rect["height"]
