@@ -98,6 +98,10 @@ def block_lines(parent_indent, data):
     for monitor in sorted(data, key=lambda k: str(k)):
         out.append("%s%s:" % (" " * child_indent, monitor))
         for key, value in data[monitor].items():
+            # Scale values always get two decimals (1.00 / 0.45 / 0.90), so a
+            # YAML round-trip cannot shorten 0.90 to 0.9.
+            if isinstance(value, float):
+                value = "%.2f" % value
             out.append("%s%s: %s" % (" " * (child_indent + 2), key, value))
     return ["%s\n" % l for l in out]
 
