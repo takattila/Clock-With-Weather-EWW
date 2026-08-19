@@ -173,10 +173,10 @@
   margin-top: 90px;
 }
 
-/* Temperature: baseline y157 (text(465,157) font 44),
+/* Temperature: baseline y157 (text(478,157) font 44),
    between city (y112) and description (y189). */
 .temp-icon {
-  margin-left: 427px;
+  margin-left: 440px;
   margin-top: 140px;
   opacity: $icon-alpha;
 }
@@ -185,7 +185,7 @@
   font-size: 44px;
   font-weight: bold;
   color: rgba($color-light, $color-light-alpha);
-  margin-left: 465px;
+  margin-left: 478px;
   margin-top: 125px;
 }
 
@@ -203,7 +203,9 @@
   margin-top: 178px;
 }
 
-/* MIN/MAX/Feels: same row as CPU/SWAP (row 2, baseline y200) */
+/* MIN/MAX/Feels: same row as CPU/SWAP (row 2, baseline y200).
+   MIN icon+text shares the description column (430/444); every icon-text
+   gap in the stat block is 4px (desc, MIN, MAX, feels). */
 .stat-min-icon {
   margin-left: 430px;
   margin-top: 198px;
@@ -215,12 +217,12 @@
 }
 
 .stat-max-icon {
-  margin-left: 483px;
+  margin-left: 480px;
   margin-top: 198px;
 }
 
 .stat-max-label {
-  margin-left: 501px;
+  margin-left: 494px;
   margin-top: 192px;
 }
 
@@ -230,7 +232,7 @@
 }
 
 .stat-feels-label {
-  margin-left: 550px;
+  margin-left: 544px;
   margin-top: 192px;
 }
 

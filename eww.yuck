@@ -161,7 +161,8 @@
       (label :class "details-label" :text {weather_info.weather[0].description}
              :halign "start" :valign "start")
 
-      ;; MIN --- icon centered (435,195) 10x10; text(445,200) font 15
+      ;; MIN --- icon centered (435,195) 10x10; text(445,200) font 15,
+      ;;         shares the description column (icon 430 / text 444)
       (image :class "stat-icon stat-min-icon"
              :path { "generated/icons/" + theme.theme + "/elements/arrow-down.png" }
              :image-width 10 :image-height 10
@@ -169,7 +170,7 @@
       (label :class "stat-label stat-min-label" :text {weather_info.temp_min_fmt + weather_info.unit_symbol}
              :halign "start" :valign "start")
 
-      ;; MAX --- icon centered (495,195) 10x10; text(505,200) font 15
+      ;; MAX --- icon centered (485,195) 10x10; text(499,200) font 15
       (image :class "stat-icon stat-max-icon"
              :path { "generated/icons/" + theme.theme + "/elements/arrow-up.png" }
              :image-width 10 :image-height 10
@@ -177,7 +178,7 @@
       (label :class "stat-label stat-max-label" :text {weather_info.temp_max_fmt + weather_info.unit_symbol}
              :halign "start" :valign "start")
 
-      ;; FEELS LIKE --- icon centered (555,195) 4x10; text(565,200) font 15
+      ;; FEELS LIKE --- icon centered (538,195) 4x10; text(544,200) font 15
       (image :class "stat-icon stat-feels-icon"
              :path { "generated/icons/" + theme.theme + "/elements/white-man.png" }
              :image-width 4 :image-height 10
