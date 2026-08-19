@@ -12,8 +12,8 @@ Actions:
                       widget's anchored corner / right gap fixed
   reset               write the defaults to config.yaml via scripts/
                       config_set.py and close, like save but with the default
-                      values (clock: position 0, scale 1.0; panel: all 16 px
-                      gaps, scale 1.0)
+                      values (clock: position 0, scale 1.0; panel: gaps
+                      top 5 / bottom 5 / left 0 / right 0, scale 1.0)
   save                write the position to config.yaml via scripts/
                       config_set.py, then close. The clock stores
                       position_x/position_y; the panel is positioned by its
@@ -203,14 +203,15 @@ def main():
 
     if args.action == "reset":
         # Restore the factory defaults immediately (like save, but with the
-        # default values): position (0, 0) at scale 1.0 for the weather, all
-        # 16 px gaps at scale 1.0 for the panel. The config watcher then
-        # reloads + relayouts, so the widget actually moves/resizes on screen.
-        # Reset needs no widget_rect, so it also works when monitors.py cannot
-        # resolve the target monitor yet (e.g. a freshly plugged-in one).
+        # default values): position (0, 0) at scale 1.0 for the weather, gaps
+        # top 5 / bottom 5 / left 0 / right 0 at scale 1.0 for the panel. The
+        # config watcher then reloads + relayouts, so the widget actually
+        # moves/resizes on screen. Reset needs no widget_rect, so it also works
+        # when monitors.py cannot resolve the target monitor yet (e.g. a
+        # freshly plugged-in one).
         if args.widget == "panel":
-            for side in ("top", "right", "bottom", "left"):
-                save_value(args.widget, args.monitor, "gap_%s" % side, 16)
+            for side, default in (("top", 5), ("right", 0), ("bottom", 5), ("left", 0)):
+                save_value(args.widget, args.monitor, "gap_%s" % side, default)
         else:
             save_value(args.widget, args.monitor, "position_x", 0)
             save_value(args.widget, args.monitor, "position_y", 0)

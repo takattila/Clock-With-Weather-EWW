@@ -53,13 +53,7 @@ weather:
   #           lang: hu
   #           units: metric
   #           api_url: https://api.openweathermap.org/data/2.5/weather
-  # name: default
-  city: Tatabánya
-  language_code: hu
-  lang: hu
-  units: metric
-  api_url: https://api.openweathermap.org/data/2.5/weather
-
+  name: default
 
   # window -> position of the clock widget on the screen.
   window:
@@ -135,7 +129,7 @@ panel:
   #                   right: 0
   #        Missing sides default to 16 px.
   gap:
-    top: 0
+    top: 5
     bottom: 5
     left: 0
     right: 0
