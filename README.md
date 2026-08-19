@@ -9,11 +9,20 @@
 - Easy to customize, supports appearance on **light** and **dark** backgrounds. *(See: [Example Themes](./themes/themes.md))*.
 - Supports `12` and `24-hour` clock format.
 - **Wayland native**: runs via **EWW** (`ElKowar's Wacky Widgets`) + GTK layer-shell; it also works on X11.
+- **Clock & Weather widget**: date, year, hour/minute/second, AM/PM (12 h), HDD/CPU/RAM/SWAP table, weather icon, city, temperature, description and MIN/MAX/Feels-like stats.
+- **Dynamic width**: the clock's window width hugs its content (ends right after the city name), so the Move/Resize rectangle and the widget background always match the visible widget.
 - **System Monitor Panel**: *(See: [Screenshots](#screenshots))*
     - Real-time **CPU** and **Memory** usage charts.
     - **Network Traffic** monitoring (Download/Upload).
     - **Dynamic Scaling**: Network charts automatically adjust their scale and units (KiB/s to MiB/s) based on traffic.
     - **Auto-detection**: Automatically identifies the active network interface (NIC).
+    - Can be **disabled** entirely (`panel.enabled: false`).
+- **Interactive context menu**: right-click the clock or the panel to **Move**, **Resize**, **Reset** or open the **About** dialog (see the "Interactive features" section).
+- **Move / Resize with live preview**: a GTK control panel (arrow buttons, ± zoom, Save/Cancel) plus keyboard control (arrow keys, `+`/`-`, `Enter`, `Esc`); the clock and panel can also be dragged/resized directly with the mouse on a full-screen overlay rectangle.
+- **About dialog**: a GTK window showing the repository, runtime and configuration info, centered on the screen and draggable; opens the project page with one click.
+- **Scaling**: both widgets have an overall zoom factor (`scale`), from 0.3x to 1.5x, set globally or **per monitor**.
+- **Multi-monitor**: one clock and one panel instance per monitor, each with its own position/scale; display hotplug and resolution changes are detected and the layout is re-applied automatically.
+- **Hot reload**: an inotify watcher regenerates the theme and reloads EWW the moment `config.yaml` / a theme YAML is saved — no restart needed.
 - **Taskbar-aware panel**: the panel aligns to the taskbar with per-side gaps (`panel.gap`), defaulting to the same spacing on every side.
 - **Desktop Integration**: Automatic creation of Menu icons and optional Desktop shortcuts.
 
@@ -49,6 +58,29 @@ This EWW widget consists of two separate but perfectly synchronized windows desi
 *   **Taskbar-aware Panel**: The panel is aligned to the taskbar with per-side gaps (taskbar side, opposite screen edge and lateral edge), configurable via `panel.gap` — a single number or a per-side map (see the "Panel alignment" section).
 *   **Configurable panel side**: `panel.window.alignment: right|left` places the full-height panel flush to the right or left screen edge, independent of the taskbar (see the "Panel alignment" section).
 *   **Visual Hierarchy**: The panel uses alternating "light" and "dark" colors for the charts (e.g., CPU vs. Memory, Download vs. Upload). This intentional design choice provides better visual separation, making it easier to distinguish between different data streams at a glance.
+
+### Interactive features (context menu, Move / Resize, About)
+
+Both the clock and the panel have a **context menu** — right-click them and choose:
+
+| Menu item | What it does |
+|---|---|
+| **Move** | Opens a full-screen transparent overlay with a rectangle around the widget plus a GTK control panel. Move the widget with the mouse (drag the rectangle), the arrow buttons, or the **arrow keys**. Save or Cancel when done. |
+| **Resize** | The same overlay and panel, but the rectangle's corners/size are changed instead. Use the mouse, the **`+` / `-`** buttons (zoom, 0.3x–1.5x) or the keyboard (**`+`**/**`-`**). Enter saves, Esc cancels. |
+| **Reset** | Restores the factory defaults directly in `config.yaml` (clock: position 0/0, scale 1.0; panel: 16 px gaps on every side, scale 1.0). |
+| **About** | Opens the About dialog (below). |
+
+The saved position/scale are written to `config.yaml` and picked up instantly by the config watcher (the widget re-lays-out itself).
+
+**Keyboard control** during a Move/Resize session is handled by an invisible evdev daemon (`scripts/input_daemon.py`): it reads the physical keyboard through `/dev/input/event*`, creates **no window**, and only acts while a session is active (a small `generated/input_session.json` file). Keys: arrows = move, `+`/`-` = zoom in/out, `Enter` = save, `Esc` = cancel. Clicking outside the rectangle also cancels.
+
+**About dialog** (`scripts/about_win.py`, GTK): a draggable window centered on the screen with three sections:
+
+- **Repository** — URL, branch/tag, commit, date, author, commit message (from `git`).
+- **Runtime** — compositor (Wayland/X11), monitor resolution, EWW and Python versions, OS.
+- **Configuration** — appearance, icon set, corner radius, font, city, units, language, hour format, scale.
+
+An **Open repository** button (`xdg-open`) and a **Close** button sit at the bottom. The dialog closes by clicking the Close button, pressing `Esc`, or clicking anywhere outside it.
 
 
 - A list of successful tests can be found [here](TESTS.md).
@@ -133,18 +165,6 @@ via the config watcher.
 ### With panel, theme: dark-orange-bg
 
 ![](./images/screenshots/panel-dark-orange-bg.png)
-
-[Back to top](#clock-with-weather-eww)
-
-## Wiki
-
-For detailed documentation, please visit the [wiki](https://github.com/takattila/Clock-With-Weather-EWW/wiki) page.
-
-[Back to top](#clock-with-weather-eww)
-
-## Example Themes
-
-Click [here to see](./themes/themes.md) the available example themes!
 
 [Back to top](#clock-with-weather-eww)
 
@@ -273,20 +293,27 @@ cd ~/.conky/Clock-With-Weather-EWW
    from the `appearance` field of `config.yaml` +
    `themes/appearance/<name>/appearance.yaml` (colors, font, icon set,
    background transparency).
-2. **`workarea.py`** — reads `_NET_WORKAREA`, the `panel.gap` value(s) and the
-   `panel.window.alignment` (passed as `--align left|right`) from `config.yaml`,
-   then computes the `panel_window` geometry (anchor + offsets
-   + height) so the panel is inset from the taskbar, from the opposite screen
-   edge and from the lateral screen edge by the configured per-side gap
-   (Req 2), and flush to the left or right screen edge when
-   `panel.window.alignment` is set. The offsets are interpreted for
-   the current compositor (Wayland layer-shell vs. absolute X11 coordinates,
-   see the "Panel alignment" section). The computed values override the
-   `panel_window` geometry in `eww.yuck` at runtime. If the X display is
-   unreachable, the committed geometry is kept (no clobbering with a
-   fallback).
-3. Kills the old daemon: `eww --config . kill`
-4. `eww --config . daemon` + `eww --config . open main_window` + `eww --config . open panel_window`
+2. **`monitors.py`** — detects the compositor (Wayland/X11) and enumerates the
+   connected monitors (`index` matches `eww open --screen N`).
+3. **`workarea.py --per-monitor`** — for every monitor reads `_NET_WORKAREA`,
+   the `panel.gap` value(s) and the `panel.window.alignment` (passed as
+   `--align left|right`) from `config.yaml`, then computes the `panel_window`
+   geometry (anchor + offsets + height) so the panel is inset from the taskbar,
+   from the opposite screen edge and from the lateral screen edge by the
+   configured per-side gap (Req 2), and flush to the left or right screen edge
+   when `panel.window.alignment` is set. The offsets are interpreted for the
+   current compositor (Wayland layer-shell vs. absolute X11 coordinates, see
+   the "Panel alignment" section). The layout is written to `.layout.json`.
+4. **`widget_rect.py`** — computes the clock widget's top-left position and its
+   **natural** (unscaled, dynamic) size for every monitor from
+   `weather.window.alignment` / `position_x/y` / `scale` (resolved per monitor).
+5. Kills the old daemon: `eww --config . kill`
+6. `eww --config . daemon`, then for **every** monitor
+   `eww --config . open --id main_<N> --screen N main_window` (+
+   `--id panel_<N> --screen N panel_window` when `panel.enabled: true`).
+7. Starts the background helpers: the inotify **config watcher**
+   (`watch.py`), the **monitor hotplug watcher** (`monitor_watch.py`) and the
+   invisible **keyboard daemon** (`input_daemon.py`, via passwordless sudo).
 
 ### Stopping
 
@@ -339,12 +366,19 @@ weather:
     alignment: middle_middle   # top_left..middle_middle
     position_x: 0       # pixel offset of the clock from its anchor
     position_y: 0
+    scale: 1.0          # overall zoom factor of the clock (0.3..1.5)
+    per_monitor: {}     # per-monitor overrides, e.g. {0: {scale: 1.0}, 1: {position_x: -40, scale: 0.8}}
 system:
   hour_format: "24"     # "24" | "12"
   corner_radius: 20     # bg corner rounding (px) for BOTH widgets; 0 = square
 panel:
+  enabled: true         # start the system monitor panel? true | false
   window:
     alignment: right    # right (default) | left — full-height panel side
+    position_x: 0       # pixel offset of the panel from its anchor
+    position_y: 0
+    scale: 1.0          # overall zoom factor of the panel (0.3..1.5)
+    per_monitor: {}     # per-monitor overrides (same syntax as above)
   gap: 16               # spacing (px) on every side of the panel (Req 2)
                         # or per-side: gap: { top: 16, right: 16, bottom: 16, left: 16 }
                         # or block style (braces/commas optional):
@@ -373,6 +407,8 @@ The `weather` field accepts **two forms**:
        alignment: middle_middle
        position_x: 0
        position_y: 0
+       scale: 1.0
+       per_monitor: {}
    ```
 
 The `appearance` field accepts **two forms**:
@@ -419,9 +455,15 @@ The `appearance` field accepts **two forms**:
 | `weather.api_url` | URL | the OpenWeatherMap API endpoint used by `weather.py` (default: `https://api.openweathermap.org/data/2.5/weather`); taken from the selected theme or the inline map |
 | `weather.window.alignment` | `top_left`, `top_right`, `top_middle`, `bottom_left`, `bottom_right`, `bottom_middle`, `middle_left`, `middle_right`, `middle_middle` | where the clock widget is anchored |
 | `weather.window.position_x` / `position_y` | integer px | pixel offset of the clock widget from its anchor |
+| `weather.window.scale` | float, 0.3–1.5 | overall zoom factor of the clock (window size AND content); e.g. `0.8` smaller, `1.5` bigger |
+| `weather.window.per_monitor` | map of monitor index → overrides | per-monitor values for `position_x` / `position_y` / `scale` / `alignment`; monitor index matches `eww open --screen N` (see `scripts/monitors.py`). Any listed key overrides the global value on that monitor only |
 | `system.hour_format` | `24` / `12` | the `%H` / `%I` format of the `defpoll hour`; `12` also shows a small AM/PM indicator under the hour digits |
 | `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
+| `panel.enabled` | `true` / `false` | whether the system monitor panel is started (default `true`) |
 | `panel.window.alignment` | `right` / `left` | the horizontal side of the full-height panel (see the "Panel alignment" section) |
+| `panel.window.position_x` / `position_y` | integer px | pixel offset of the panel widget from its anchor |
+| `panel.window.scale` | float, 0.3–1.5 | overall zoom factor of the panel (window size AND content) |
+| `panel.window.per_monitor` | map of monitor index → overrides | per-monitor values for `scale` (and the other `panel.window.*` keys), same syntax as `weather.window.per_monitor` |
 | `panel.gap` | integer px **or** map | the panel is inset from the taskbar, the opposite screen edge and the lateral edge. A single number applies to every side; a map `{ top:, right:, bottom:, left: }` sets each side independently (braces/commas optional, e.g. block style) — missing sides default to 16 px. See the "Panel alignment" section |
 
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
@@ -539,19 +581,28 @@ The file has three main parts:
    > inotify watcher (`scripts/watch.py`, see below) reloads the widget the
    > moment a YAML config/theme file is saved, so changes appear instantly.
 
-2. **`defwidget widget_clock_weather`** — the main window. An `overlay` + fixed
-   `745x250` sizer in which every element is **absolutely positioned** with
-   `margin-left`/`margin-top` (see the "Modifying how elements are displayed"
-   section). The elements: year/date, hour/minute/second, HDD/RAM, CPU/SWAP,
-   divider line, weather icon, city, temperature, description, MIN/MAX/Feels.
+2. **`defwidget widget_clock_weather`** — the main window. An `overlay` +
+   dynamic sizer (natural width ends at the city name, 247 px high) in which
+   every element is **absolutely positioned** with `margin-left`/`margin-top`
+   (see the "Modifying how elements are displayed" section). The elements:
+   year/date, hour/minute/second, AM/PM chip (12 h), HDD/RAM, CPU/SWAP, divider
+   line, weather icon, city, temperature, description, MIN/MAX/Feels. The whole
+   content is wrapped in an eww `transform` widget so `scale` zooms it.
 
 3. **`defwidget widget_panel`** — the system monitor panel. Four
    `panel-section`s: `CPU`, `MEMORY`, `NET DOWN`, `NET UP`. Each has a title
    (`panel-title`), a status text (`panel-status`) and an SVG chart
    (`panel-chart`).
 
-4. **`defwindow` blocks** — `main_window` (745x250, center) and
-   `panel_window` (250 wide, top-right, full height).
+4. **`defwindow` blocks** — `main_window` (dynamic width, 247 high, centered)
+   and `panel_window` (250 wide, full height, top-right/left). Both are opened
+   **once per monitor** (`--id main_<N>` / `panel_<N>`, `--screen N`) with the
+   per-monitor position and scale passed as arguments; their content is scaled
+   with an eww `transform` widget. `ctx_menu` (the right-click menu) and
+   `dismiss_overlay` (a transparent full-monitor surface that closes the
+   popups when clicked outside) handle the interactive popups. On X11 the
+   `main_window_x11` / `panel_window_x11` variants are used (`:stacking
+   "background"`, WM-managed) so the widgets stay below opened windows.
 
 ### `scripts/` — data-producing Python and shell scripts
 
@@ -561,15 +612,37 @@ The file has three main parts:
 | `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call to the configured `api_url`, rounding, °C/°F |
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` + tinted icons under `generated/icons/` | `config.yaml` `appearance` + `themes/appearance/<name>/appearance.yaml` → EWW theme (+ PNG tinting when `appearance.icon.color` is set) |
-| `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` **or** the inline `weather` map → the values for the `defpoll`s |
-| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; also logs a human-readable summary to stderr |
+| `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` **or** the inline `weather` map → the values for the `defpoll`s; `--key <name> [--monitor N]` returns a single (per-monitor resolved) value |
+| `monitors.py` | JSON (compositor + monitor list) | compositor detection (Wayland/X11) and per-compositor monitor enumeration (index matches `eww open --screen N`); `--signature` mode reads only `/sys/class/drm` for the hotplug watcher |
+| `widget_rect.py` | JSON (clock/panel rect + natural size) | computing the top-left position and the **natural** (unscaled, dynamic) size of the clock/panel window from `config.yaml` (`alignment` / `position_x/y` / `scale`, resolved per monitor) — the same anchor math eww uses |
+| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; `--per-monitor` lays out every monitor, `--gaps-for-rect` inverts a dragged rectangle back into per-side gaps; also logs a human-readable summary to stderr |
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; a `config.yaml` change also triggers `start.sh --relayout`; log: `watch.log`, PID: `watch.pid` |
-| `start.sh` | — | starting the widget (section 3): Plasma check (Wayland only), theme generation, taskbar alignment + panel side (`panel.window.alignment`), `eww daemon` + opening windows, watcher start |
+| `monitor_watch.py` | — | monitor hotplug watcher: detects connect/disconnect / resolution changes (udev DRM events + a cheap `/sys/class/drm` signature poll) and re-lays-out the windows via `start.sh --relayout`; log: `monitor_watch.log`, PID: `monitor_watch.pid` |
+| `start.sh` | — | starting the widget (section 3): Plasma check (Wayland only), theme generation, display-env bootstrap, per-monitor layout (`layout_windows`), `eww daemon` + opening windows, watcher + monitor watcher + input daemon start. `--relayout` recomputes the layout without restarting the daemon |
 | `stop.sh` | — | stopping the widget (`eww --config . kill`) |
 | `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key, creates the desktop/menu icons and starts the widgets |
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
+
+### `scripts/` — interactive popups (context menu, Move/Resize, About)
+
+These GTK/popup helpers implement the interactive features (see the
+"Interactive features" section at the top):
+
+| Script | Responsibility |
+|---|---|
+| `ctx.py` | opens the context menu (`ctx_menu` + the `dismiss_overlay`) at the right-click point; `--widget clock\|panel --monitor N` |
+| `close_popup.py` | closes every popup (context menu, dismiss overlay) and clears the session |
+| `move.py` | Move/Resize session launcher: reads the current widget rect (`widget_rect.py`), sets the overlay preview values, opens the rectangle overlay + the control panel and activates the keyboard daemon |
+| `move_rect.py` | the full-screen transparent **rectangle overlay** (GTK): drag/resize the widget with the mouse; writes the preview to `eww update move_*`; watching the session file to quit |
+| `move_panel.py` | the draggable GTK **control panel** with Move/Resize buttons |
+| `move_ctl.py` | handles the control-panel buttons / keyboard actions: `left/right/up/down`, `zoom_in/zoom_out` (0.3–1.5x), `reset`, `save`, `cancel`; Save/Reset write the result to `config.yaml` via `config_set.py` |
+| `config_set.py` | writes a single `config.yaml` value (used by Save/Reset; supports per-monitor overrides) |
+| `input_daemon.py` | the invisible evdev keyboard daemon (arrow keys / `+`/`-` / `Enter` / `Esc`) — reads `/dev/input/event*` directly, creates **no window** |
+| `session.py` | shared session-file helpers (`generated/input_session.json`) for the popup / Move-Resize daemon, plus lazy daemon (re)start |
+| `about.py` | collects the git repository metadata (`--open` spawns the About window + the dismiss overlay + the ESC session) |
+| `about_win.py` | the GTK **About dialog** (draggable, centered on screen): Repository / Runtime / Configuration sections, Open-repository + Close buttons |
 
 ### `charts/` — generated SVGs
 
@@ -606,9 +679,11 @@ All formatting is in the **`eww.scss`** file. `eww.yuck` only provides the
 
 ### The basic rule: the positioning method
 
-- Every element in the `745x250` overlay is **absolutely positioned**:
+- Every element in the widget overlay is **absolutely positioned**:
   `margin-left` = X coordinate, `margin-top` = Y coordinate (positions the top
-  of the label).
+  of the label). The overlay is `main_w x main_h`: the height is the natural
+  content height (247 px at scale 1.0), the **width is dynamic** — it hugs the
+  content and ends right after the city name.
 
 Example, the temperature label:
 
@@ -723,7 +798,9 @@ screen `:y "35px" :height "1035px"` with `panel.window.alignment: right`).
 
 ### Window geometry
 
-- Widget size: **745x250**. On the screen the window origin is **x=587, y=392**.
+- Widget size: **dynamic width × 247** (the width ends after the city name;
+  with the default city it is ~745 px) at scale 1.0. On the screen the window
+  origin is **x=587, y=392**.
 - This is the result of KDE workarea centering (plain center alignment would
   be y415, because EWW aligns to the taskbar-free area). **Don't change the
   anchoring** — this is expected behavior.

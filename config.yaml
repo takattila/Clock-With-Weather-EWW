@@ -74,7 +74,7 @@ weather:
     # scale -> overall zoom factor of the clock widget (window size AND
     #          content, see PLAN.md section 5). Options: any positive number,
     #          e.g. 0.8 (smaller) | 1.0 (default) | 1.5 (bigger)
-    scale: 1.00
+    scale: 0.90
 
     # per_monitor -> per-monitor overrides of the keys above. The monitor index
     #                matches the one used by `eww open --screen N` (see
