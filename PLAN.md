@@ -1,106 +1,114 @@
-# PLAN: Per-monitor panel position_x/position_y (Move/Resize/Reset like the clock)
+# PLAN: GitHub Actions CI + Release workflow
 
 ## Goal
 
-The system-monitor panel gets per-monitor `position_x` / `position_y` settings,
-just like the weather/clock widget: the right-click context menu -> Move /
-Resize -> **Save** writes them into `panel.window.per_monitor[N]`, **Reset**
-clears them to 0 (and resets the scale to 1.0).
+Add a lightweight GitHub Actions setup to the repository:
 
-The panel keeps its existing taskbar-aware geometry: the global `panel.gap`
-remains the shared baseline (height + default inset); the per-monitor
-`position_x` / `position_y` are pixel OFFSETS added to that baseline
-(positive = right/down), so every monitor can be positioned independently.
+1. **CI** — headless checks on every push (master) and pull request:
+   - Python unit tests (`pytest`) for the headless-testable logic
+     (`config.py`, `config_set.py`, `workarea.py`, `theme.py`, `weather.py`,
+     `system.py`, `panel.py`),
+   - Python syntax check (`python -m py_compile scripts/*.py`),
+   - YAML validation (`config.yaml` + all `themes/**/*.yaml`),
+   - ShellCheck for the bash scripts (`scripts/*.sh`).
+2. **Release** — a `v*` tag push creates a GitHub Release (with a changelog
+   from `git log`); the README version badge already reads
+   `releases/latest`.
+
+Explicitly **NOT** included: EWW rendering / screenshot jobs (they need a real
+display + GTK + an `eww` source build — too heavy/flaky for this project). The
+`tools/screenshots` capture tool also stays manual.
+
+## Scope
+
+- This is a single-maintainer personal project, so the CI stays minimal: a few
+  focused jobs, no nightly builds, no complex matrix beyond Python versions.
 
 ## Design decisions
 
-- **Gap stays global** (the user's chosen "gap + offset" combination). The
-  per-monitor offsets already allow different positions per monitor; making the
-  gaps per-monitor as well was considered but rejected as unnecessary (offsets
-  cover the per-monitor variability, and gaps also drive the height).
-- The offset is defined in the **Move/Resize rectangle's frame coordinates**
-  (workarea-local on Wayland, monitor-local on X11), i.e. the same space the
-  clock's `position_x`/`position_y` use. `workarea.py` converts the frame delta
-  back into the eww `:x`/`:y` offset with the anchor-dependent sign (on
-  Wayland the margin of a right-anchored window grows when the panel moves
-  LEFT, so the offset is subtracted there).
-- The scale still scales the panel from its anchored corner/edge; zoom keeps
-  the effective offset (base margin + offset) constant, exactly as it kept the
-  right gap before.
+- **pytest** is used as the test runner (stdlib `unittest` would be too
+  verbose); the runtime dependencies come from the existing
+  `requirements.txt`, pytest goes into a new `requirements-dev.txt`.
+- Tests **never touch the real `config.yaml`**: `config.py` and
+  `config_set.py` read/write module-level globals (`CONFIG_DIR`,
+  `CONFIG_FILE`), so tests monkeypatch those onto a `tmp_path` copy. The
+  line-aware writer (`config_set.py`) is verified with a round-trip test that
+  asserts only the target line changes and the comments survive.
+- The scripts are all importable (`__main__` guards present), so pytest imports
+  the modules from `scripts/` directly (`pythonpath = scripts`).
+- `weather.py` / `system.py` / `panel.py` are tested with mocked
+  `requests` / `psutil` — no real API or network access in CI.
+- No `.api_key` in CI (it is git-ignored); the API-key resolution order is
+  tested with the env-var branch.
 
 ## Files to change
 
-1. **`config.yaml`**
-   - `panel.window.per_monitor`: add `position_x` / `position_y` (per monitor,
-     same syntax as `weather.window.per_monitor`), keep `scale`.
-   - Comment refresh: position offsets + gap baseline; Reset = 0/0 + scale 1.0.
+1. **`PLAN.md`** — this document.
 
-2. **`scripts/config.py`**
-   - New keys `panel_position_x` / `panel_position_y` (global default 0),
-     resolved per monitor from `panel.window.per_monitor[N]` with `--monitor`
-     (mirrors `panel_scale`).
-   - Docstring update.
+2. **`tests/conftest.py`** — shared fixtures:
+   - a `tmp_path` config copy that monkeypatches `config.CONFIG_DIR` and
+     `config_set.CONFIG_FILE`,
+   - a minimal `config.yaml` builder (defaults + overridable sections).
 
-3. **`scripts/config_set.py`**
-   - No functional change: `--widget panel --key position_x/position_y --monitor N`
-     already writes `panel.window.per_monitor[N]`.
-   - Docstring update.
+3. **`tests/test_config.py`** — `load_config()`:
+   - defaults (appearance, hour_format, alignment, scale, positions...),
+   - inline vs. theme (`name`) weather mode,
+   - `--monitor` per-monitor resolution (weather + panel, fallback to defaults),
+   - `resolve_api_key()` ordering (env var -> `.api_key` file -> `""`).
 
-4. **`scripts/workarea.py`**
-   - `load_panel_offsets()`: read per-monitor panel position offsets from
-     config.yaml.
-   - `_base_geometry_for()`: extract the gap-only (offset-free) panel geometry +
-     Move/Resize frame size for one monitor.
-   - `apply_panel_offset()`: add the offset to the gap-derived eww offsets with
-     the correct (compositor, anchor) sign.
-   - `rect_from_offsets()`: convert eww offsets + size into rectangle frame
-     coordinates (same formulas as `widget_rect.py panel_rect`).
-   - `compute_per_monitor()`: uses the above; each monitor entry keeps
-     `base_x`/`base_y` (the gap-only offsets) for debugging/inspection.
-   - New `--base-rect` mode: gap-derived rectangle top-left for an arbitrary
-     size (used by `move_ctl.py` Save).
-   - `--gaps-for-rect` kept as-is (now unused by `move_ctl.py`; harmless).
-   - Docstring update.
+4. **`tests/test_config_set.py`** — line-aware YAML writer:
+   - write a per-monitor key on a temp copy, re-read, assert value changed,
+   - assert the surrounding comment lines are byte-identical,
+   - `--monitor` is required for position/scale keys, gap keys stay global,
+   - unknown widget / key errors.
 
-5. **`scripts/widget_rect.py`**
-   - No functional change: it reads `.layout.json`, which now carries the
-     effective (offset-included) `x`/`y`, so the Move/Resize rectangle and the
-     context menu already see the real position.
+5. **`tests/test_workarea.py`** — geometry logic:
+   - taskbar position variants (top/bottom/left/right/none),
+   - gap baseline + per-monitor offset combination (X11 vs. Wayland sign),
+   - `--base-rect` mode (gap-derived rect for an arbitrary size),
+   - `--per-monitor` output contains `base_x`/`base_y` + offset-included `x`/`y`.
 
-6. **`scripts/move_ctl.py`**
-   - `base_rect()`: replace `panel_gaps()` — calls `workarea.py --base-rect`
-     for the dragged size.
-   - `save` (panel): write the offset = dragged rect − base rect as
-     `position_x` / `position_y` (per monitor), keep scale.
-   - `reset`: write `position_x: 0`, `position_y: 0`, `scale: 1.00` for both
-     widgets (the panel gaps stay untouched).
-   - Docstring update.
+6. **`tests/test_theme.py`** — appearance resolution:
+   - string name -> `themes/appearance/<name>/appearance.yaml`,
+   - inline dict used directly,
+   - icon tinting produces a valid PNG (PIL, in `tmp_path`).
 
-7. **`scripts/start.sh`**
-   - No functional change: `px`/`py` already come from `workarea.py
-     --per-monitor` (now offset-included).
+7. **`tests/test_weather.py`** — mocked `requests`:
+   - 200 -> formatted fields (`temp_fmt`, `unit_symbol`, `icon_path`...),
+   - non-200 -> `{"error": ...}`,
+   - exception -> `{"error": ...}`.
 
-8. **`eww.yuck`**
-   - Comment refresh only (Reset row + `panel_window` geometry comment).
+8. **`tests/test_system.py`** + **`tests/test_panel.py`** — mocked `psutil`:
+   - `system.py` / `panel.py` return valid JSON-ish structures.
 
-9. **`README.md`**
-   - Reset table row, config example, config table (`panel.window.per_monitor`,
-     `panel.gap`), "Panel alignment" section, script table rows
-     (`workarea.py`, `move_ctl.py`).
+9. **`pytest.ini`** — `testpaths = tests`, `pythonpath = scripts`.
 
-10. **`PLAN.md`**
-    - This document.
+10. **`requirements-dev.txt`** — `pytest`.
+
+11. **`.github/workflows/ci.yml`**:
+    - `on`: push (master) + pull_request,
+    - job `test` (matrix: 3.11 / 3.12 / 3.13 / 3.14):
+      `pip install -r requirements.txt -r requirements-dev.txt`,
+      `python -m py_compile scripts/*.py`, `pytest tests/ -v`,
+    - job `yaml-validate`: `yaml.safe_load` on `config.yaml` + all
+      `themes/**/*.yaml`,
+    - job `shellcheck`: `koalaman/shellcheck@stable` on `scripts/*.sh`.
+
+12. **`.github/workflows/release.yml`**:
+    - `on`: push tags `v*`,
+    - create a Release with `softprops/action-gh-release` using `GITHUB_TOKEN`
+      and a changelog generated from `git log`.
+
+13. **`README.md`** — add a `![CI]` shield to the badge row.
+
+14. **`WIKI.md`** — extend the "For testing / development" section with a short
+    CI paragraph (`pytest tests/`, GitHub Actions).
 
 ## Verification
 
-- `./scripts/config.py --key panel_position_x --monitor 0` -> `0` (default).
-- Panel -> right-click -> Move -> drag -> Save ->
-  `panel.window.per_monitor[N]` gains `position_x` / `position_y` / `scale`.
-- Reset -> `per_monitor[N] = {position_x: 0, position_y: 0, scale: 1.00}`
-  while `panel.gap` stays unchanged.
-- `workarea.py --per-monitor` shows the offset-included `x`/`y` plus
-  `base_x`/`base_y`; `workarea.py --base-rect` matches the pre-offset position.
-- `start.sh --relayout` picks up the per-monitor offsets (tested: drag 30/10 on
-  monitor 0 -> config 30/10 -> panel at base + 30/10).
-- X11 sign verified (positive offset shifts right/down); Wayland sign is
-  handled in `apply_panel_offset` (flip for right-anchored margins).
+- `python -m pytest tests/ -v` passes locally (all green).
+- `python -m py_compile scripts/*.py` passes.
+- All `config.yaml` + `themes/**/*.yaml` parse with `yaml.safe_load`.
+- ShellCheck passes on every `scripts/*.sh` (no new errors/warnings).
+- A `v*` tag push triggers the release workflow and creates a Release.
+- Push / PR to master triggers the CI workflow with all jobs green.

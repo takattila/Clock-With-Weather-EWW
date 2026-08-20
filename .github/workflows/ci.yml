@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Compile all Python scripts
+        run: python -m py_compile scripts/*.py
+      - name: Run pytest
+        run: python -m pytest tests/ -v
+
+  yaml-validate:
+    name: Validate YAML files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Validate config.yaml and theme YAMLs
+        run: |
+          python - <<'PY'
+          import glob
+          import sys
+
+          import yaml
+
+          files = ["config.yaml"] + sorted(
+              glob.glob("themes/**/*.yaml", recursive=True)
+          )
+          errors = 0
+          for f in files:
+              try:
+                  with open(f, encoding="utf-8") as fh:
+                      yaml.safe_load(fh)
+              except Exception as exc:
+                  print(f"FAIL {f}: {exc}", file=sys.stderr)
+                  errors += 1
+          sys.exit(1 if errors else 0)
+          PY
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # -S error keeps the CI green on the existing code while still catching
+      # genuine shell syntax errors. The current scripts only have
+      # warning/info-level findings; raise the severity as they get fixed.
+      - name: Run shellcheck on the bash scripts
+        run: |
+          shellcheck -S error \
+            scripts/install.sh \
+            scripts/setup.sh \
+            scripts/setup-test-env.sh \
+            scripts/start.sh \
+            scripts/stop.sh

@@ -3,6 +3,7 @@
 [![Version](https://img.shields.io/badge/dynamic/json.svg?label=version&url=https://api.github.com/repos/takattila/Clock-With-Weather-EWW/releases/latest&query=tag_name)](https://github.com/takattila/Clock-With-Weather-EWW/releases)
 [![Wiki](https://img.shields.io/badge/wiki-docs-orange)](WIKI.md)
 [![Screenshots](https://img.shields.io/badge/view-screenshots-blue)](#screenshots)
+[![CI](https://github.com/takattila/Clock-With-Weather-EWW/actions/workflows/ci.yml/badge.svg)](https://github.com/takattila/Clock-With-Weather-EWW/actions/workflows/ci.yml)
 
 A beautiful, fully customizable **clock & weather widget** with a live
 **system monitor panel** for your desktop. Runs natively on **Wayland**

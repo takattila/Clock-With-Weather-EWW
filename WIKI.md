@@ -66,6 +66,35 @@ them from your distribution's repositories instead.
 |---|---|
 | `spectacle` | taking screenshots for verification |
 | `PIL` (pillow) | image measurement / comparison (development aid) — also a runtime dependency (see above) |
+| `pytest` | running the headless unit tests (`pip install -r requirements-dev.txt`) |
+
+### Continuous integration (GitHub Actions)
+
+The repository runs headless checks on every push / pull request
+(`.github/workflows/ci.yml`):
+
+- `pytest` for the logic that is testable without a display: `config.py`,
+  `config_set.py`, `workarea.py`, `theme.py`, `weather.py` (mocked
+  `requests`), `system.py` and `panel.py` (mocked `psutil`). Run them locally
+  with:
+
+  ```bash
+  pip install -r requirements-dev.txt
+  python -m pytest tests/ -v
+  ```
+
+- `python -m py_compile scripts/*.py` — syntax check for every Python script.
+- YAML validation — `config.yaml` + all `themes/**/*.yaml` must parse.
+- ShellCheck on `scripts/*.sh` (severity `-S error`; `scripts/git-filter-repo.sh`
+  is a vendored Python tool despite its `.sh` extension, so it is excluded).
+
+Pushing a `v*` tag also triggers `.github/workflows/release.yml`, which creates
+a GitHub Release with a changelog generated from `git log` (the README version
+badge reads `releases/latest`).
+
+EWW rendering / screenshot jobs are intentionally **not** part of CI: they need
+a real display + GTK + an `eww` source build. The `tools/screenshots` capture
+tool stays a manual/on-desktop step.
 
 ### X11 support
 
