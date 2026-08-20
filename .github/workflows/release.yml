@@ -21,15 +21,28 @@ jobs:
         run: |
           PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
           if [ -n "$PREV" ]; then
-            RANGE="$PREV..HEAD"
+            git log --oneline --no-merges "$PREV..HEAD" > /tmp/changelog.txt
+            echo "PREV=$PREV" >> "$GITHUB_ENV"
           else
-            RANGE=""
+            rm -f /tmp/changelog.txt
           fi
-          {
-            echo "### What's changed"
-            echo
-            git log --oneline --no-merges $RANGE
-          } > /tmp/release-body.md
+      - name: Assemble release body
+        run: |
+          if [ -f RELEASE_NOTES.md ]; then
+            cp RELEASE_NOTES.md /tmp/release-body.md
+          else
+            echo "### What's changed" > /tmp/release-body.md
+          fi
+          if [ -f /tmp/changelog.txt ]; then
+            {
+              echo
+              echo "---"
+              echo
+              echo "## Commits since $PREV"
+              echo
+              cat /tmp/changelog.txt
+            } >> /tmp/release-body.md
+          fi
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
