@@ -8,10 +8,6 @@ A beautiful, fully customizable **clock & weather widget** with a live
 (EWW + GTK layer-shell) and also works on **X11**.
 Powered by the [OpenWeatherMap](https://openweathermap.org) API.
 
----
-
-## Screenshots
-
 <table>
     <tr>
         <th>Dark text with light background</th>
@@ -22,6 +18,48 @@ Powered by the [OpenWeatherMap](https://openweathermap.org) API.
         <td><img src="./images/screenshots/new-york-light-bg.png"></td>
     </tr>
 </table>
+
+---
+
+## Quick Start
+
+### 1. Get an OpenWeatherMap API key
+
+Create a free account at [openweathermap.org](https://home.openweathermap.org/users/sign_up)
+— the key arrives by e-mail.
+
+### 2. Install
+
+One-liner, root privileges are requested by the script (the installer is
+**cross-distro**: it detects your package manager and installs **eww + all
+dependencies**):
+
+... via `curl`:
+
+```bash
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
+```
+
+... or via `wget`:
+
+```bash
+bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
+```
+
+> Tip: to skip the interactive API-key prompt, export your key first:
+> `export OPENWEATHER_API_KEY=<YOUR-API-KEY>`
+
+### 3. Start / stop / configure
+
+```bash
+bash ~/.eww/Clock-With-Weather-EWW/scripts/start.sh    # start the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/stop.sh     # stop the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/setup.sh    # change API key / theme / hour format
+```
+
+---
+
+## Screenshots
 
 ### System Monitor Panel
 
@@ -93,44 +131,6 @@ The widget is built from **two separate but perfectly synchronized windows**:
 
 They share a **unified theme** (colors, fonts, transparency), so they always
 look like a single, cohesive interface — whether you pick a light or dark theme.
-
----
-
-## Quick Start
-
-### 1. Get an OpenWeatherMap API key
-
-Create a free account at [openweathermap.org](https://home.openweathermap.org/users/sign_up)
-— the key arrives by e-mail.
-
-### 2. Install
-
-One-liner, root privileges are requested by the script (the installer is
-**cross-distro**: it detects your package manager and installs **eww + all
-dependencies**):
-
-... via `curl`:
-
-```bash
-bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
-```
-
-... or via `wget`:
-
-```bash
-bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
-```
-
-> Tip: to skip the interactive API-key prompt, export your key first:
-> `export OPENWEATHER_API_KEY=<YOUR-API-KEY>`
-
-### 3. Start / stop / configure
-
-```bash
-bash ~/.eww/Clock-With-Weather-EWW/scripts/start.sh    # start the widget
-bash ~/.eww/Clock-With-Weather-EWW/scripts/stop.sh     # stop the widget
-bash ~/.eww/Clock-With-Weather-EWW/scripts/setup.sh    # change API key / theme / hour format
-```
 
 ---
 
