@@ -37,6 +37,27 @@ Powered by the [OpenWeatherMap](https://openweathermap.org) API.
     </tr>
 </table>
 
+### Right click on the Widgets
+
+<table>
+    <tr>
+        <th>Right click</th>
+        <th>Resize Weather</th>
+    </tr>
+    <tr>
+        <td><img src="./images/screenshots/context-menu-01.png"></td>
+        <td><img src="./images/screenshots/context-menu-02.png"></td>
+    </tr>
+    <tr>
+        <th>Resize Panel</th>
+        <th>About</th>
+    </tr>
+    <tr>
+        <td><img src="./images/screenshots/context-menu-03.png"></td>
+        <td><img src="./images/screenshots/context-menu-04.png"></td>
+    </tr>
+</table>
+
 ---
 
 ## Features
