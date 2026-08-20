@@ -1,8 +1,6 @@
 # Clock-With-Weather-EWW
 
-[![Version](https://img.shields.io/badge/dynamic/json.svg?label=version&url=https://api.github.com/repos/takattila/Clock-With-Weather-EWW/releases/latest&query=tag_name)](https://github.com/takattila/Clock-With-Weather-EWW/releases)
-[![Wiki](https://img.shields.io/badge/wiki-docs-orange)](WIKI.md)
-[![Screenshots](https://img.shields.io/badge/view-screenshots-blue)](#screenshots)
+[![Version](https://img.shields.io/github/v/release/takattila/Clock-With-Weather-EWW?label=version)](https://github.com/takattila/Clock-With-Weather-EWW/releases)
 [![CI](https://github.com/takattila/Clock-With-Weather-EWW/actions/workflows/ci.yml/badge.svg)](https://github.com/takattila/Clock-With-Weather-EWW/actions/workflows/ci.yml)
 
 A beautiful, fully customizable **clock & weather widget** with a live
