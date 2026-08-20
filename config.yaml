@@ -6,13 +6,6 @@
 # git-ignored file ./.api_key (first line, chmod 600).
 # ============================================================================
 
-
-# ============================================================================
-# Session   Panel position_x/position_y beállítások weather m…
-# Continue  opencode -s ses_fe436cf32ffeBvzho3Il9otBs1
-# ============================================================================
-
-
 # appearance -> the color theme. Two forms are accepted:00
 #
 #   1. A theme NAME (string) -> uses themes/appearance/<name>/appearance.yaml,
@@ -60,13 +53,8 @@ weather:
   #           lang: hu
   #           units: metric
   #           api_url: https://api.openweathermap.org/data/2.5/weather
-  # name: default
-  city: Tatabánya
-  language_code: hu
-  lang: hu
-  units: metric
-  api_url: https://api.openweathermap.org/data/2.5/weather
 
+  name: default
 
   # window -> position of the clock widget on the screen.
   window:
@@ -88,10 +76,6 @@ weather:
     #     1: { position_x: -40, position_y: 20, scale: 0.8 }
     per_monitor:
       0:
-        position_x: 0
-        position_y: 0
-        scale: 1.00
-      1:
         position_x: 0
         position_y: 0
         scale: 1.00
@@ -138,10 +122,6 @@ panel:
     #     1: { position_x: -40, position_y: 20, scale: 0.7 }
     per_monitor:
       0:
-        position_x: 0
-        position_y: 0
-        scale: 1.00
-      1:
         position_x: 0
         position_y: 0
         scale: 1.00
