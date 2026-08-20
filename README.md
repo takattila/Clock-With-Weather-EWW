@@ -113,13 +113,13 @@ dependencies**):
 ... via `curl`:
 
 ```bash
-bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-Conky/refs/heads/feature/wayland/scripts/install.sh)"
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
 ```
 
 ... or via `wget`:
 
 ```bash
-bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-Conky/refs/heads/feature/wayland/scripts/install.sh)"
+bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
 ```
 
 > Tip: to skip the interactive API-key prompt, export your key first:
@@ -128,9 +128,9 @@ bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.g
 ### 3. Start / stop / configure
 
 ```bash
-bash ~/.conky/Clock-With-Weather-EWW/scripts/start.sh    # start the widget
-bash ~/.conky/Clock-With-Weather-EWW/scripts/stop.sh     # stop the widget
-bash ~/.conky/Clock-With-Weather-EWW/scripts/setup.sh    # change API key / theme / hour format
+bash ~/.eww/Clock-With-Weather-EWW/scripts/start.sh    # start the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/stop.sh     # stop the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/setup.sh    # change API key / theme / hour format
 ```
 
 ---

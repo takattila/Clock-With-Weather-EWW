@@ -79,7 +79,7 @@ ALIGNMENTS_ARRAY=(
     "middle_middle"
 )
 
-DEFAULT_OPENWEATHER_API_KEY="$(  [[ -n "${ARG_API_KEY}" ]]          && echo "${ARG_API_KEY}"          || echo "${OPENWEATHER_API_KEY}" )"
+DEFAULT_OPENWEATHER_API_KEY="$(  [[ -n "${ARG_API_KEY}" ]]           && echo "${ARG_API_KEY}"           || echo "${OPENWEATHER_API_KEY}" )"
 DEFAULT_CITY="$(                 [[ -n "${ARG_CITY}" ]]              && echo "${ARG_CITY}"              || python3 "${DIR}/scripts/config.py" --key city )"
 DEFAULT_LANGUAGE_CODE="$(        [[ -n "${ARG_LANGUAGE_CODE}" ]]     && echo "${ARG_LANGUAGE_CODE}"     || python3 "${DIR}/scripts/config.py" --key language_code )"
 DEFAULT_LANG="$(                 [[ -n "${ARG_LANG}" ]]              && echo "${ARG_LANG}"              || python3 "${DIR}/scripts/config.py" --key lang )"

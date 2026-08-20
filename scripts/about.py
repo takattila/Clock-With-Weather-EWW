@@ -2,7 +2,7 @@
 """Git repository metadata for the About window.
 
 Output (stdout, JSON):
-  {"url": "https://github.com/takattila/Clock-With-Weather-Conky",
+  {"url": "https://github.com/takattila/Clock-With-Weather-EWW",
    "branch": "master", "commit": "abc1234", "full_commit": "<40 hex>",
    "date": "2026-08-17", "author": "Name", "author_email": "name@host",
    "author_date": "2026-08-17T..+00:00",

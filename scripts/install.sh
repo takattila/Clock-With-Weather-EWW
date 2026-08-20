@@ -3,8 +3,8 @@
 # --- Standalone widget repo -------------------------------------------------
 # The eww widget is its own repository; the repo root IS the widget directory.
 GITHUB_USER="takattila"
-REPO="Clock-With-Weather-Conky"
-REPO_BRANCH="${REPO_BRANCH:-feature/wayland}"
+REPO="Clock-With-Weather-EWW"
+REPO_BRANCH="${REPO_BRANCH:-master}"
 # ----------------------------------------------------------------------------
 
 EWW_REPO="elkowar/eww"

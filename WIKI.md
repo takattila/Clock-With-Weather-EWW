@@ -26,7 +26,7 @@ What the installer does, in order:
 1. base tools (`curl`, `gawk`, `git`),
 2. eww runtime dependencies (Python modules, `xprop`, `xrandr`, Noto fonts),
 3. `eww` itself (package or source build),
-4. clones the repo to `~/.conky/` and checks out the latest release tag,
+4. clones the repo to `~/.eww/` and checks out the latest release tag,
 5. installs the `NotoSans-Regular.ttf` font,
 6. asks for the **OpenWeatherMap API key** → saves it to `.api_key`
    (chmod 600, git-ignored),
@@ -112,7 +112,7 @@ missing, an **empty/raw `null`** value goes into the widget, which is often an
 ## 3. Starting the widget
 
 ```bash
-cd ~/.conky/Clock-With-Weather-EWW
+cd ~/.eww/Clock-With-Weather-EWW
 ./scripts/start.sh
 ```
 
@@ -146,7 +146,7 @@ cd ~/.conky/Clock-With-Weather-EWW
 ### Stopping
 
 ```bash
-cd ~/.conky/Clock-With-Weather-EWW
+cd ~/.eww/Clock-With-Weather-EWW
 ./scripts/stop.sh
 ```
 
@@ -154,7 +154,7 @@ cd ~/.conky/Clock-With-Weather-EWW
 (`eww --config . kill`), which closes both windows. Manually that is:
 
 ```bash
-eww --config ~/.conky/Clock-With-Weather-EWW kill
+eww --config ~/.eww/Clock-With-Weather-EWW kill
 ```
 
 ### Setup and desktop / menu icons
@@ -172,7 +172,7 @@ To change the settings (API key, appearance theme, weather theme, hour format)
 and (re)create the icons interactively:
 
 ```bash
-cd ~/.conky/Clock-With-Weather-EWW
+cd ~/.eww/Clock-With-Weather-EWW
 ./scripts/setup.sh
 ```
 
@@ -324,7 +324,7 @@ and a plain background (solid color or a wallpaper image). For this, the
 **`scripts/setup-test-env.sh`** script:
 
 ```bash
-cd ~/.conky/Clock-With-Weather-EWW
+cd ~/.eww/Clock-With-Weather-EWW
 
 ./scripts/setup-test-env.sh hide                # test mode: widgets + icons hidden, solid background
 ./scripts/setup-test-env.sh hide "#112233"      # ... with a custom background color
@@ -526,7 +526,7 @@ images at render time.
 ### Resize / reposition workflow
 
 1. Modify `eww.scss`.
-2. `eww --config ~/.conky/Clock-With-Weather-EWW reload`
+2. `eww --config ~/.eww/Clock-With-Weather-EWW reload`
 3. `spectacle -b -o shot.png` and image measurement (PIL) — see the "Verified
    facts" section.
 
@@ -600,7 +600,7 @@ screen `:y "35px" :height "1035px"` with `panel.window.alignment: right`).
 
 ```bash
 export DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000
-eww --config ~/.conky/Clock-With-Weather-EWW reload
+eww --config ~/.eww/Clock-With-Weather-EWW reload
 sleep 2
 spectacle -b -o /tmp/opencode/shots/check.png
 ```
