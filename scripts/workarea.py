@@ -22,7 +22,11 @@ e.g.:
     gap: { top: 16, right: 16, bottom: 16, left: 16 }
 
 Missing sides default to 16 px. The panel width is fixed at 250 px; the height
-is the workarea height minus the top and bottom gaps.
+is the workarea height minus the top and bottom gaps. Per-monitor
+position_x / position_y offsets (config.yaml -> panel.window.per_monitor) are
+then added to the gap-derived position, so every monitor can be positioned
+independently (the gap stays the shared global baseline); they are defined in
+the Move / Resize rectangle's frame coordinates (positive = right/down).
 
 Output (stdout, JSON):
   {
@@ -81,6 +85,16 @@ values that reproduce it:
 Output (stdout, JSON):
   {"taskbar": "top", "frame_w": 1920, "frame_h": 1050,
    "gap": {"top": .., "right": .., "bottom": .., "left": ..}}
+
+Base-rect mode (--base-rect) returns the gap-derived (offset-free) panel
+rectangle top-left in the same frame coordinates for an arbitrary size,
+without any per-monitor offset applied. scripts/move_ctl.py computes the
+position_x/position_y offset on Save as dragged_rect - base_rect:
+
+  ./monitors.py | ./workarea.py --base-rect --monitor 0 --w 250 --h 1019 [config_dir]
+
+Output (stdout, JSON):
+  {"base_left": .., "base_top": .., "frame_w": .., "frame_h": .., "anchor": ".."}
 
 Usage: ./workarea.py [config_dir]
 """
@@ -562,7 +576,125 @@ def global_bounds(monitors):
     return tw, th
 
 
-def compute_per_monitor(monitors, gaps, compositor, panel_alignment="right"):
+def _base_geometry_for(monitor, global_workarea, taskbar, frame, gaps, compositor,
+                       panel_alignment):
+    """Gap-derived (offset-free) panel geometry + frame size for one monitor.
+
+    Returns (panel, frame_w, frame_h) where `panel` is the eww geometry dict
+    {x, y, width, height, anchor} WITHOUT the per-monitor position offsets and
+    frame_w/frame_h is the coordinate space of the Move / Resize rectangle
+    (workarea-local on Wayland, monitor-local on X11).
+    """
+    screen = monitor_screen(monitor)
+
+    # Intersect the (global, taskbar-free) workarea with this monitor's
+    # rectangle, in monitor-local coordinates. That way the panel is inset
+    # from the taskbar on every monitor the taskbar overlaps while its
+    # height never exceeds the monitor's own height -- with mixed-resolution
+    # setups the global workarea height (from the tallest screen) must not
+    # leak onto a shorter monitor. When the taskbar only overlaps part of
+    # the desktop (e.g. it sits on the primary only), the intersection for
+    # the other monitors collapses to their full height with no taskbar.
+    mx, my = monitor["x"], monitor["y"]
+    wx0 = max(global_workarea[0] - mx, 0)
+    wy0 = max(global_workarea[1] - my, 0)
+    wx1 = min(global_workarea[0] + global_workarea[2], mx + screen[0]) - mx
+    wy1 = min(global_workarea[1] + global_workarea[3], my + screen[1]) - my
+    if wx1 > wx0 and wy1 > wy0:
+        local_workarea = (wx0, wy0, wx1 - wx0, wy1 - wy0)
+        local_taskbar = detect_taskbar(screen, local_workarea)
+    else:
+        local_workarea = (0, 0, screen[0], screen[1])
+        local_taskbar = "none"
+
+    # Translate the taskbar frame into this monitor's local coordinates;
+    # it is only relevant on the monitor(s) it geometrically overlaps.
+    local_frame = None
+    if frame:
+        fx, fy, fw, fh = frame
+        if (
+            fx < mx + screen[0]
+            and fx + fw > mx
+            and fy < my + screen[1]
+            and fy + fh > my
+        ):
+            local_frame = (fx - mx, fy - my, fw, fh)
+
+    panel = compute_panel(
+        screen, local_workarea, local_taskbar, gaps, compositor, kde_frame=local_frame
+    )
+    panel = align_panel_side(panel, gaps, panel_alignment)
+
+    x11 = compositor == "x11"
+    frame_w = local_workarea[2] if not x11 else screen[0]
+    frame_h = local_workarea[3] if not x11 else screen[1]
+    return panel, frame_w, frame_h
+
+
+def load_panel_offsets(config_dir):
+    """Per-monitor panel position_x/position_y from config.yaml.
+
+    Returns {monitor_index: {"position_x": int, "position_y": int}} (all
+    missing values default to 0). These are the per-monitor OFFSETS added to
+    the global panel.gap baseline.
+    """
+    offsets = {}
+    try:
+        with open(os.path.join(config_dir, "config.yaml"), "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        pm = (cfg.get("panel") or {}).get("window") or {}
+        pm = pm.get("per_monitor") or {}
+        for mon, entry in pm.items():
+            if isinstance(entry, dict):
+                try:
+                    offsets[int(mon)] = {
+                        "position_x": int(entry.get("position_x", 0) or 0),
+                        "position_y": int(entry.get("position_y", 0) or 0),
+                    }
+                except (TypeError, ValueError):
+                    continue
+    except Exception:
+        pass
+    return offsets
+
+
+def apply_panel_offset(compositor, anchor, x, y, pos_x, pos_y):
+    """Add per-monitor position_x/position_y to the gap-derived eww offsets.
+
+    The offset is defined in the Move / Resize rectangle's FRAME coordinates
+    (workarea-local on Wayland, monitor-local on X11): a positive position_x
+    shifts the panel RIGHT on screen, positive position_y shifts it DOWN. The
+    eww :x/:y are margins/offsets for the anchor, so converting the screen
+    delta back into the eww offset needs the anchor: on Wayland the margin of
+    a right-anchored window grows when the panel moves LEFT, hence the sign
+    flip. On X11 both anchors add the offset directly.
+    """
+    if compositor == "wayland" and "right" in anchor:
+        x -= pos_x
+    else:
+        x += pos_x
+    y += pos_y
+    return x, y
+
+
+def rect_from_offsets(compositor, anchor, frame_w, w, off_x, off_y):
+    """Move / Resize-rectangle top-left (frame coords) for eww offsets.
+
+    Same geometry as scripts/widget_rect.py panel_rect(): converts the eww
+    :x/:y offsets (plus the scaled width) into the rectangle window's frame
+    coordinates (workarea-local on Wayland, monitor-local on X11).
+    """
+    if "left" in anchor:
+        left = off_x
+    elif compositor == "wayland":
+        left = frame_w - w - off_x
+    else:
+        left = frame_w - w + off_x
+    return int(round(left)), int(round(off_y))
+
+
+def compute_per_monitor(monitors, gaps, compositor, panel_alignment="right",
+                        config_dir=None):
     result = []
     workarea = get_net_workarea()
     global_screen = global_bounds(monitors)
@@ -572,53 +704,25 @@ def compute_per_monitor(monitors, gaps, compositor, panel_alignment="right"):
     # The taskbar's visual frame (with floating-panel margins) is what the panel
     # must keep the top/bottom gap away from, so the gap matches the config.
     frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
+    offsets = load_panel_offsets(config_dir) if config_dir else {}
 
     for m in monitors:
-        screen = monitor_screen(m)
-
-        # Intersect the (global, taskbar-free) workarea with this monitor's
-        # rectangle, in monitor-local coordinates. That way the panel is inset
-        # from the taskbar on every monitor the taskbar overlaps while its
-        # height never exceeds the monitor's own height -- with mixed-resolution
-        # setups the global workarea height (from the tallest screen) must not
-        # leak onto a shorter monitor. When the taskbar only overlaps part of
-        # the desktop (e.g. it sits on the primary only), the intersection for
-        # the other monitors collapses to their full height with no taskbar.
-        mx, my = m["x"], m["y"]
-        wx0 = max(global_workarea[0] - mx, 0)
-        wy0 = max(global_workarea[1] - my, 0)
-        wx1 = min(global_workarea[0] + global_workarea[2], mx + screen[0]) - mx
-        wy1 = min(global_workarea[1] + global_workarea[3], my + screen[1]) - my
-        if wx1 > wx0 and wy1 > wy0:
-            local_workarea = (wx0, wy0, wx1 - wx0, wy1 - wy0)
-            local_taskbar = detect_taskbar(screen, local_workarea)
-        else:
-            local_workarea = (0, 0, screen[0], screen[1])
-            local_taskbar = "none"
-
-        # Translate the taskbar frame into this monitor's local coordinates;
-        # it is only relevant on the monitor(s) it geometrically overlaps.
-        local_frame = None
-        if frame:
-            fx, fy, fw, fh = frame
-            if (
-                fx < mx + screen[0]
-                and fx + fw > mx
-                and fy < my + screen[1]
-                and fy + fh > my
-            ):
-                local_frame = (fx - mx, fy - my, fw, fh)
-
-        panel = compute_panel(
-            screen, local_workarea, local_taskbar, gaps, compositor, kde_frame=local_frame
+        panel, _fw, _fh = _base_geometry_for(
+            m, global_workarea, taskbar, frame, gaps, compositor, panel_alignment
         )
-        panel = align_panel_side(panel, gaps, panel_alignment)
+        base_x, base_y = panel["x"], panel["y"]
+        off = offsets.get(m["index"], {})
+        px = off.get("position_x", 0)
+        py = off.get("position_y", 0)
+        panel["x"], panel["y"] = apply_panel_offset(compositor, panel["anchor"], base_x, base_y, px, py)
+        panel["base_x"] = base_x
+        panel["base_y"] = base_y
         result.append(
             {
                 "index": m["index"],
                 "name": m["name"],
-                "width": screen[0],
-                "height": screen[1],
+                "width": m["width"],
+                "height": m["height"],
                 "panel": panel,
             }
         )
@@ -642,7 +746,40 @@ def main():
         compositor = detect_compositor()
         monitors = json.load(sys.stdin).get("monitors", [])
         panel_alignment = parse_align_arg()
-        print(json.dumps(compute_per_monitor(monitors, gaps, compositor, panel_alignment)))
+        print(json.dumps(compute_per_monitor(monitors, gaps, compositor, panel_alignment,
+                                             config_dir)))
+        return
+
+    if "--base-rect" in sys.argv:
+        # The gap-derived (offset-free) panel rectangle in Move/Resize frame
+        # coordinates for an arbitrary size. scripts/move_ctl.py uses it to
+        # compute the per-monitor position_x/position_y offset on Save: the
+        # offset is the delta between the dragged rectangle and this base.
+        compositor = detect_compositor()
+        monitors = json.load(sys.stdin).get("monitors", [])
+        monitor_index = parse_int_arg("--monitor", 0)
+        w = parse_int_arg("--w", 100)
+        h = parse_int_arg("--h", 100)
+        workarea = get_net_workarea()
+        global_screen = global_bounds(monitors)
+        global_workarea = workarea if workarea else (0, 0, global_screen[0], global_screen[1])
+        taskbar = detect_taskbar(global_screen, global_workarea)
+        frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
+        m = next((mm for mm in monitors if mm["index"] == monitor_index), None)
+        if m is None:
+            sys.exit("ERROR: monitor %d not found" % monitor_index)
+        panel, frame_w, frame_h = _base_geometry_for(
+            m, global_workarea, taskbar, frame, gaps, compositor, parse_align_arg()
+        )
+        left, top = rect_from_offsets(compositor, panel["anchor"], frame_w, w,
+                                      panel["x"], panel["y"])
+        print(json.dumps({
+            "base_left": left,
+            "base_top": top,
+            "frame_w": int(frame_w),
+            "frame_h": int(frame_h),
+            "anchor": panel["anchor"],
+        }))
         return
 
     if "--gaps-for-rect" in sys.argv:

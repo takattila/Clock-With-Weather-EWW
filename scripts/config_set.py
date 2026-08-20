@@ -14,14 +14,15 @@ Usage:
   ./config_set.py --widget clock --monitor 0 --key position_x --value 120
   ./config_set.py --widget clock --monitor 0 --key scale --value 0.8
   ./config_set.py --widget panel --monitor 1 --key scale --value 0.7
+  ./config_set.py --widget panel --monitor 1 --key position_x --value 30
   ./config_set.py --widget panel --key gap_right --value 0
 
 --widget is `clock` (weather window) or `panel`. The position_x / position_y /
 scale keys are written into per_monitor[N] ONLY and REQUIRE --monitor (there
-are no global position/scale keys anymore). The panel position is derived from
-panel.gap (scripts/workarea.py), so the position keys are unavailable for the
-panel: use gap_top / gap_right / gap_bottom / gap_left instead (global only,
-written into panel.gap).
+are no global position/scale keys anymore). For the panel they are per-monitor
+OFFSETS added to the global panel.gap baseline (scripts/workarea.py); the gap
+keys (gap_top / gap_right / gap_bottom / gap_left) remain global and are
+written into panel.gap.
 """
 
 import argparse

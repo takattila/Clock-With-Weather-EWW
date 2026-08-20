@@ -12,17 +12,17 @@ Actions:
                       widget's anchored corner / right gap fixed
   reset               write the defaults to config.yaml via scripts/
                       config_set.py and close, like save but with the default
-                      values (clock: position 0, scale 1.0; panel: gaps
-                      top 5 / bottom 5 / left 0 / right 0, scale 1.0)
+                      values (both widgets: position 0/0, scale 1.0)
   save                write the position to config.yaml via scripts/
-                      config_set.py, then close. The clock stores
-                      position_x/position_y; the panel is positioned by its
-                      per-side panel.gap (scripts/workarea.py), so its dragged
-                      rectangle is inverted back into the gaps via
-                      workarea.py --gaps-for-rect. The resize scale is saved
-                      for both. position/scale are always written into
-                      per_monitor[N] (there are no global position/scale keys
-                      anymore; only the panel gaps stay global).
+                      config_set.py, then close. Both widgets store
+                      position_x/position_y per monitor: for the clock they are
+                      the offset from the alignment base, for the panel the
+                      offset from the global panel.gap base (the dragged
+                      rectangle minus workarea.py --base-rect). The resize
+                      scale is saved for both. position/scale are always
+                      written into per_monitor[N] (there are no global
+                      position/scale keys anymore; only the panel gaps stay
+                      global).
   cancel              close without saving
 
 The resize percentage shown in the panel (move_pct) is updated together with
@@ -125,33 +125,34 @@ def save_value(widget, monitor, key, value):
     run(cmd)
 
 
-def panel_gaps(monitor, x, y, w, h):
-    """Per-side panel.gap values reproducing the dragged rectangle.
+def base_rect(monitor, w, h):
+    """Gap-derived (offset-free) panel rectangle for the dragged size.
 
-    The panel position is derived from panel.gap (scripts/workarea.py), so the
-    Move / Resize Save inverts the rectangle back into the gaps via
-    workarea.py --gaps-for-rect instead of writing a position. Returns the
-    workarea.py output JSON: {"taskbar": .., "frame_w": .., "frame_h": ..,
-    "gap": {"top": .., "right": .., "bottom": .., "left": ..}}.
+    The panel's saved position is a per-monitor position_x/position_y OFFSET
+    added to the global panel.gap baseline (scripts/workarea.py), so Move /
+    Resize Save computes it as dragged_rect - base_rect, where base_rect is
+    the gap-only rectangle in the same frame coordinates (workarea.py
+    --base-rect). Returns {"base_left": .., "base_top": .., "frame_w": ..,
+    "frame_h": .., "anchor": ".."}.
     """
     monitors = run(["python3", os.path.join(SCRIPT_DIR, "monitors.py")], capture=True)
     if not monitors:
         sys.exit("ERROR: monitors.py failed")
     out = run(
         [
-            "python3", os.path.join(SCRIPT_DIR, "workarea.py"), "--gaps-for-rect",
+            "python3", os.path.join(SCRIPT_DIR, "workarea.py"), "--base-rect",
             "--monitor", str(monitor),
-            "--x", str(x), "--y", str(y), "--w", str(w), "--h", str(h),
+            "--w", str(w), "--h", str(h), CONFIG_DIR,
         ],
         capture=True, input_data=monitors,
     )
     try:
         data = json.loads(out)
-        if not isinstance(data.get("gap"), dict) or not data["gap"]:
+        if "base_left" not in data or "base_top" not in data:
             raise ValueError(out)
         return data
     except Exception:
-        sys.exit("ERROR: workarea.py --gaps-for-rect failed:\n%s" % out)
+        sys.exit("ERROR: workarea.py --base-rect failed:\n%s" % out)
 
 
 def finish():
@@ -203,18 +204,14 @@ def main():
 
     if args.action == "reset":
         # Restore the factory defaults immediately (like save, but with the
-        # default values): position (0, 0) at scale 1.0 for the weather, gaps
-        # top 5 / bottom 5 / left 0 / right 0 at scale 1.0 for the panel. The
-        # config watcher then reloads + relayouts, so the widget actually
-        # moves/resizes on screen. Reset needs no widget_rect, so it also works
-        # when monitors.py cannot resolve the target monitor yet (e.g. a
-        # freshly plugged-in one).
-        if args.widget == "panel":
-            for side, default in (("top", 5), ("right", 0), ("bottom", 5), ("left", 0)):
-                save_value(args.widget, args.monitor, "gap_%s" % side, default)
-        else:
-            save_value(args.widget, args.monitor, "position_x", 0)
-            save_value(args.widget, args.monitor, "position_y", 0)
+        # default values): position (0, 0) at scale 1.0 for BOTH widgets. For
+        # the panel the position offsets are cleared while the global panel.gap
+        # baseline stays untouched. The config watcher then reloads +
+        # relayouts, so the widget actually moves/resizes on screen. Reset
+        # needs no widget_rect, so it also works when monitors.py cannot
+        # resolve the target monitor yet (e.g. a freshly plugged-in one).
+        save_value(args.widget, args.monitor, "position_x", 0)
+        save_value(args.widget, args.monitor, "position_y", 0)
         save_value(args.widget, args.monitor, "scale", "1.00")
         finish()
         return
@@ -256,15 +253,15 @@ def main():
         if base_w:
             scale = clamp(w / base_w, MIN_SCALE, MAX_SCALE)
         if args.widget == "panel":
-            # Write only the gaps the forward geometry actually consumes: the
-            # top/bottom gaps always, and the horizontal gap of the anchored
-            # side (right for every taskbar except a right-edge one, which
-            # anchors the panel on the left).
-            inv = panel_gaps(args.monitor, x, y, w, h)
-            for side in ("top", "bottom"):
-                save_value(args.widget, args.monitor, "gap_%s" % side, inv["gap"][side])
-            hside = "left" if inv.get("taskbar") == "right" else "right"
-            save_value(args.widget, args.monitor, "gap_%s" % hside, inv["gap"][hside])
+            # The panel position is a per-monitor offset added to the global
+            # panel.gap baseline, so Save writes the delta between the dragged
+            # rectangle and the gap-derived base rectangle (frame coords, at
+            # the dragged size). Positive offsets shift right/down.
+            base = base_rect(args.monitor, w, h)
+            new_x = int(round(x - base["base_left"]))
+            new_y = int(round(y - base["base_top"]))
+            save_value(args.widget, args.monitor, "position_x", new_x)
+            save_value(args.widget, args.monitor, "position_y", new_y)
         else:
             new_x = int(round(x - align_pos(w, frame_w, h_align)))
             new_y = int(round(y - align_pos(h, frame_h, v_align)))

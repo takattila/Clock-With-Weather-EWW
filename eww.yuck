@@ -233,8 +233,9 @@
             :onclick "nohup ./scripts/move.py --widget ${widget} --monitor ${monitor} --mode resize >/dev/null 2>&1 &"
             (box :class "ctx-btn-box" (label :text "Resize")))
     ;; Reset writes the factory defaults to config.yaml directly (scripts/
-    ;; move_ctl.py --action reset: position 0 + scale 1.0 for the clock, all
-    ;; 16 px gaps + scale 1.0 for the panel) and closes the popups.
+    ;; move_ctl.py --action reset: position 0/0 + scale 1.0 for both the clock
+    ;; and the panel -- for the panel the global panel.gap baseline stays
+    ;; untouched) and closes the popups.
     (button :class "ctx-btn" :timeout "10s"
             :onclick "./scripts/close_popup.py && ./scripts/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
             (box :class "ctx-btn-box" (label :text "Reset")))
@@ -274,9 +275,12 @@
 ;; panel_window is parametrized so start.sh can open one instance per monitor
 ;; with `eww open --id panel_<N> --screen <N> --arg "screen=<N>" ... panel_window`.
 ;; `screen` is both the monitor selector and the :monitor value; px/py/pw/ph are
-;; the panel geometry (px/py the gaps, pw/ph the NATURAL size: 250 x panel
-;; height) and panchor its anchor, computed per monitor by
-;; scripts/workarea.py --per-monitor. The content is scaled with the transform
+;; the panel geometry (px/py the effective offsets, pw/ph the NATURAL size:
+;; 250 x panel height) and panchor its anchor, computed per monitor by
+;; scripts/workarea.py --per-monitor. The panel's default position/height come
+;; from the global panel.gap; the per-monitor position_x/position_y offsets
+;; (config.yaml -> panel.window.per_monitor) are already folded into px/py
+;; here. The content is scaled with the transform
 ;; widget (panel_scale_perc = round(scale * 100)); the transform's cairo origin
 ;; is the top-left, so the scaled content is shifted by panel_translate_x/y
 ;; (= size*(1/scale-1), 0 when the panel is top-anchored) to keep the panel

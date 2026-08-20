@@ -67,12 +67,14 @@ Both the clock and the panel have a **context menu** — right-click them and ch
 |---|---|
 | **Move** | Opens a full-screen transparent overlay with a rectangle around the widget plus a GTK control panel. Move the widget with the mouse (drag the rectangle), the arrow buttons, or the **arrow keys**. Save or Cancel when done. |
 | **Resize** | The same overlay and panel, but the rectangle's corners/size are changed instead. Use the mouse, the **`+` / `-`** buttons (zoom, 0.3x–1.5x) or the keyboard (**`+`**/**`-`**). Enter saves, Esc cancels. |
-| **Reset** | Restores the factory defaults directly in `config.yaml` (clock: position 0/0, scale 1.0; panel: 16 px gaps on every side, scale 1.0) — written into `per_monitor[N]` for the current monitor. |
+| **Reset** | Restores the factory defaults directly in `config.yaml` (both widgets: position 0/0, scale 1.0; the panel keeps its global `panel.gap` baseline) — written into `per_monitor[N]` for the current monitor. |
 | **About** | Opens the About dialog (below). |
 
 The saved position/scale are written into `per_monitor[N]` (the per-monitor
 block of `config.yaml`, `N` = the monitor index) and picked up instantly by the
-config watcher (the widget re-lays-out itself).
+config watcher (the widget re-lays-out itself). For the panel the saved
+`position_x`/`position_y` are per-monitor *offsets* added to the global
+`panel.gap` baseline, so every monitor can be positioned independently.
 
 **Keyboard control** during a Move/Resize session is handled by an invisible evdev daemon (`scripts/input_daemon.py`): it reads the physical keyboard through `/dev/input/event*`, creates **no window**, and only acts while a session is active (a small `generated/input_session.json` file). Keys: arrows = move, `+`/`-` = zoom in/out, `Enter` = save, `Esc` = cancel. Clicking outside the rectangle also cancels.
 
@@ -377,10 +379,13 @@ panel:
   enabled: true         # start the system monitor panel? true | false
   window:
     alignment: right    # right (default) | left — full-height panel side
-    per_monitor:        # per-monitor scale (same syntax as above)
-                        0: { scale: 1.0 }
-                        1: { scale: 0.7 }
-  gap: 16               # spacing (px) on every side of the panel (Req 2)
+    per_monitor:        # per-monitor position offset + scale (same syntax as
+                        # weather.window.per_monitor); the position_x/y are
+                        # offsets ADDED to the panel.gap baseline below
+                        0: { position_x: 0, position_y: 0, scale: 1.0 }
+                        1: { position_x: -40, position_y: 20, scale: 0.7 }
+  gap: 16               # GLOBAL baseline spacing (px) on every side of the
+                        # panel (Req 2); per-monitor position_x/y are added on top
                         # or per-side: gap: { top: 16, right: 16, bottom: 16, left: 16 }
                         # or block style (braces/commas optional):
                         # gap:
@@ -457,8 +462,8 @@ The `appearance` field accepts **two forms**:
 | `system.corner_radius` | integer px | bg corner rounding for both the clock/weather widget and the panel; `0` = sharp corners (written by `theme.py` into `$bg-radius` in `eww.theme.scss`) |
 | `panel.enabled` | `true` / `false` | whether the system monitor panel is started (default `true`) |
 | `panel.window.alignment` | `right` / `left` | the horizontal side of the full-height panel (see the "Panel alignment" section) |
-| `panel.window.per_monitor` | map of monitor index → overrides | per-monitor `scale` (same syntax as `weather.window.per_monitor`); the **only** place the panel scale is stored. Monitors without an entry use scale 1.0. The panel position is derived from `panel.gap`, not from a per-monitor offset |
-| `panel.gap` | integer px **or** map | the panel is inset from the taskbar, the opposite screen edge and the lateral edge. A single number applies to every side; a map `{ top:, right:, bottom:, left: }` sets each side independently (braces/commas optional, e.g. block style) — missing sides default to 16 px. See the "Panel alignment" section |
+| `panel.window.per_monitor` | map of monitor index → overrides | per-monitor `position_x` / `position_y` / `scale` (same syntax as `weather.window.per_monitor`); the **only** place the panel scale and the position offsets are stored (the right-click Move/Resize → Save writes here). The `position_x`/`position_y` are pixel offsets ADDED to the global `panel.gap` baseline. Monitors without an entry use position 0/0, scale 1.0 |
+| `panel.gap` | integer px **or** map | the GLOBAL baseline the panel is inset from the taskbar, the opposite screen edge and the lateral edge. A single number applies to every side; a map `{ top:, right:, bottom:, left: }` sets each side independently (braces/commas optional, e.g. block style) — missing sides default to 16 px. Per-monitor `position_x`/`position_y` offsets (`panel.window.per_monitor`) are added on top. See the "Panel alignment" section |
 
 The widget itself cannot parse YAML, so `scripts/config.py` reads `config.yaml`
 + the selected weather theme and prints the merged values as JSON for the
@@ -609,7 +614,7 @@ The file has three main parts:
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `themes/weather/<name>/weather.yaml` **or** the inline `weather` map → the values for the `defpoll`s; `--key <name> [--monitor N]` returns a single (per-monitor resolved) value |
 | `monitors.py` | JSON (compositor + monitor list) | compositor detection (Wayland/X11) and per-compositor monitor enumeration (index matches `eww open --screen N`); `--signature` mode reads only `/sys/class/drm` for the hotplug watcher |
 | `widget_rect.py` | JSON (clock/panel rect + natural size) | computing the top-left position and the **natural** (unscaled, dynamic) size of the clock/panel window from `config.yaml` (`alignment` + the per-monitor `position_x/y` / `scale` in `weather.window.per_monitor` / `panel.window.per_monitor`) — the same anchor math eww uses |
-| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; `--per-monitor` lays out every monitor, `--gaps-for-rect` inverts a dragged rectangle back into per-side gaps; also logs a human-readable summary to stderr |
+| `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`) and the per-monitor `position_x/y` offsets (`panel.window.per_monitor`); detects Wayland vs. X11 and computes the offsets for the current compositor; `--per-monitor` lays out every monitor (each entry carries `base_x`/`base_y` = the gap-only baseline), `--base-rect` returns the gap-derived rectangle for an arbitrary size (used by `move_ctl.py` to compute the saved offset), `--gaps-for-rect` inverts a dragged rectangle back into per-side gaps; also logs a human-readable summary to stderr |
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; a `config.yaml` change also triggers `start.sh --relayout`; log: `watch.log`, PID: `watch.pid` |
 | `monitor_watch.py` | — | monitor hotplug watcher: detects connect/disconnect / resolution changes (udev DRM events + a cheap `/sys/class/drm` signature poll) and re-lays-out the windows via `start.sh --relayout`; log: `monitor_watch.log`, PID: `monitor_watch.pid` |
 | `start.sh` | — | starting the widget (section 3): Plasma check (Wayland only), theme generation, display-env bootstrap, per-monitor layout (`layout_windows`), `eww daemon` + opening windows, watcher + monitor watcher + input daemon start. `--relayout` recomputes the layout without restarting the daemon |
@@ -631,7 +636,7 @@ These GTK/popup helpers implement the interactive features (see the
 | `move.py` | Move/Resize session launcher: reads the current widget rect (`widget_rect.py`), sets the overlay preview values, opens the rectangle overlay + the control panel and activates the keyboard daemon |
 | `move_rect.py` | the full-screen transparent **rectangle overlay** (GTK): drag/resize the widget with the mouse; writes the preview to `eww update move_*`; watching the session file to quit |
 | `move_panel.py` | the draggable GTK **control panel** with Move/Resize buttons |
-| `move_ctl.py` | handles the control-panel buttons / keyboard actions: `left/right/up/down`, `zoom_in/zoom_out` (0.3–1.5x), `reset`, `save`, `cancel`; Save/Reset write the result to `config.yaml` via `config_set.py` (position/scale always into `per_monitor[N]`) |
+| `move_ctl.py` | handles the control-panel buttons / keyboard actions: `left/right/up/down`, `zoom_in/zoom_out` (0.3–1.5x), `reset`, `save`, `cancel`; Save/Reset write the result to `config.yaml` via `config_set.py` (position/scale always into `per_monitor[N]`; the panel position is saved as an offset from the `panel.gap` baseline via `workarea.py --base-rect`) |
 | `config_set.py` | writes a single `config.yaml` value (used by Save/Reset; position/scale are per-monitor only, the panel gaps stay global) |
 | `input_daemon.py` | the invisible evdev keyboard daemon (arrow keys / `+`/`-` / `Enter` / `Esc`) — reads `/dev/input/event*` directly, creates **no window** |
 | `session.py` | shared session-file helpers (`generated/input_session.json`) for the popup / Move-Resize daemon, plus lazy daemon (re)start |
@@ -760,6 +765,15 @@ Setting `config.yaml → panel.window.alignment: left` overrides the horizontal
 side of the full-height panel: the anchor becomes `"top left"` / `"bottom left"`
 and `x = gap.left`, while the height and the taskbar top/bottom gaps stay as
 computed above. `right` (the default) keeps the taskbar-derived behavior.
+
+On top of this global baseline, every monitor can be positioned independently
+with per-monitor `position_x` / `position_y` offsets
+(`config.yaml → panel.window.per_monitor`, same syntax as the clock). They are
+pixel offsets in the Move/Resize rectangle's coordinates (positive = right /
+down) added to the gap-derived position: e.g. on a monitor 0 the panel can sit
+at the default gap position while monitor 1 is shifted by its own offset. The
+right-click Move/Resize → Save writes these offsets; Reset clears them to 0
+(the `panel.gap` baseline stays untouched).
 
 On KDE/Plasma the top/bottom gap is measured from the taskbar's **visual frame**
 (the KWin scripting API is queried for it), because a floating taskbar's frame

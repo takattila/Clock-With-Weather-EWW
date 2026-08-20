@@ -24,10 +24,12 @@ Usage:
                           (api_key | appearance | weather | hour_format |
                            city | language_code | lang | units | api_url |
                            alignment | position_x | position_y | scale |
-                           panel_enabled | panel_alignment | panel_scale)
+                           panel_enabled | panel_alignment | panel_scale |
+                           panel_position_x | panel_position_y)
   ./config.py --key NAME --monitor N
-                          resolve position_x/position_y/scale/panel_scale for
-                          monitor N (per_monitor overrides win over globals)
+                          resolve position_x/position_y/scale for the weather
+                          and panel_position_x/panel_position_y/panel_scale for
+                          the panel (per_monitor overrides win over globals)
 
 Keys that are resolved from the selected weather theme: city, language_code,
 lang, units, api_url.
@@ -35,9 +37,12 @@ lang, units, api_url.
 position_x / position_y / scale / panel_scale live ONLY in
 weather.window.per_monitor / panel.window.per_monitor (see the comments in
 config.yaml): the right-click Move/Resize -> Save always writes per-monitor
-entries. Without --monitor those keys return the default (0/0/1.0); with
---monitor the per_monitor[N] entry is returned (or the default when the monitor
-has no entry). The monitor index matches `eww open --screen N`.
+entries. The panel also stores per-monitor position_x/position_y offsets
+(exposed as panel_position_x / panel_position_y) added to the global
+panel.gap baseline. Without --monitor those keys return the default
+(0/0/1.0); with --monitor the per_monitor[N] entry is returned (or the
+default when the monitor has no entry). The monitor index matches
+`eww open --screen N`.
 """
 
 import json
@@ -110,6 +115,8 @@ def load_config():
         "panel_enabled": str(panel.get("enabled", True)).lower(),
         "panel_alignment": str(panel_window.get("alignment", "right")).lower(),
         "panel_scale": panel_scale,
+        "panel_position_x": int(panel_window.get("position_x", 0)),
+        "panel_position_y": int(panel_window.get("position_y", 0)),
         "panel_per_monitor": panel_pm,
     }
 
@@ -127,6 +134,8 @@ def load_config():
         ppm = panel_pm.get(monitor)
         if isinstance(ppm, dict):
             merged["panel_scale"] = float(ppm.get("scale", merged["panel_scale"]))
+            merged["panel_position_x"] = int(ppm.get("position_x", merged["panel_position_x"]))
+            merged["panel_position_y"] = int(ppm.get("position_y", merged["panel_position_y"]))
 
     return merged
 
