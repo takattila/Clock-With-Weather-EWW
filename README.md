@@ -14,8 +14,8 @@ Powered by the [OpenWeatherMap](https://openweathermap.org) API.
         <th>Light text with dark background</th>
     </tr>
     <tr>
-        <td><img src="./images/screenshots/budapest-dark-blue.png"></td>
-        <td><img src="./images/screenshots/new-york-light-bg.png"></td>
+        <td><img src="./docs/images/screenshots/budapest-dark-blue.png"></td>
+        <td><img src="./docs/images/screenshots/new-york-light-bg.png"></td>
     </tr>
 </table>
 
@@ -37,13 +37,13 @@ dependencies**):
 ... via `curl`:
 
 ```bash
-bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/bin/install.sh)"
 ```
 
 ... or via `wget`:
 
 ```bash
-bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/install.sh)"
+bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/bin/install.sh)"
 ```
 
 > Tip: to skip the interactive API-key prompt, export your key first:
@@ -52,9 +52,9 @@ bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.g
 ### 3. Start / stop / configure
 
 ```bash
-bash ~/.eww/Clock-With-Weather-EWW/scripts/start.sh    # start the widget
-bash ~/.eww/Clock-With-Weather-EWW/scripts/stop.sh     # stop the widget
-bash ~/.eww/Clock-With-Weather-EWW/scripts/setup.sh    # change API key / theme / hour format
+bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh    # start the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/stop.sh     # stop the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/setup.sh    # change API key / theme / hour format
 ```
 
 ---
@@ -69,8 +69,8 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/setup.sh    # change API key / theme 
         <th>With panel — theme: dark-orange-bg</th>
     </tr>
     <tr>
-        <td><img src="./images/screenshots/panel-light-orange.png"></td>
-        <td><img src="./images/screenshots/panel-dark-orange-bg.png"></td>
+        <td><img src="./docs/images/screenshots/panel-light-orange.png"></td>
+        <td><img src="./docs/images/screenshots/panel-dark-orange-bg.png"></td>
     </tr>
 </table>
 
@@ -82,16 +82,16 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/setup.sh    # change API key / theme 
         <th>Resize Weather</th>
     </tr>
     <tr>
-        <td><img src="./images/screenshots/context-menu-01.png"></td>
-        <td><img src="./images/screenshots/context-menu-02.png"></td>
+        <td><img src="./docs/images/screenshots/context-menu-01.png"></td>
+        <td><img src="./docs/images/screenshots/context-menu-02.png"></td>
     </tr>
     <tr>
         <th>Resize Panel</th>
         <th>About</th>
     </tr>
     <tr>
-        <td><img src="./images/screenshots/context-menu-03.png"></td>
-        <td><img src="./images/screenshots/context-menu-04.png"></td>
+        <td><img src="./docs/images/screenshots/context-menu-03.png"></td>
+        <td><img src="./docs/images/screenshots/context-menu-04.png"></td>
     </tr>
 </table>
 
@@ -138,15 +138,41 @@ look like a single, cohesive interface — whether you pick a light or dark them
 
 A wide gallery of ready-made **light** and **dark** appearance themes, plus
 per-city weather themes — or define your own colors inline. See the
-[configuration docs](WIKI.md#configuration-configyaml) for how to switch and
+[configuration docs](docs/WIKI.md#configuration-configyaml) for how to switch and
 customize them.
+
+---
+
+## Project Structure
+
+```
+Clock-With-Weather-EWW/
+├── eww/                # the eww config dir: eww.yuck + eww.scss (+ generated theme files)
+├── scripts/
+│   ├── core/           # config / theme / watch / weather / system data scripts
+│   ├── widgets/        # panel charts, context menu, About popups
+│   ├── move/           # Move/Resize overlay + input daemons
+│   └── bin/            # start.sh, stop.sh, install.sh, setup.sh
+├── assets/
+│   ├── themes/         # appearance + per-city weather YAMLs
+│   ├── icons-src/      # source icons (tinted copies go to generated/)
+│   └── fonts/          # bundled Noto Sans
+├── docs/               # WIKI, PLAN, release notes + screenshots
+├── tools/              # screenshot tooling, vendored git-filter-repo
+├── tests/              # headless pytest suite
+├── config.yaml         # central, commented user configuration
+└── logs/  run/  charts/  generated/   # git-ignored runtime outputs
+```
 
 ---
 
 ## Documentation
 
-- **[WIKI — Technical documentation](WIKI.md)** — dependencies, configuration
+- **[WIKI — Technical documentation](docs/WIKI.md)** — dependencies, configuration
   (`config.yaml`), project structure, EWW/CSS customization, testing and more.
+- **[PLAN — restructuring log](docs/PLAN.md)** — the executed directory
+  restructure (eww/, scripts/core|widgets|move|bin/, assets/, docs/, logs/, run/)
+  with verification results.
 - **Screenshots** — [view all](#screenshots).
 
 ---

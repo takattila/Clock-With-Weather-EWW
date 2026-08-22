@@ -1,6 +1,7 @@
 charts/*.svg
 charts/state.json
-generated/
+generated/**
+!generated/.gitkeep
 __pycache__/
 *.pyc
 *.pid

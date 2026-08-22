@@ -1,0 +1,380 @@
+;; ===========================================================================
+;; Clock-With-Weather-EWW
+;;
+;; Windows:
+;;   1. main_window     -> Clock + Weather widget (dynamic width x 247 x scale)
+;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
+;;   3. ctx_menu        -> right-click context menu (Move / Resize / Reset / About)
+;;
+;; The Move/Resize rectangle + control panel and the About dialog are GTK3
+;; windows (scripts/move/move_rect.py + move/move_panel.py + widgets/about_win.py), not eww
+;; windows.
+;; ===========================================================================
+
+;; --- Context menu state (see scripts/move/move.py) -------------------------------
+(defvar move_x 0)
+(defvar move_y 0)
+(defvar move_w 100)
+(defvar move_h 100)
+(defvar move_pct 100)
+
+;; --- Clock data ------------------------------------------------------------
+(defpoll hour :interval "1s"
+  `date +$(../scripts/core/config.py --key hour_format | sed 's/24/%H/; s/12/%I/')`)
+
+(defpoll minutes :interval "1s" `date +:%M`)
+
+(defpoll seconds :interval "1s" `date +%S`)
+
+;; AM/PM indicator (%p), only displayed when hour_format is "12" (see the
+;; meridiem-chip / meridiem-label widgets and config.hour_format).
+(defpoll meridiem :interval "1s"
+  `LC_TIME=en_US.UTF-8 date +%p`)
+
+(defpoll date_year :interval "1m"
+  `date +%Y.`)
+
+(defpoll date_day :interval "1m"
+  `LC_TIME=en_US.UTF-8 date "+| %B %d. | %A"`)
+
+;; --- System info (HDD / CPU / RAM / SWAP) -----------------------------------
+(defpoll system_info :interval "5s"
+  `../scripts/core/system.py`)
+
+;; --- Weather ----------------------------------------------------------------
+(defpoll weather_info :interval "10m"
+  `../scripts/core/weather.py $(../scripts/core/config.py --key api_key) $(../scripts/core/config.py --key city) $(../scripts/core/config.py --key lang) $(../scripts/core/config.py --key units) $(../scripts/core/config.py --key api_url)`)
+
+;; --- System monitor panel (CPU / MEMORY / NET UP / NET DOWN charts) ---------
+(defpoll panel :interval "1s"
+  `../scripts/widgets/panel.py`)
+
+;; --- Configuration / theme --------------------------------------------------
+;; The inotify watcher (scripts/core/watch.py) already reloads the widget on YAML
+;; changes; these short intervals are a safety net for external edits.
+(defpoll config :interval "5s" `../scripts/core/config.py`)
+
+(defpoll theme :interval "5s" `cat eww.theme.json`)
+
+;; ===========================================================================
+;; Image path helpers
+;; ===========================================================================
+
+(defwidget widget_clock_weather [main_w main_h main_scale_perc screen]
+  (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget clock --monitor ${screen}"
+    (transform :scale-x "${main_scale_perc}%" :scale-y "${main_scale_perc}%"
+      (box :class "main-container" :orientation "h" :space-evenly false
+
+    ;; ------------------------------------------------------------------
+    ;; ABSOLUTE layout (main_w x main_h; main_w = dynamic natural width ending
+    ;; at the city name, main_h = natural height = the visible bg). Baseline
+    ;; coordinates converted to the label top: CSS margin-top =
+    ;; baseline_y - 0.73*font_size (cap height); images anchored to the top-left
+    ;; corner (pos - size/2).
+    ;; ------------------------------------------------------------------
+    (overlay :class "widget-overlay"
+      (box :class "section-sizer" :width {main_w} :height {main_h})
+
+      ;; Background filling the window canvas exactly, so the widget (bg),
+      ;; the window and the Move/Resize rectangle are the same size.
+      (box :class "widget-bg" :halign "start" :valign "start" :width {main_w} :height {main_h})
+
+      ;; Date / year --- text(20,45) / text(70,45), font 20
+      (label :class "year-label" :text date_year
+             :halign "start" :valign "start")
+      (label :class "date-label" :text date_day
+             :halign "start" :valign "start")
+
+      ;; Hour / minutes / seconds --- text(10/170/366,122)
+      (label :class "hour-label" :text hour
+             :halign "start" :valign "start")
+      (label :class "minutes-label" :text minutes
+             :halign "start" :valign "start")
+      (label :class "seconds-label" :text {": " + seconds}
+             :halign "start" :valign "start")
+
+      ;; AM/PM indicator --- chip + text at the bottom of the hour digits
+      ;; (baseline y=122, font 28). Only rendered in 12-hour mode.
+      (box :class "meridiem-chip"
+           :halign "start" :valign "start"
+           :visible {config.hour_format == "12"})
+      (label :class "meridiem-label" :text meridiem
+             :visible {config.hour_format == "12"}
+             :halign "start" :valign "start")
+
+      ;; System info table (HDD/CPU | values | RAM/SWAP | values)
+      ;; Column X positions: col1=16, col2=65, col3=219, col4=276 -> gap 15px
+      ;; between columns and between the last column and the divider (x=414),
+      ;; computed from the current value widths (HDD "339.8 GB / 455.4 GB" 139px,
+      ;; SWAP "0% (size: 62.6 GB)" 123px). Rows at y=178 / 192 (14px pitch, the
+      ;; same as the weather description/MIN-MAX-feels rows).
+      (label :class "sys-label hdd-label" :text "HDD"
+             :halign "start" :valign "start")
+      (label :class "sys-value hdd-value" :text {system_info.hdd}
+             :halign "start" :valign "start")
+      (label :class "sys-label ram-label" :text "RAM"
+             :halign "start" :valign "start")
+      (label :class "sys-value ram-value" :text {system_info.ram}
+             :halign "start" :valign "start")
+      (label :class "sys-label cpu-label" :text "CPU"
+             :halign "start" :valign "start")
+      (label :class "sys-value cpu-value" :text {system_info.cpu}
+             :halign "start" :valign "start")
+      (label :class "sys-label swap-label" :text "SWAP"
+             :halign "start" :valign "start")
+      (label :class "sys-value swap-value" :text {system_info.swap}
+             :halign "start" :valign "start")
+
+      ;; Vertical divider line --- image centered (415,110), 1x205
+      (image :class "divider"
+             :path { "../generated/icons/" + theme.theme + "/elements/line.png" }
+             :image-width 2 :image-height 186
+             :halign "start" :valign "start")
+
+      ;; Weather icon --- image centered (470,57), 64x64
+      (image :class "weather-icon"
+             :path { "../generated/icons/" + theme.theme + "/weather/" + theme.icon_set + "/" + weather_info.icon_path + ".png" }
+             :image-width 64 :image-height 64
+             :halign "start" :valign "start")
+
+      ;; City --- icon centered (440,112) 20x20; text(465,112) font 30
+      (image :class "city-icon"
+             :path { "../generated/icons/" + theme.theme + "/elements/map-marker-gray.png" }
+             :image-width 20 :image-height 20
+             :halign "start" :valign "start")
+      (label :class "city-label" :text {config.city}
+             :halign "start" :valign "start")
+
+      ;; Temperature --- thermometer icon beside celsius, same row as CPU/SWAP
+      (image :class "temp-icon"
+             :path { "../generated/icons/" + theme.theme + "/elements/temperature-gray.png" }
+             :image-width 32 :image-height 32
+             :halign "start" :valign "start")
+      (label :class "temp-label" :text {weather_info.temp_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start")
+
+      ;; Description --- icon centered (435,175) 10x10; text(445,180) font 15
+      (image :class "details-icon"
+             :path { "../generated/icons/" + theme.theme + "/elements/arrow-right.png" }
+             :image-width 10 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "details-label" :text {weather_info.weather[0].description}
+             :halign "start" :valign "start")
+
+      ;; MIN --- icon centered (435,195) 10x10; text(445,200) font 15,
+      ;;         shares the description column (icon 430 / text 444)
+      (image :class "stat-icon stat-min-icon"
+             :path { "../generated/icons/" + theme.theme + "/elements/arrow-down.png" }
+             :image-width 10 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "stat-label stat-min-label" :text {weather_info.temp_min_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start")
+
+      ;; MAX --- icon centered (485,195) 10x10; text(499,200) font 15
+      (image :class "stat-icon stat-max-icon"
+             :path { "../generated/icons/" + theme.theme + "/elements/arrow-up.png" }
+             :image-width 10 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "stat-label stat-max-label" :text {weather_info.temp_max_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start")
+
+      ;; FEELS LIKE --- icon centered (538,195) 4x10; text(544,200) font 15
+      (image :class "stat-icon stat-feels-icon"
+             :path { "../generated/icons/" + theme.theme + "/elements/white-man.png" }
+             :image-width 4 :image-height 10
+             :halign "start" :valign "start")
+      (label :class "stat-label stat-feels-label" :text {weather_info.feels_like_fmt + weather_info.unit_symbol}
+             :halign "start" :valign "start"))))))
+
+
+;; ===========================================================================
+;; System monitor panel
+;; ===========================================================================
+
+(defwidget widget_panel [ph panel_scale_perc panel_translate_x panel_translate_y screen]
+  (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget panel --monitor ${screen}"
+    (transform :scale-x "${panel_scale_perc}%" :scale-y "${panel_scale_perc}%"
+               :translate-x {panel_translate_x}
+               :translate-y {panel_translate_y}
+      (box :class "panel-container" :orientation "v" :space-evenly true
+
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "CPU" :halign "start")
+          (label :class "panel-status" :text {panel.cpu_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].cpu} :halign "start"))
+
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "MEMORY" :halign "start")
+          (label :class "panel-status" :text {panel.mem_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].mem} :halign "start"))
+
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "NET DOWN" :halign "start")
+          (label :class "panel-status" :text {panel.down_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].down} :halign "start"))
+
+        (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
+          (label :class "panel-title" :text "NET UP" :halign "start")
+          (label :class "panel-status" :text {panel.up_txt} :halign "start")
+          (image :class "panel-chart" :path {panel.files[ph].up} :halign "start"))))))
+
+;; ===========================================================================
+;; Context menu (Move / Resize / About)
+;; ===========================================================================
+
+(defwidget widget_ctx_menu [widget monitor]
+  (box :class "ctx-menu" :orientation "v"
+    ;; move.py opens the overlay + control panel and returns immediately, so it
+    ;; is backgrounded (nohup ... &) to keep the shell call instant.
+    (button :class "ctx-btn" :timeout "5s"
+            :onclick "nohup ../scripts/move/move.py --widget ${widget} --monitor ${monitor} --mode move >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box" (label :text "Move")))
+    (button :class "ctx-btn" :timeout "5s"
+            :onclick "nohup ../scripts/move/move.py --widget ${widget} --monitor ${monitor} --mode resize >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box" (label :text "Resize")))
+    ;; Reset writes the factory defaults to config.yaml directly (scripts/
+    ;; move_ctl.py --action reset: position 0/0 + scale 1.0 for both the clock
+    ;; and the panel -- for the panel the global panel.gap baseline stays
+    ;; untouched) and closes the popups.
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/close_popup.py && ../scripts/move/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
+            (box :class "ctx-btn-box" (label :text "Reset")))
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/about.py --open --monitor ${monitor}"
+            (box :class "ctx-btn-box" (label :text "About")))))
+
+;; ===========================================================================
+;; Windows
+;; ===========================================================================
+
+;; main_window is parametrized so scripts/bin/start.sh can pass the clock widget's
+;; position and size. The clock uses a "top left" anchor: main_x/main_y are the
+;; top-left corner (workarea-local on Wayland, monitor-local on X11), computed
+;; from config.yaml (window.alignment + the per-monitor position/scale in
+;; weather.window.per_monitor) by scripts/move/widget_rect.py. main_w/main_h are
+;; the NATURAL window size (dynamic width ending at the city name x 247,
+;; independent of the scale): the content
+;; is scaled with the transform widget (:scale-* takes a PERCENTAGE in eww
+;; 0.5.0, so main_scale_perc = round(scale * 100)). The transform's cairo
+;; origin is the widget's top-left, so the scaled content stays anchored at the
+;; window's top-left corner and the window position matches the visual (scaled)
+;; position reported by scripts/move/widget_rect.py.
+(defwindow main_window
+  [main_x main_y main_w main_h main_scale_perc screen]
+  :monitor {screen}
+  :geometry (geometry :x {main_x}
+                      :y {main_y}
+                      :width {main_w}
+                      :height {main_h}
+                      :anchor "top left")
+  :stacking "bottom"
+  :windowtype "normal"
+  :wm-ignore true
+  (widget_clock_weather :main_w main_w :main_h main_h :main_scale_perc main_scale_perc :screen screen))
+
+;; panel_window is parametrized so start.sh can open one instance per monitor
+;; with `eww open --id panel_<N> --screen <N> --arg "screen=<N>" ... panel_window`.
+;; `screen` is both the monitor selector and the :monitor value; px/py/pw/ph are
+;; the panel geometry (px/py the effective offsets, pw/ph the NATURAL size:
+;; 250 x panel height) and panchor its anchor, computed per monitor by
+;; scripts/core/workarea.py --per-monitor. The panel's default position/height come
+;; from the global panel.gap; the per-monitor position_x/position_y offsets
+;; (config.yaml -> panel.window.per_monitor) are already folded into px/py
+;; here. The content is scaled with the transform
+;; widget (panel_scale_perc = round(scale * 100)); the transform's cairo origin
+;; is the top-left, so the scaled content is shifted by panel_translate_x/y
+;; (= size*(1/scale-1), 0 when the panel is top-anchored) to keep the panel
+;; hugging its anchored edge (right, and bottom when bottom-anchored). ph (the
+;; unscaled height) is also passed for the chart selector (panel.files[ph]).
+(defwindow panel_window
+  [screen px py pw ph panchor panel_scale_perc panel_translate_x panel_translate_y]
+  :monitor {screen}
+  :geometry (geometry :x {px}
+                      :y {py}
+                      :width {pw}
+                      :height {ph}
+                      :anchor {panchor})
+  :stacking "bottom"
+  :windowtype "normal"
+  :wm-ignore true
+  (widget_panel :ph ph :panel_scale_perc panel_scale_perc
+                :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
+                :screen screen))
+
+;; X11 variants: eww 0.5.0 only honours `:stacking "foreground"`/`"background"` on
+;; X11 ("bottom" is a no-op there), so these windows use "background"
+;; (gtk set_keep_below -> _NET_WM_STATE_BELOW). With `:wm-ignore false` the
+;; windows are WM-managed Toplevels, so Cinnamon/Muffin keeps them below opened
+;; windows (the same way Conky's "below" hint works) while the wallpaper stays
+;; below them. Eww always disables decorations and the taskbar entry
+;; (set_decorated/set_skip_taskbar_hint). scripts/bin/start.sh picks these
+;; definitions when the compositor is x11; the Wayland ones above use "bottom"
+;; (Layer::Bottom).
+(defwindow main_window_x11
+  [main_x main_y main_w main_h main_scale_perc screen]
+  :monitor {screen}
+  :geometry (geometry :x {main_x}
+                      :y {main_y}
+                      :width {main_w}
+                      :height {main_h}
+                      :anchor "top left")
+  :stacking "background"
+  :windowtype "utility"
+  :wm-ignore false
+  (widget_clock_weather :main_w main_w :main_h main_h :main_scale_perc main_scale_perc :screen screen))
+
+(defwindow panel_window_x11
+  [screen px py pw ph panchor panel_scale_perc panel_translate_x panel_translate_y]
+  :monitor {screen}
+  :geometry (geometry :x {px}
+                      :y {py}
+                      :width {pw}
+                      :height {ph}
+                      :anchor {panchor})
+  :stacking "background"
+  :windowtype "utility"
+  :wm-ignore false
+  (widget_panel :ph ph :panel_scale_perc panel_scale_perc
+                :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
+                :screen screen))
+
+;; ===========================================================================
+;; Context menu window
+;; ===========================================================================
+
+;; On X11 `:stacking "overlay"` keeps the window a normal toplevel (no
+;; set_keep_above/below), so it floats above the keep-below widget windows.
+;; :focusable true lets the buttons receive clicks on Wayland.
+(defwindow ctx_menu
+  [screen widget monitor pos_x pos_y]
+  :monitor {screen}
+  :geometry (geometry :x {pos_x}
+                      :y {pos_y}
+                      :width "180px"
+                      :height "190px"
+                      :anchor "top left")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable true
+  (widget_ctx_menu :widget widget :monitor monitor))
+
+;; ===========================================================================
+;; Dismiss overlay: transparent, full-monitor layer opened UNDER the context
+;; menu / the GTK About window. Clicking anywhere outside them hits this
+;; surface and closes the popups (eww 0.5.0 has no built-in
+;; click-outside-to-close). It is opened before the popup so the popup stacks
+;; above it; the popup scripts close it again (scripts/widgets/ctx.py, about.py --open,
+;; move.py, close_popup.py).
+;; ===========================================================================
+
+(defwindow dismiss_overlay
+  [screen]
+  :monitor {screen}
+  :geometry (geometry :width "100%" :height "100%")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable true
+  (eventbox :timeout "10s" :onclick "../scripts/widgets/close_popup.py"
+    (box :class "move-overlay")))

@@ -46,7 +46,7 @@ def test_load_appearance_inline():
 
 
 def test_load_appearance_theme_file(config_dir):
-    theme_dir = config_dir / "themes" / "appearance" / "light"
+    theme_dir = config_dir / "assets" / "themes" / "appearance" / "light"
     theme_dir.mkdir(parents=True)
     (theme_dir / "appearance.yaml").write_text(
         "appearance:\n  theme: light\n  icon:\n    set: dovora\n", encoding="utf-8"
@@ -93,8 +93,8 @@ def _make_png(path, color=(200, 200, 200)):
 
 
 def test_generate_icons_tint(config_dir):
-    src = config_dir / "images" / "theme" / "light" / "weather" / "dovora"
-    el = config_dir / "images" / "theme" / "light" / "elements"
+    src = config_dir / "assets" / "icons-src" / "light" / "weather" / "dovora"
+    el = config_dir / "assets" / "icons-src" / "light" / "elements"
     _make_png(src / "01d.png", (200, 200, 200))
     _make_png(el / "arrow-up.png", (200, 200, 200))
 
@@ -115,7 +115,7 @@ def test_generate_icons_tint(config_dir):
 
 
 def test_generate_icons_copy_without_color(config_dir):
-    src = config_dir / "images" / "theme" / "dark" / "weather" / "dovora"
+    src = config_dir / "assets" / "icons-src" / "dark" / "weather" / "dovora"
     _make_png(src / "01d.png", (10, 20, 30))
 
     data = {"theme": "dark", "icon_set": "dovora", "icon_color": None}

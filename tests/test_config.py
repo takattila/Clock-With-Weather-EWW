@@ -30,7 +30,7 @@ def test_defaults(cfg):
 
 
 def test_weather_theme_name_mode(cfg, config_dir, monkeypatch):
-    theme_dir = config_dir / "themes" / "weather" / "budapest"
+    theme_dir = config_dir / "assets" / "themes" / "weather" / "budapest"
     theme_dir.mkdir(parents=True)
     (theme_dir / "weather.yaml").write_text(
         "weather:\n  city: Budapest\n  language_code: hu\n  lang: hu\n"
@@ -48,7 +48,7 @@ def test_weather_theme_name_mode(cfg, config_dir, monkeypatch):
 
 
 def test_inline_weather_name_wins(write_config, config_dir, monkeypatch):
-    theme_dir = config_dir / "themes" / "weather" / "budapest"
+    theme_dir = config_dir / "assets" / "themes" / "weather" / "budapest"
     theme_dir.mkdir(parents=True)
     (theme_dir / "weather.yaml").write_text(
         "weather:\n  city: Budapest\n", encoding="utf-8"

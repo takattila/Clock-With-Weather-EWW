@@ -20,9 +20,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -r requirements.txt
       - name: Compile all Python scripts
-        run: python -m py_compile scripts/*.py
+        run: find scripts -name '*.py' -print0 | xargs -0 python -m py_compile
       - name: Run pytest
         run: python -m pytest tests/ -v
 
@@ -45,7 +45,7 @@ jobs:
           import yaml
 
           files = ["config.yaml"] + sorted(
-              glob.glob("themes/**/*.yaml", recursive=True)
+              glob.glob("assets/themes/**/*.yaml", recursive=True)
           )
           errors = 0
           for f in files:
@@ -71,8 +71,8 @@ jobs:
       - name: Run shellcheck on the bash scripts
         run: |
           shellcheck -S error \
-            scripts/install.sh \
-            scripts/setup.sh \
-            scripts/setup-test-env.sh \
-            scripts/start.sh \
-            scripts/stop.sh
+            scripts/bin/install.sh \
+            scripts/bin/setup.sh \
+            scripts/bin/setup-test-env.sh \
+            scripts/bin/start.sh \
+            scripts/bin/stop.sh
