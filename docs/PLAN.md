@@ -1,159 +1,112 @@
-# Restructuring Plan — executed
+# Local Config Override Plan — `config.local.yaml`
 
-> **Status: DONE & verified** (2026-08-22, live on this machine).
-> This document records the directory restructure carried out on the working
-> tree. It replaces the previous CI-planning content — the CI setup itself
-> lives in `.github/workflows/` and is described in the WIKI.
+> **Status: DONE & verified** (2026-08-22, live on this machine):
+> 104 tests pass, end-to-end smoke tests confirmed that script writes land in
+> `config.local.yaml` while `config.yaml` stays byte-identical.
+> This replaces the restructuring record — see git history for that document.
+>
+> Deviation from the plan below: `setup.sh` was ALSO switched to write its
+> wizard choices into `config.local.yaml` (originally it would have kept
+> editing `config.yaml`).
 
-## Goal
+## Problem
 
-Group the previously flat layout into logical folders without breaking the
-running widget:
+`config.yaml` is tracked in git, yet it changes constantly on a live machine:
+local preference edits AND machine-generated data (the right-click
+Move/Resize -> Save writes `per_monitor` positions/scales through
+`scripts/core/config_set.py`). Every such change shows up as a git
+modification and pollutes diffs / risks accidental commits.
 
-- separate the eww config files from the repository root,
-- split the flat `scripts/` pile by role (core / widgets / move / bin),
-- collect source assets under `assets/` and documentation under `docs/`,
-- tidy runtime outputs (`*.log`, `*.pid`) out of the repo root.
+## Solution
 
-## New layout
+Add a **local override layer**:
 
 ```
-Clock-With-Weather-EWW/
-├── eww/                  # THE eww config dir: eww.yuck + eww.scss (+ generated theme files)
-├── scripts/
-│   ├── core/             # config, config_set, monitors, monitor_watch, session,
-│   │                     # system, theme, watch, weather, workarea
-│   ├── widgets/          # about, about_win, close_popup, ctx, panel
-│   ├── move/             # esc_listener, input_daemon, menu_pos, move, move_ctl,
-│   │                     # move_keys, move_panel, move_rect, widget_rect
-│   └── bin/              # start.sh, stop.sh, install.sh, setup.sh, setup-test-env.sh
-├── assets/
-│   ├── themes/           # appearance/<name>/appearance.yaml + weather/<name>/weather.yaml
-│   ├── icons-src/        # source icon sets (<theme>/weather|elements/*.png)
-│   └── fonts/            # NotoSans-Regular.ttf
-├── docs/                 # WIKI.md, PLAN.md, RELEASE_NOTES.md, images/screenshots/
-├── tools/                # screenshots tooling + vendored git-filter-repo.sh
-├── tests/                # headless pytest suite (location unchanged)
-└── logs/  run/  charts/  generated/   # git-ignored runtime outputs (.gitkeep kept in git)
+config.yaml         committed defaults   (only intentional edits land here)
+        +
+config.local.yaml   git-ignored overrides (machine-specific values,
+                                         everything the scripts write)
+        =
+                    merged view used by every reader
 ```
 
-## Executed steps
+Merge semantics: **deep merge down to the leaves** — dict values merge
+recursively, scalars/lists are replaced by the local value. So e.g.
+`per_monitor: 0: { scale: 0.8 }` in the local file keeps `position_x/y`
+from the base entry for monitor 0.
 
-### 1. File moves (`git mv`, history preserved)
+## Implementation steps
 
-| Old | New |
-|---|---|
-| `eww.yuck`, `eww.scss` | `eww/` |
-| `scripts/{config,config_set,monitors,monitor_watch,session,system,theme,watch,weather,workarea}.py` | `scripts/core/` |
-| `scripts/{about,about_win,close_popup,ctx,panel}.py` | `scripts/widgets/` |
-| `scripts/{esc_listener,input_daemon,menu_pos,move,move_ctl,move_keys,move_panel,move_rect,widget_rect}.py` | `scripts/move/` |
-| `scripts/{start,stop,install,setup,setup-test-env}.sh` | `scripts/bin/` |
-| `scripts/git-filter-repo.sh` | `tools/` |
-| `fonts/` | `assets/fonts/` |
-| `themes/{appearance,weather}/` | `assets/themes/{appearance,weather}/` |
-| `images/theme/` | `assets/icons-src/` |
-| `images/screenshots/` | `docs/images/screenshots/` |
-| `WIKI.md`, `PLAN.md`, `RELEASE_NOTES.md` | `docs/` |
+### 1. New shared loader: `scripts/core/config_io.py`
 
-### 2. EWW config dir: repo root → `eww/`
+- `deep_merge(base, override)`: recursive dict merge (leaf-level; the local
+  value wins; lists/scalars replace).
+- `load_merged(config_dir)`: reads `config.yaml`, then `config.local.yaml`
+  if it exists (missing/empty file = no-op) and returns the merged dict.
+- Broken local YAML: warning on stderr, fall back to base (the widget must
+  not die from a typo'd local edit).
 
-- `start.sh` / `stop.sh` / `setup.sh` and every Python script calling eww now
-  use `EWW_CONFIG_DIR = <repo root>/eww`.
-- `eww.yuck`: defpoll / onclick commands became `../scripts/<group>/<name>.py`,
-  image paths `../generated/icons/...` — eww resolves relative paths against
-  the **config** directory.
-- `scripts/core/theme.py` writes `eww.theme.json` / `eww.theme.scss` into
-  `eww/`, next to `eww.yuck` (stale copies at the old root were removed).
-- `scripts/core/watch.py` reloads with `--config <root>/eww`.
+### 2. Switch the readers to the merged loader
 
-### 3. Python scripts: path constants & imports
+Import via `sys.path.insert(0, <scripts>/core)` — same bootstrap pattern as
+`move_ctl.py`.
 
-- Every moved script derives its paths from `__file__` (three levels up to
-  the root); a `SCRIPTS_DIR` helper was added where needed.
-- Cross-group imports got an explicit `sys.path` bootstrap:
-  - `widgets/{about,close_popup,ctx}.py` and `move/{move,move_ctl}.py` import
-    `session` from `scripts/core/`,
-  - `move/widget_rect.py` imports `workarea` from `scripts/core/`.
-- Subprocess spawn targets updated to the new groups (`../core/config.py`,
-  `../core/monitors.py`, `../widgets/close_popup.py`, `core/theme.py`,
-  `bin/start.sh`, ...).
-- `panel.py` anchors CHARTS / THEME / LAYOUT paths to `__file__` (never to
-  the cwd) and returns chart names as `../charts/...` (see Notes).
+| File | Function | Notes |
+|---|---|---|
+| `scripts/core/config.py` | `load_config()` (~line 74) | main JSON/key reader |
+| `scripts/core/theme.py` | `load_config()` (~line 27) | makes `appearance` + `system.corner_radius` locally overridable too |
+| `scripts/core/workarea.py` | `load_gaps()` (~line 309), `load_panel_offsets()` (~line 634) | panel gaps + per-monitor offsets |
 
-### 4. Shell scripts
+### 3. Rewrite the writer: `scripts/core/config_set.py`
 
-- `start.sh`: `DIR` resolution `/..` → `/../..`; all `$DIR/scripts/*` targets
-  regrouped; `LOGS_DIR=$DIR/logs` and `RUN_DIR=$DIR/run` are `mkdir -p`-ed at
-  startup and used for every log/pid write.
-- `stop.sh`: reads pid files from `run/`.
-- `setup.sh`: `logs/start.log` (with mkdir before the nohup redirect),
-  `scripts/core/` script paths, `assets/themes` paths, desktop launcher
-  Exec/Icon paths, `eww --config "$DIR/eww"`.
+- CLI stays identical (`--widget/--key/--value/--monitor`) so callers
+  (`move_ctl.py`, context menus) need no changes — only docstrings update.
+- New behavior: load base + existing local, apply the change into the
+  **local** tree, write `config.local.yaml` with `yaml.safe_dump(sort_keys=False)`.
+  The file is machine-generated, so the line-aware comment-preserving editor
+  (KEY_RE, block_region, ...) can be dropped.
+- After this change no script ever writes `config.yaml` -> its diffs come
+  only from deliberate hand edits.
 
-### 5. Runtime outputs: `logs/` and `run/`
+### 4. Hot reload: `scripts/core/watch.py`
 
-- `logs/`: `start.log`, `watch.log`, `monitor_watch.log`, `input_daemon.log`.
-- `run/`: `watch.pid`, `monitor_watch.pid`, `input_daemon.pid`,
-  `esc_listener.pid` (moved out of `generated/`).
-- Writers/readers updated: `start.sh`, `stop.sh`, `watch.py` (relayout output
-  + defensive `makedirs`), `session.py`, `input_daemon.py` (+`makedirs`),
-  `esc_listener.py`.
-- The pre-existing global `*.log` / `*.pid` ignore rules cover both folders.
+- `_scan()`: interesting names of the root dir become
+  `{"config.yaml", "config.local.yaml"}`.
+- `_handle_events()`: a `config.local.yaml` change also sets
+  `config_changed = True` (triggers `start.sh --relayout`, needed because
+  per_monitor positions change window geometry).
 
-### 6. Requirements merged
+### 5. Git + documentation
 
-- `requirements-dev.txt` deleted; `pytest` moved into `requirements.txt`
-  under a *development / testing* comment (nothing deploys via pip —
-  `install.sh` uses distro packages — so one file is enough).
-- `ci.yml` installs a single requirements file; WIKI references updated.
+- `.gitignore`: add `config.local.yaml` (like `.api_key`).
+- `config.yaml` header comment: short explanation + override example.
+- README: new section about the override layer.
+- Docstrings of all touched scripts updated (`config.local.yaml` instead of
+  `config.yaml` where writes/reads are concerned).
 
-### 7. CI workflows
+### 6. Tests (pytest)
 
-- `ci.yml`: syntax check compiles recursively (`find scripts -name '*.py'`),
-  yaml-validate glob is `assets/themes/**/*.yaml`, ShellCheck runs on
-  `scripts/bin/*.sh`.
-- `release.yml`: release body read from `docs/RELEASE_NOTES.md`.
+- `tests/conftest.py`: new `write_local_config` fixture.
+- `test_config.py`: override cases (appearance / per_monitor / gap from the
+  local file; missing local file = pure base).
+- `test_theme.py`, `test_workarea.py`: same merge coverage for their readers.
+- `test_config_set.py`: rewritten — asserts values land in
+  `config.local.yaml` and **the base `config.yaml` stays byte-identical**
+  (the key property of the whole feature).
 
-### 8. Documentation
+### 7. Verification (executed)
 
-- **README**: install/start/setup URLs (`scripts/bin/...`), screenshot paths
-  (`docs/images/...`), WIKI links, new *Project Structure* section.
-- **WIKI**: structure section rewritten for the new layout; manual eww
-  examples use `--config .../eww`; the defpoll table shows `../scripts/...`
-  commands; CI description globs fixed; the watch.py row documents
-  `logs/watch.log` / `run/watch.pid`.
-- **RELEASE_NOTES**: layout table refreshed (paths only, history untouched).
+1. `pytest tests/` — **104 passed** (12 new merge/writer tests).
+2. `config_set.py` runs wrote `config.local.yaml`; `config.py --key scale
+   --monitor 0` returned the override while untouched keys kept base values.
+3. `theme.py` regenerated the theme files through the merged loader; watcher
+   changes verified by unit-level parse + the existing inotify flow.
+4. `git status` stays clean across Move/Resize Save actions — the writer and
+   the setup wizard only ever touch the git-ignored file.
 
-### 9. Runtime directories tracked via `.gitkeep`
+## Decisions (defaults)
 
-- `logs/.gitkeep`, `run/.gitkeep`, `charts/.gitkeep`, `generated/.gitkeep`
-  are version-controlled so a fresh clone already contains the folders.
-- `.gitignore`: `generated/` was replaced by `generated/**` +
-  `!generated/.gitkeep` — a whole-directory exclusion cannot be negated from
-  inside (git does not descend into excluded directories).
-- Convenience only: every folder is also auto-created at runtime
-  (`start.sh` makes `logs/`+`run/`, `panel.py` makes `charts/`,
-  `theme.py` makes `generated/icons/`).
-
-## Verification
-
-- `pytest tests/` — **92 passed**.
-- `py_compile` across `scripts/{core,widgets,move}/*.py` — clean.
-- `bash -n` on all shell scripts — clean; workflow YAML parses.
-- Live restart via `scripts/bin/start.sh`: main + panel opened on both
-  monitors with **zero errors**; logs land in `logs/`, pid files in `run/`;
-  hot reload confirmed through `logs/watch.log`.
-- Repo-wide grep sweeps found no leftovers of the old layout
-  (`./scripts/<mod>.py`, bare `themes/` / `images/theme`, root-level
-  `*.log` / `*.pid`, `requirements-dev`).
-
-## Notes / decisions
-
-- Eww resolves relative image/command paths against the **config**
-  directory — hence the `../` prefixes in `eww.yuck` and the `../charts/`
-  prefix returned by `panel.py`.
-- In the Python scripts `CONFIG_DIR` still means the **repository root**
-  (`config.yaml`, `.api_key`, `charts/`, `generated/`, `.layout.json` live
-  there); eww invocations go through the separate `EWW_CONFIG_DIR`.
-- Historical documents were path-refreshed rather than rewritten
-  (RELEASE_NOTES), while this file was replaced wholesale as requested.
+- `setup.sh` keeps writing installation defaults into the committed
+  `config.yaml` — install-time defaults belong there.
+- No separate `config.local.yaml.example` shipped; the `config.yaml` header
+  + README cover discoverability.

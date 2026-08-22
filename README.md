@@ -143,6 +143,28 @@ customize them.
 
 ---
 
+## Local Overrides (`config.local.yaml`)
+
+`config.yaml` holds the portable, committed defaults. Machine-specific values
+live in the **git-ignored** `config.local.yaml`, which is deep-merged over it
+(local keys win) by every reader — so local edits and everything the widget
+scripts write (e.g. Move/Resize -> Save positions) never show up as git
+changes:
+
+```yaml
+# config.local.yaml — only what you want to override, e.g.:
+appearance: dark-orange-bg
+weather:
+  window:
+    per_monitor:
+      0: { position_x: -40, position_y: 20, scale: 0.85 }
+```
+
+The setup wizard writes its choices there too; edit `config.yaml` only when a
+default should change for every machine.
+
+---
+
 ## Project Structure
 
 ```
@@ -160,7 +182,8 @@ Clock-With-Weather-EWW/
 ├── docs/               # WIKI, PLAN, release notes + screenshots
 ├── tools/              # screenshot tooling, vendored git-filter-repo
 ├── tests/              # headless pytest suite
-├── config.yaml         # central, commented user configuration
+├── config.yaml         # central, commented defaults
+├── config.local.yaml   # git-ignored machine overrides (+ script writes)
 └── logs/  run/  charts/  generated/   # git-ignored runtime outputs
 ```
 
@@ -170,9 +193,8 @@ Clock-With-Weather-EWW/
 
 - **[WIKI — Technical documentation](docs/WIKI.md)** — dependencies, configuration
   (`config.yaml`), project structure, EWW/CSS customization, testing and more.
-- **[PLAN — restructuring log](docs/PLAN.md)** — the executed directory
-  restructure (eww/, scripts/core|widgets|move|bin/, assets/, docs/, logs/, run/)
-  with verification results.
+- **[PLAN — local override plan](docs/PLAN.md)** — the `config.local.yaml`
+  override layer (loader, writer, watcher changes) with verification results.
 - **Screenshots** — [view all](#screenshots).
 
 ---

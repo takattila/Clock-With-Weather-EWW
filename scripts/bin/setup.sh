@@ -62,7 +62,7 @@ done
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." >/dev/null 2>&1 && pwd )"
 API_KEY_FILE="${DIR}/.api_key"
-CONFIG_FILE="${DIR}/config.yaml"
+LOCAL_CONFIG_FILE="${DIR}/config.local.yaml"
 
 LANGUAGE_CODES="af al ar az bg ca cz da de el en eu fa fi fr gl he hi hr hu id it ja kr la lt mk no nl pl pt pt_br ro ru sv sk sl sp sr th tr ua vi zh_cn zh_tw zu"
 COUNTRY_CODES="ad ae af ag ai al am ao aq ar as at au aw ax az ba bb bd be bf bg bh bi bj bl bm bn bo bq br bs bt bv bw by bz ca cc cd cf cg ch ci ck cl cm cn co cr cu cv cw cx cy cz de dj dk dm do dz ec ee eg eh er es et fi fj fk fm fo fr ga gb gd ge gf gg gh gi gl gm gn gp gq gr gs gt gu gw gy hk hm hn hr ht hu id ie il im in io iq ir is it je jm jo jp ke kg kh ki km kn kp kr kw ky kz la lb lc li lk lr ls lt lu lv ly ma mc md me mf mg mh mk ml mm mn mo mp mq mr ms mt mu mv mw mx my mz na nc ne nf ng ni nl no np nr nu nz om pa pe pf pg ph pk pl pm pn pr ps pt pw py qa re ro rs ru rw sa sb sc sd se sg sh si sj sk sl sm sn so sr ss st sv sx sy sz tc td tf tg th tj tk tl tm tn to tr tt tv tw tz ua ug um us uy uz va vc ve vg vi vn vu wf ws ye yt za zm zw"
@@ -86,7 +86,7 @@ DEFAULT_LANG="$(                 [[ -n "${ARG_LANG}" ]]              && echo "${
 DEFAULT_UNITS_NUMBER="$(         [[ -n "${ARG_UNITS_NUMBER}" ]]      && echo "${ARG_UNITS_NUMBER}"      || python3 -c 'import sys; print(2 if sys.argv[1] == "imperial" else 1)' "$(python3 "${DIR}/scripts/core/config.py" --key units)" )"
 DEFAULT_THEME_NUMBER="$(         [[ -n "${ARG_THEME_NUMBER}" ]]      && echo "${ARG_THEME_NUMBER}"      || python3 -c '
 import os, sys
-names = sorted(os.listdir(os.path.join(sys.argv[1], "themes", "appearance")))
+names = sorted(os.listdir(os.path.join(sys.argv[1], "assets", "themes", "appearance")))
 try:
     print(names.index(sys.argv[2]) + 1)
 except ValueError:
@@ -382,16 +382,30 @@ function setupWriteConfig() {
     alignment="$(setupGetConfigAlignmentByNumber "${DEFAULT_ALIGNMENT_NUMBER}")"
     [[ "${DEFAULT_START_PANEL}" = "1" ]] && panelEnabled="true" || panelEnabled="false"
 
-    python3 -c '
-import re, sys
-path, new = sys.argv[1], sys.argv[2]
-text = open(path, "r", encoding="utf-8").read()
-text = re.sub(r"^appearance:.*(?:\n[ \t]+.*)*", "appearance: " + new, text, count=1, flags=re.M)
-open(path, "w", encoding="utf-8").write(text)
-' "${CONFIG_FILE}" "${DEFAULT_APPEARANCE}"
-    sed -i "s/^  hour_format: .*/  hour_format: \"${DEFAULT_HOUR_FORMAT}\"/" "${CONFIG_FILE}"
-    sed -i "s/^  alignment: .*/  alignment: ${alignment}/" "${CONFIG_FILE}"
-    sed -i "s/^  enabled: .*/  enabled: ${panelEnabled}/" "${CONFIG_FILE}"
+    # Every wizard choice is machine-local: it lands in the git-ignored
+    # config.local.yaml (deep-merged over config.yaml, local keys win), so
+    # running setup never produces changes in git.
+    python3 - "${DIR}" "${DEFAULT_APPEARANCE}" "${DEFAULT_HOUR_FORMAT}" \
+        "${alignment}" "${panelEnabled}" <<'PYEOF'
+import os
+import sys
+
+import yaml
+
+config_dir, appearance, hour_format, alignment, enabled = sys.argv[1:6]
+path = os.path.join(config_dir, "config.local.yaml")
+data = {}
+if os.path.isfile(path):
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+data["appearance"] = appearance
+data.setdefault("system", {})["hour_format"] = str(hour_format)
+data.setdefault("weather", {}).setdefault("window", {})["alignment"] = alignment
+data.setdefault("panel", {})["enabled"] = enabled == "true"
+with open(path, "w", encoding="utf-8") as f:
+    yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+print("- Local overrides saved to '%s'." % path)
+PYEOF
 
     # The clock position is stored per monitor only (there are no global
     # position_x/position_y keys anymore); the wizard writes monitor 0's entry.

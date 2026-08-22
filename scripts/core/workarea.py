@@ -14,7 +14,8 @@ the taskbar sits:
                        to the left edge)
   taskbar at left   -> panel right / top / bottom all gapped
 
-The gap(s) come from config.yaml -> panel.gap (default: 16 px). panel.gap may
+The gap(s) come from panel.gap in config.yaml + config.local.yaml overrides
+(default: 16 px). panel.gap may
 be a single number (all sides get the same gap) or a map with per-side keys,
 e.g.:
 
@@ -23,7 +24,7 @@ e.g.:
 
 Missing sides default to 16 px. The panel width is fixed at 250 px; the height
 is the workarea height minus the top and bottom gaps. Per-monitor
-position_x / position_y offsets (config.yaml -> panel.window.per_monitor) are
+position_x / position_y offsets (panel.window.per_monitor) are
 then added to the gap-derived position, so every monitor can be positioned
 independently (the gap stays the shared global baseline); they are defined in
 the Move / Resize rectangle's frame coordinates (positive = right/down).
@@ -108,6 +109,8 @@ import tempfile
 import time
 
 import yaml
+
+from config_io import load_merged
 
 PANEL_WIDTH = 250
 
@@ -307,7 +310,7 @@ def _parse_gap_value(value):
 
 
 def load_gaps(config_dir):
-    """Read the per-side panel gaps from config.yaml -> panel.gap.
+    """Read the per-side panel gaps from panel.gap (config.local.yaml wins).
 
     panel.gap may be a single number (all sides get it) or a map with any of
     the top/right/bottom/left keys (missing sides default to 16 px). Invalid
@@ -316,8 +319,7 @@ def load_gaps(config_dir):
     default = 16
     gaps = {"top": default, "right": default, "bottom": default, "left": default}
     try:
-        with open(os.path.join(config_dir, "config.yaml"), "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
+        cfg = load_merged(config_dir)
         panel = cfg.get("panel") or {}
         raw = panel.get("gap", default)
         if isinstance(raw, dict):
@@ -632,7 +634,7 @@ def _base_geometry_for(monitor, global_workarea, taskbar, frame, gaps, composito
 
 
 def load_panel_offsets(config_dir):
-    """Per-monitor panel position_x/position_y from config.yaml.
+    """Per-monitor panel position_x/position_y (config.local.yaml wins).
 
     Returns {monitor_index: {"position_x": int, "position_y": int}} (all
     missing values default to 0). These are the per-monitor OFFSETS added to
@@ -640,8 +642,7 @@ def load_panel_offsets(config_dir):
     """
     offsets = {}
     try:
-        with open(os.path.join(config_dir, "config.yaml"), "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
+        cfg = load_merged(config_dir)
         pm = (cfg.get("panel") or {}).get("window") or {}
         pm = pm.get("per_monitor") or {}
         for mon, entry in pm.items():

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Generate eww theme files (eww.theme.scss + eww.theme.json) from config.yaml
-and the appearance definition.
+(plus the git-ignored config.local.yaml overrides, see config_io.py) and the
+appearance definition.
 
 The `appearance` field of config.yaml accepts two forms:
   1. a string -> a theme directory under assets/themes/appearance/<name>/appearance.yaml
@@ -23,10 +24,11 @@ try:
 except ImportError:
     Image = None
 
+from config_io import load_merged
+
 
 def load_config(config_dir):
-    with open(os.path.join(config_dir, "config.yaml"), "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    return load_merged(config_dir)
 
 
 def load_appearance(config_dir, appearance):
