@@ -102,37 +102,64 @@ def test_split_single_column():
     assert a == options and b == []
 
 
-# --- geometry (flip + clamp) ------------------------------------------------------
+# --- geometry (relative to the parent menu's REAL rect; flip + clamp) ---------
+
+# A synthetic parent-menu rect whose rows are exactly CTX-row-height tall:
+# menu_h - 2 * MENU_PAD == 10 * 42.
+MENU_W, MENU_H = 220, 2 * submenu.MENU_PAD + 10 * 42
+
 
 def test_geometry_right_open_default():
-    x, y, w, h = submenu.geometry_for("units", 2, 800, 100, 1920, 1045)
-    assert (x, y, w, h) == (1016, 317, submenu.SUB_W1, 2 * submenu.SUB_ROW_H + submenu.SUB_PAD_V)
+    x, y, w, h = submenu.geometry_for(
+        "units", 2, 800, 100, MENU_W, MENU_H, 1920, 1045
+    )
+    assert (x, y, w, h) == (
+        800 + MENU_W - submenu.OVERLAP,
+        100 + submenu.MENU_PAD + 5 * 42,
+        submenu.SUB_W1,
+        2 * submenu.SUB_ROW_H + submenu.SUB_PAD_V,
+    )
+
+
+def test_geometry_row_height_calibrated_from_parent_height():
+    # A taller-than-usual parent menu widens its rows proportionally.
+    menu_h = 2 * submenu.MENU_PAD + 10 * 47
+    _, y, _, _ = submenu.geometry_for(
+        "units", 2, 800, 100, MENU_W, menu_h, 1920, 1200
+    )
+    assert y == 100 + submenu.MENU_PAD + 5 * 47
 
 
 def test_geometry_flips_left_at_right_edge():
-    x, _, _, _ = submenu.geometry_for("units", 2, 1850, 100, 1920, 1045)
+    x, _, _, _ = submenu.geometry_for(
+        "units", 2, 1850, 100, MENU_W, MENU_H, 1920, 1045
+    )
     assert x == 1850 - submenu.SUB_W1 + submenu.OVERLAP
 
 
 def test_geometry_clamps_when_neither_side_fits():
-    x, _, _, _ = submenu.geometry_for("units", 2, 10, 0, 200, 1000)
+    x, _, _, _ = submenu.geometry_for(
+        "units", 2, 10, 0, MENU_W, MENU_H, 200, 1000
+    )
     assert x == 200 - submenu.SUB_W1  # clamped, no flip possible
 
 
 def test_geometry_theme_is_two_columns_and_clamped_bottom(themes):
     n = len(submenu.options_for("appearance", {}))
-    x, y, w, h = submenu.geometry_for("appearance", n, 100, 700, 1400, 768)
+    x, y, w, h = submenu.geometry_for(
+        "appearance", n, 100, 700, MENU_W, MENU_H, 1400, 768
+    )
     rows = (n + 1) // 2
     assert w == submenu.SUB_W2
     assert h == rows * submenu.SUB_ROW_H + submenu.SUB_PAD_V
-    assert y == max(0, min(700 + submenu.MENU_PAD + submenu.ROWS["appearance"] * submenu.CTX_ROW_H,
-                           768 - h))
-    assert x == 100 + submenu.CTX_MENU_W - submenu.OVERLAP
+    raw_y = 700 + submenu.MENU_PAD + submenu.ROWS["appearance"] * 42
+    assert y == max(0, min(raw_y, 768 - h))
+    assert x == 100 + MENU_W - submenu.OVERLAP
 
 
 def test_geometry_unknown_row_raises():
     with pytest.raises(KeyError):
-        submenu.geometry_for("bogus", 2, 0, 0, 1000, 1000)
+        submenu.geometry_for("bogus", 2, 0, 0, MENU_W, MENU_H, 1000, 1000)
 
 
 # --- generation counter / scheduled close ------------------------------------------
@@ -184,13 +211,14 @@ def test_schedule_close_spawns_detached_helper(state, monkeypatch):
 @pytest.fixture
 def session_ctx(tmp_path, monkeypatch):
     sess = tmp_path / "input_session.json"
-    sess.write_text(json.dumps({"mode": "ctx", "x": 500, "y": 300, "screen": 1}))
+    sess.write_text(json.dumps({"mode": "ctx", "x": 400, "y": 328, "screen": 1}))
     monkeypatch.setattr(submenu, "SESSION_FILE", str(sess))
     return sess
 
 
-def test_open_item_pushes_vars_and_opens_window(session_ctx, themes, state,
-                                                tmp_path, monkeypatch):
+def test_open_item_positions_relative_to_parent_window(
+    session_ctx, themes, state, tmp_path, monkeypatch
+):
     merged = tmp_path / "config.yaml"
     merged.write_text("appearance: dark\n", encoding="utf-8")
 
@@ -199,7 +227,14 @@ def test_open_item_pushes_vars_and_opens_window(session_ctx, themes, state,
     monkeypatch.setattr(config_io, "BASE_CONFIG_FILE", "config.yaml")
     monkeypatch.setattr(config_io, "LOCAL_CONFIG_FILE",
                         str(tmp_path / "config.local.yaml"))
-    monkeypatch.setattr(submenu, "frame_size", lambda screen: (1920, 1045))
+    # The parent ctx_menu window really sits at abs (400, 328) on the
+    # monitor with index 1 (origin at 0/0).
+    monkeypatch.setattr(submenu, "ctx_menu_rect",
+                        lambda: {"w": MENU_W, "h": MENU_H, "ax": 400, "ay": 328})
+    monkeypatch.setattr(submenu, "monitor_at",
+                        lambda ax, ay: {"index": 1, "x": 0, "y": 0,
+                                        "width": 1368, "height": 768})
+    monkeypatch.setattr(submenu, "frame_size", lambda screen: (1368, 738))
 
     calls = []
 
@@ -213,33 +248,43 @@ def test_open_item_pushes_vars_and_opens_window(session_ctx, themes, state,
     gen_after = submenu.read_gen()
 
     update = next(c for c in calls if c[0] == "update")
-    payload = dict(arg.split("=", 1) for arg in update[1:])
-    col_a = json.loads(payload["sub_col_a"])
-    col_b = json.loads(payload["sub_col_b"])
-    assert [o["value"] for o in col_a] == ["dark", "dark-blue"]
-    assert [o["value"] for o in col_b] == ["light"]
-    assert payload["sub_active"] == "dark"
-    assert payload["sub_cols"] == "2"
+    payload = update[1]
+    assert payload.startswith("sub_yuck=")
+    yuck = payload[len("sub_yuck="):]
+    # both themes present, dark highlighted, handlers baked in
+    assert ':class "sub-btn active"' in yuck
+    assert '"dark-blue"' in yuck and '"light"' in yuck
+    assert "--cancel-close" in yuck and "--schedule-close" in yuck
+    assert "--key appearance --value dark" in yuck
 
     open_call = next(c for c in calls if c[0] == "open")
     flat = " ".join(open_call)
-    assert "--id submenu" in flat or ("--id" in open_call and "submenu" in open_call)
-    assert "key=appearance" in flat
-    # anchored right of the ctx menu at the Theme row (row 4)
-    expected_x = 500 + submenu.CTX_MENU_W - submenu.OVERLAP
-    expected_y = submenu.MENU_PAD + submenu.ROWS["appearance"] * submenu.CTX_ROW_H + 300
+    assert "submenu" in open_call[-1]
+    # eww gets the monitor via a separate `--screen <N>` argument pair
+    assert "1" == open_call[open_call.index("--screen") + 1]
+    # anchored right of the parent menu's real right edge, at the Theme row
+    expected_x = 400 + MENU_W - submenu.OVERLAP
+    expected_y = 328 + submenu.MENU_PAD + submenu.ROWS["appearance"] * 42
     assert f"sx={expected_x}" in flat
     assert f"sy={expected_y}" in flat
     assert gen_after >= 1
 
 
-def test_open_item_without_session_uses_fallback(themes, state, tmp_path, monkeypatch):
+def test_open_item_without_session_aborts(state, themes, tmp_path, monkeypatch):
     sess = tmp_path / "missing.json"
     monkeypatch.setattr(submenu, "SESSION_FILE", str(sess))
-    monkeypatch.setattr(submenu, "frame_size", lambda screen: (1920, 1045))
     calls = []
     monkeypatch.setattr(submenu, "eww", lambda *a: calls.append(a))
+    monkeypatch.setattr(submenu, "ctx_menu_rect", lambda: None)
+    submenu.open_item("units")  # must not raise
+    assert calls == []          # no update / no open without a live menu
+
+
+def test_open_item_without_parent_window_aborts(session_ctx, state,
+                                                tmp_path, monkeypatch):
+    # session exists but the ctx_menu X window is gone -> no orphan submenu
+    calls = []
+    monkeypatch.setattr(submenu, "eww", lambda *a: calls.append(a))
+    monkeypatch.setattr(submenu, "ctx_menu_rect", lambda: None)
     submenu.open_item("units")
-    open_call = next(c for c in calls if c[0] == "open")
-    flat = " ".join(open_call)
-    assert "key=units" in flat
+    assert calls == []

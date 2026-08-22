@@ -16,11 +16,15 @@ active one highlighted; picking an entry writes it through `menu_toggle.py
 --value` → `config_set.py`. Clicking a parent row does nothing.
 
 - **One generic eww window** (`submenu`) reused by all five items; its
-  geometry and contents arrive via `--arg` / `eww update` at hover time —
-  no extra GTK window. JSON option lists are pushed into `sub_col_a` /
-  `sub_col_b` eww variables and iterated with yuck `(for ...)` loops
-  (variables holding a JSON string index/iterate natively, exactly like the
-  existing `weather_info.*` accesses).
+  geometry arrives via `--arg` at hover time — no extra GTK window.
+  `submenu.py` **prebuilds the entire picker as a static yuck string**
+  (real values, active-state class and hover/click handlers baked in) and
+  pushes it into the `sub_yuck` eww variable, rendered with `(literal ...)`.
+  This is deliberate: on eww 0.6.0 event handlers attached to widgets created
+  inside `(for ...)` loops never fire (measured), while literal-rendered
+  definitions behave exactly like hand-written config. The submenu position
+  is computed RELATIVE to the parent menu's real X11 geometry (queried via
+  `xwininfo`, incl. monitor resolution), not from cached estimates.
 - **New `scripts/widgets/submenu.py`**: `--item <key>` opens the picker
   (options built per key, Theme dynamically from `assets/themes/appearance/`
   split across two balanced columns), `--schedule-close` closes after 300 ms

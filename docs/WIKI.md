@@ -596,12 +596,18 @@ the popups.
 
 Submenu mechanics:
 
-- One generic `submenu` eww window is reused for all rows; `submenu.py`
-  pushes the option lists as JSON into `sub_col_a` / `sub_col_b` (Theme is
-  split across two balanced columns) plus `sub_active`, then opens the window
-  anchored to the parent row (right of the menu with 4 px overlap, flipped to
-  its left side when it would not fit, clamped to the monitor frame). The
-  menu position comes from the session file, stored there by `ctx.py`.
+- One generic `submenu` eww window is reused for all rows. `submenu.py`
+  prebuilds the whole picker as a static yuck string — every option row an
+  `eventbox` with its own hover/click handlers and the active value
+  highlighted (Theme split across two balanced columns) — pushes it into the
+  `sub_yuck` eww variable and opens the window rendered via `(literal ...)`
+  at the hovered row. Handlers inside `(for ...)` loops never fire on
+  eww 0.6.0, which is why the definition is generated instead of looped.
+- The position is RELATIVE to the parent menu's real X11 geometry: queried
+  with `xwininfo` at hover time (right of its edge with a small overlap,
+  flipped to its left side when it would not fit, clamped to the monitor
+  frame; vertical anchor calibrated from the menu's actual height). If the
+  ctx_menu window is gone, no submenu is opened — no orphans.
 - Leaving a row schedules a close after 300 ms; entering any row or the
   submenu itself cancels pending timers via a generation counter
   (`generated/submenu_gen`), which makes item→item transitions flicker-free.

@@ -8,15 +8,19 @@ an entry writes it via menu_toggle.py -> config_set.py into the git-ignored
 config.local.yaml (the watcher applies the change live).
 
 Mechanics:
-  * ctx.py stores the context-menu position (x/y/screen) in the session file;
-    this script anchors the submenu relative to it: right of the menu by
-    default, flipped to its left side when it would not fit, clamped to the
-    monitor frame.
-  * The option list is pushed as JSON into the eww variables sub_col_a /
-    sub_col_b (Theme is split across two balanced columns, everything else is
-    a single column); sub_active carries the current value for highlighting.
+  * ctx.py stores the fact that the context menu is open in the session file;
+    this script additionally reads the menu's REAL X11 geometry (xwininfo)
+    and anchors the submenu RELATIVE to it: right of the menu by default,
+    flipped to its left side when it would not fit, clamped to the monitor
+    frame. Without a live ctx_menu nothing is opened (no orphans).
+  * The whole picker is prebuilt as a static yuck definition with real
+    values, the active-state class and hover/click handlers baked in, pushed
+    into the `sub_yuck` eww variable and rendered via `(literal ...)`.
+    Theme is split across two balanced columns; everything else is a single
+    column. (Handlers on widgets created inside `(for ...)` loops never fire
+    on eww 0.6.0, which rules out looping over JSON in yuck.)
   * Closing is hover-driven with a small delay: leaving a row schedules a
-    close (a detached helper sleeps CLOSE_DELAY and only fires when the
+    close (a detached helper sleeps CLOSE_DELAY and closes only when the
     generation counter still matches), entering any row / the submenu again
     cancels pending timers by bumping the counter. ESC / outside clicks go
     through close_popup.py which closes the submenu unconditionally.
@@ -29,6 +33,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -47,9 +52,7 @@ SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
 GEN_FILE = os.path.join(CONFIG_DIR, "generated", "submenu_gen")
 
 # Geometry constants (kept in sync with eww.yuck / eww.scss).
-CTX_MENU_W = 220   # ctx_menu :width
-CTX_ROW_H = 42     # one context-menu row (button + margins)
-MENU_PAD = 7       # ctx_menu top padding (+border)
+MENU_PAD = 7       # ctx_menu top/bottom padding (+border)
 SUB_ROW_H = 30     # one submenu row
 SUB_PAD_V = 8      # submenu vertical padding (top+bottom)
 SUB_W1 = 150       # single-column submenu width
@@ -168,19 +171,61 @@ def split_columns(options, columns):
     return options[:half], options[half:]
 
 
-def geometry_for(key, n_options, menu_x, menu_y, frame_w, frame_h):
-    """Submenu window geometry anchored to the parent row (flip + clamp)."""
-    columns = 2 if ROWS.get(key, 0) >= 0 and key == "appearance" else 1
+def geometry_for(key, n_options, menu_x, menu_y, menu_w, menu_h, frame_w, frame_h):
+    """Submenu geometry RELATIVE to the parent menu's real rect (flip+clamp).
+
+    The vertical anchor is calibrated from the parent window's ACTUAL height
+    (the ten rows share menu_h - 2*MENU_PAD evenly), so font/padding changes
+    can never skew it; horizontally the submenu hugs the parent's right edge
+    with a small overlap and flips to its left side when it would not fit.
+    """
+    columns = 2 if key == "appearance" else 1
     rows = (n_options + columns - 1) // columns
     w = SUB_W2 if columns == 2 else SUB_W1
     h = rows * SUB_ROW_H + SUB_PAD_V
-    x = menu_x + CTX_MENU_W - OVERLAP
+    row_h = max(1.0, (menu_h - 2 * MENU_PAD) / 10.0)
+    x = menu_x + menu_w - OVERLAP
     if x + w > frame_w and menu_x - w + OVERLAP >= 0:
         x = menu_x - w + OVERLAP
     x = max(0, min(x, max(0, frame_w - w)))
-    y = menu_y + MENU_PAD + ROWS[key] * CTX_ROW_H
+    y = int(menu_y + MENU_PAD + ROWS[key] * row_h)
     y = max(0, min(y, max(0, frame_h - h)))
     return int(x), int(y), int(w), int(h)
+
+
+def build_yuck(key, options, active, columns):
+    """Render the whole picker as a static yuck string.
+
+    Eww 0.6.0 does not wire event handlers onto widgets created inside a
+    `(for ...)` loop (hover/click silently dead there — measured on this
+    machine), so instead of looping over JSON data in yuck, this bakes the
+    real option values straight into a literal definition that eww renders
+    exactly like hand-written config.
+    """
+    col_a, col_b = split_columns(options, columns)
+
+    def row(o):
+        cls = "sub-btn active" if o["value"] == str(active) else "sub-btn"
+        return (
+            '(eventbox :class "%s" :timeout "10s" '
+            ':onhover "../scripts/widgets/submenu.py --cancel-close" '
+            ':onhoverlost "../scripts/widgets/submenu.py --schedule-close" '
+            ':onclick {"../scripts/widgets/close_popup.py && nohup '
+            '../scripts/widgets/menu_toggle.py --key %s --value %s '
+            '>/dev/null 2>&1 &"} '
+            '(box :class "sub-btn-box" (label :text "%s")))'
+            % (cls, key, o["value"], o["label"])
+        )
+
+    parts = ['(box :class "submenu" :orientation "h" :space-evenly false']
+    for col in (col_a, col_b):
+        if not col:
+            continue
+        parts.append(
+            '(box :orientation "v" :space-evenly false %s)' % "".join(row(o) for o in col)
+        )
+    parts.append(")")
+    return " ".join(parts)
 
 
 def frame_size(screen):
@@ -201,37 +246,82 @@ def frame_size(screen):
     return max(1, int(ww)), max(1, int(wh))
 
 
+CTX_MENU_XNAME = '"Eww - ctx_menu"'
+XENV_KEYS = ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR")
+
+
+def ctx_menu_rect():
+    """Absolute X11 rect of the parent ctx_menu window, or None.
+
+    The submenu is positioned RELATIVE to this real geometry (not to cached
+    estimates): xwininfo reports both the local and the absolute placement,
+    so this also pins the correct monitor no matter how the indices map.
+    """
+    env = {k: v for k, v in os.environ.items() if k in XENV_KEYS}
+    try:
+        out = subprocess.run(
+            ["xwininfo", "-root", "-tree"], capture_output=True, text=True,
+            timeout=5, env=env,
+        ).stdout
+    except Exception:
+        return None
+    for line in out.splitlines():
+        if CTX_MENU_XNAME not in line:
+            continue
+        m = re.search(
+            r"(\d+)x(\d+)\+\d+\+\d+\s+\+(\d+)\+(\d+)", line
+        )
+        if m:
+            w, h, ax, ay = (int(g) for g in m.groups())
+            return {"w": w, "h": h, "ax": ax, "ay": ay}
+    return None
+
+
+def monitor_at(ax, ay):
+    """monitors.py entry covering the absolute point (ax, ay), or None."""
+    import widget_rect as wr
+    data = wr.get_monitors()
+    for mon in data.get("monitors") or []:
+        if mon["x"] <= ax < mon["x"] + mon["width"] and \
+           mon["y"] <= ay < mon["y"] + mon["height"]:
+            return mon
+    return None
+
+
 def open_item(key):
     bump_gen()  # invalidate any pending scheduled close
     cfg = load_merged(CONFIG_DIR)
     options = options_for(key, cfg)
     active = active_for(key, cfg)
     columns = 2 if key == "appearance" else 1
-    col_a, col_b = split_columns(options, columns)
 
+    # Position RELATIVE to the parent menu's REAL on-screen geometry. The
+    # session file is only used as a liveness check: without an open ctx_menu
+    # there is nothing to anchor to (prevents orphaned submenus).
     sess = read_session()
-    if sess and sess.get("mode") == "ctx":
-        screen = int(sess.get("screen", 0))
-        menu_x = int(sess.get("x", 0))
-        menu_y = int(sess.get("y", 0))
-    else:  # stale/no session: still show something usable near top-left
-        screen, menu_x, menu_y = 0, 100, 100
+    if not sess or sess.get("mode") != "ctx":
+        return
+    rect = ctx_menu_rect()
+    if rect is None:
+        return
 
-    frame = frame_size(screen) or (1920, 1080)
-    x, y, w, h = geometry_for(key, len(options), menu_x, menu_y, frame[0], frame[1])
+    mon = monitor_at(rect["ax"], rect["ay"])
+    if mon is None:
+        return
+    screen = int(mon["index"])
+    lx = rect["ax"] - mon["x"]          # parent menu in monitor-local coords
+    ly = rect["ay"] - mon["y"]
 
-    eww(
-        "update",
-        "sub_col_a=%s" % json.dumps(col_a, separators=(",", ":")),
-        "sub_col_b=%s" % json.dumps(col_b, separators=(",", ":")),
-        "sub_active=%s" % active,
-        "sub_cols=%d" % columns,
+    frame = frame_size(screen) or (mon["width"], mon["height"])
+    x, y, w, h = geometry_for(
+        key, len(options), lx, ly, rect["w"], rect["h"], frame[0], frame[1],
     )
+
+    eww("update", "sub_yuck=%s" % build_yuck(key, options, active, columns))
     eww(
         "open",
         "--id", "submenu",
         "--screen", str(screen),
-        "--arg", "key=%s" % key,
         "--arg", "sx=%d" % x,
         "--arg", "sy=%d" % y,
         "--arg", "sw=%d" % w,
@@ -250,6 +340,11 @@ def schedule_close():
     )
 
 
+def cancel_close():
+    """Entering any row / the submenu itself invalidates pending timers."""
+    bump_gen()
+
+
 def delayed_close(gen):
     time.sleep(CLOSE_DELAY)
     if read_gen() != gen:
@@ -261,14 +356,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--item", choices=KEYS)
     ap.add_argument("--schedule-close", action="store_true")
+    ap.add_argument("--cancel-close", action="store_true")
     ap.add_argument("--_delayed-close", type=int, help=argparse.SUPPRESS)
     args = ap.parse_args()
 
     if args._delayed_close is not None:
         delayed_close(args._delayed_close)
         return
-    if not args.item and not args.schedule_close:
-        sys.exit("Usage: ./submenu.py --item <key> | --schedule-close")
+    if not args.item and not args.schedule_close and not args.cancel_close:
+        sys.exit("Usage: ./submenu.py --item <key> | --schedule-close | --cancel-close")
 
     # eww kills widget commands whose runtime exceeds its timeout even when
     # :timeout is set on the eventbox; re-spawn detached like ctx.py does so
@@ -284,6 +380,8 @@ def main():
 
     if args.item:
         open_item(args.item)
+    elif args.cancel_close:
+        cancel_close()
     else:
         schedule_close()
 

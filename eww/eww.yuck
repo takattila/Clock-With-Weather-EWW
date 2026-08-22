@@ -21,12 +21,11 @@
 (defvar move_pct 100)
 
 ;; --- Hover submenu state (see scripts/widgets/submenu.py) ------------------------
-;; The option lists are pushed as JSON when a row is hovered; sub_active holds
-;; the current value for highlighting, sub_cols selects the layout.
-(defvar sub_col_a "[]")
-(defvar sub_col_b "[]")
-(defvar sub_active "")
-(defvar sub_cols 1)
+;; The whole picker is prebuilt by submenu.py into this variable (a static
+;; yuck definition with real values + handlers baked in) and rendered via
+;; `literal`: handlers on widgets created inside `(for ...)` loops never fire
+;; on eww 0.6.0, so dynamic looping is not an option here.
+(defvar sub_yuck "")
 
 ;; --- Clock data ------------------------------------------------------------
 (defpoll hour :interval "1s"
@@ -256,41 +255,39 @@
             :onclick "../scripts/widgets/close_popup.py && ../scripts/move/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
             (box :class "ctx-btn-box" (label :text "Reset")))
     ;; AM/PM switch: system.hour_format 24h / 12h picker.
-    (eventbox :timeout "10s"
+    ;; NOTE: deliberately NOT a button — a nested GTK button owns its own
+    ;; input window, which swallows the enter/leave events the eventbox
+    ;; needs; a plain box+label keeps hover working.
+    (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item hour_format"
               :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
-      (button :class "ctx-btn"
-              (box :class "ctx-btn-box"
-                   (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"}))))
+      (box :class "ctx-btn-box"
+           (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"})))
     ;; Theme: every theme under assets/themes/appearance/, two columns.
-    (eventbox :timeout "10s"
+    (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item appearance"
               :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
-      (button :class "ctx-btn"
-              (box :class "ctx-btn-box"
-                   (label :text {"Theme: " + config.appearance_name + " ▸"}))))
+      (box :class "ctx-btn-box"
+           (label :text {"Theme: " + config.appearance_name + " ▸"})))
     ;; Units metric <-> imperial; picking one also refreshes weather_info
     ;; instantly so °C/°F does not wait for the 10-minute defpoll.
-    (eventbox :timeout "10s"
+    (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item units"
               :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
-      (button :class "ctx-btn"
-              (box :class "ctx-btn-box"
-                   (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"}))))
+      (box :class "ctx-btn-box"
+           (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"})))
     ;; Panel visibility: panel.enabled shown / hidden.
-    (eventbox :timeout "10s"
+    (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item panel_enabled"
               :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
-      (button :class "ctx-btn"
-              (box :class "ctx-btn-box"
-                   (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"}))))
+      (box :class "ctx-btn-box"
+           (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"})))
     ;; Panel side: panel.window.alignment right / left.
-    (eventbox :timeout "10s"
+    (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item panel_alignment"
               :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
-      (button :class "ctx-btn"
-              (box :class "ctx-btn-box"
-                   (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"}))))
+      (box :class "ctx-btn-box"
+           (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"})))
     ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and
     ;; relayouts, restoring every committed default (scripts/bin/hard-reset.sh).
     (button :class "ctx-btn" :timeout "10s"
@@ -305,23 +302,13 @@
 ;; ===========================================================================
 
 ;; One generic window reused by all five items: submenu.py pushes the option
-;; lists (sub_col_a / sub_col_b as JSON), the active value (sub_active) and
+;; picker definition (prebuilt by submenu.py as a static yuck literal) and
 ;; the geometry via --arg at hover time. Clicking an entry writes it through
 ;; menu_toggle.py; ESC / outside clicks close everything via close_popup.py.
-(defwidget widget_submenu [key]
-  (box :class "submenu" :orientation "h" :space-evenly false
-    (box :orientation "v" :space-evenly false
-      (for o in sub_col_a
-        (button :class {o.value == sub_active ? "sub-btn active" : "sub-btn"}
-                :timeout "10s"
-                :onclick {"../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key " + key + " --value " + o.value + " >/dev/null 2>&1 &"}
-          (box :class "sub-btn-box" (label :text {o.label})))))
-    (box :orientation "v" :space-evenly false :visible {sub_cols == 2}
-      (for o in sub_col_b
-        (button :class {o.value == sub_active ? "sub-btn active" : "sub-btn"}
-                :timeout "10s"
-                :onclick {"../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key " + key + " --value " + o.value + " >/dev/null 2>&1 &"}
-          (box :class "sub-btn-box" (label :text {o.label})))))))
+(defwidget widget_submenu []
+  ;; Rendered from the prebuilt literal (see scripts/widgets/submenu.py):
+  ;; every option row carries its own hover/click handlers as static yuck.
+  (literal :content {sub_yuck}))
 
 ;; ===========================================================================
 ;; Windows
@@ -468,7 +455,7 @@
 ;; ===========================================================================
 
 (defwindow submenu
-  [screen key sx sy sw sh]
+  [screen sx sy sw sh]
   :monitor {screen}
   :geometry (geometry :x {sx}
                       :y {sy}
@@ -479,4 +466,4 @@
   :windowtype "normal"
   :wm-ignore true
   :focusable false
-  (widget_submenu :key key))
+  (widget_submenu))
