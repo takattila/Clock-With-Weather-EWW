@@ -71,6 +71,16 @@ context menu's "Hard reset" item.
   checks the actual X state and retries until nothing is mapped (and force-
   unmaps anything that refuses to die).
 
+### Fixed
+
+- **KDE / Wayland: after opening the repository from the About window, an
+  invisible full-screen overlay layer stayed above every other window**,
+  making the browser and all other applications unclickable. The dismiss
+  layers are now closed the moment the repository is opened. Popup closing
+  in general is also **verified** through `eww active-windows` (works on
+  Wayland too): a `close` silently dropped while the daemon regenerates the
+  theme is retried instead of leaving a ghost layer behind.
+
 ### Changed
 
 - `scripts/core/config_set.py`: new global keys (`hour_format`, `appearance`,

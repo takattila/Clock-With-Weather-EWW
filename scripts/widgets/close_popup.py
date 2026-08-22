@@ -3,18 +3,21 @@
 
 The `dismiss_overlay_<N>` windows are transparent, full-monitor layers — ONE
 PER CONNECTED MONITOR, opened by ctx.py with ids recorded in the session file
-— that sit under the context menu / its hover submenus / the GTK About window.
-Clicking anywhere on any screen hits such a layer and closes every popup.
+— that sit on the compositor's OVERLAY level, above every normal window.
+Clicking anywhere on any screen hits such a layer and closes every popup;
+while they are mapped they also block input meant for anything beneath them
+(browser, terminals, ...), so closing them must be RELIABLE.
 
 The window list comes from generated/input_session.json (written by ctx.py);
 the plain `dismiss_overlay` name is always included as a legacy/fallback so
 older sessions are cleaned up too.
 
-Closing is VERIFIED: right after a quick-settings selection the eww daemon
-can be busy regenerating the theme and silently drop an IPC close (measured:
-one of two same-name overlay instances survived its close). On X11 we check
-with xdotool whether any popup window is still mapped and retry — up to
-~2.5 s — until the desktop is really clean; anything left over is unmapped.
+Closing is VERIFIED via `eww active-windows` (compositor-independent, works
+on Wayland too): right after a quick-settings selection or an About/GitHub
+open the eww daemon can be busy regenerating the theme and silently drop an
+IPC close (measured: one of two same-name overlay instances survived its
+close). The script retries until none of the popup names is listed anymore,
+and on X11 additionally force-unmaps any leftover window.
 
 The GTK About window watches the session file and quits once it is gone.
 
@@ -27,6 +30,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 # scripts/widgets/ -> scripts/ -> repo (widget) root
 CONFIG_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,9 +38,9 @@ EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
 SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
 sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "core"))
 
-import session
+import session  # noqa: E402
 
-XENV_KEYS = ("DISPLAY", "XAUTHORITY")
+TRACKED = ("ctx_menu", "submenu", "dismiss_overlay")
 
 
 def read_session_data():
@@ -79,28 +83,34 @@ def close_all(names):
 
 
 def _xenv():
-    return {k: v for k, v in os.environ.items() if k in XENV_KEYS}
+    keys = ("DISPLAY", "XAUTHORITY")
+    return {k: v for k, v in os.environ.items() if k in keys}
 
 
-def stray_popup_ids():
-    """X11 window ids of still-mapped popup windows ([] on Wayland/error)."""
-    if not os.environ.get("DISPLAY"):
-        return []
-    env = _xenv()
+def open_popup_names():
+    """Names of popup windows still open, from `eww active-windows`.
+
+    Output lines look like `dismiss_overlay_1: dismiss_overlay`; this works
+    identically on X11 and Wayland, unlike xdotool-based queries.
+    """
     try:
         out = subprocess.run(
-            ["xdotool", "search", "--name",
-             r"^Eww - (ctx_menu|dismiss_overlay)"],
-            capture_output=True, text=True, timeout=3, env=env,
+            ["eww", "--config", EWW_CONFIG_DIR, "active-windows"],
+            capture_output=True, text=True, timeout=5,
         ).stdout
-        return [w for w in out.split() if w]
     except Exception:
-        return []
+        return None  # unknown state -> caller keeps retrying
+    open_names = []
+    for line in out.splitlines():
+        if ":" not in line:
+            continue
+        open_names.append(line.split(":", 1)[1].strip())
+    return [n for n in open_names if n in TRACKED]
 
 
 def destroy_leftovers(ids):
-    """Unmap popup X windows that survived every close attempt."""
-    env = _xenv()
+    """X11 last resort: unmap popup windows that survived every attempt."""
+    env = {k: v for k, v in os.environ.items() if k in ("DISPLAY", "XAUTHORITY")}
     for win in ids:
         try:
             subprocess.run(
@@ -112,38 +122,47 @@ def destroy_leftovers(ids):
             pass
 
 
+def x11_stray_ids(names):
+    """X11 window ids whose WM_NAME matches any of the given eww names."""
+    if not os.environ.get("DISPLAY"):
+        return []
+    env = _xenv()
+    pattern = "^Eww - (%s)$" % "|".join(re.escape(n) for n in names)
+    try:
+        out = subprocess.run(
+            ["xdotool", "search", "--name", pattern],
+            capture_output=True, text=True, timeout=3, env=env,
+        ).stdout
+        return [w for w in out.split() if w]
+    except Exception:
+        return []
+
+
 def close_popups_verified(session_data=None):
-    """Close every popup and VERIFY at the X level that none is left.
+    """Close every popup and VERIFY that none is left open.
 
     A single `eww close` can be dropped when the daemon is busy (measured:
     of two same-name overlay instances, one survived its close right after a
-    theme selection). Retries are driven by the actual X state, not hoped
-    away; whatever survives the retries is force-unmapped.
+    theme selection; same for the legacy About overlay). The loop re-checks
+    through `eww active-windows` until every tracked name is gone. On X11 a
+    final janitor pass force-unmaps anything that still refuses to die - an
+    invisible overlay left on top would block all input on its monitor.
     """
     names = windows_to_close(session_data)
 
-    def clean():
-        return not stray_popup_ids()
-
-    if clean():
-        # Nothing mapped: still send the closes (covers non-X edge cases and
-        # makes sure freshly-mapped strays from this very moment are gone).
+    for _ in range(10):
         close_all(names)
-        return
-
-    for _ in range(8):
-        close_all(names)
-        if clean():
+        open_names = open_popup_names()
+        if open_names is not None and not open_names:
             break
-        import time
         time.sleep(0.25)
 
-    leftover = stray_popup_ids()
-    if leftover:
-        # Unmap whatever refused to die: an invisible popup layer left on top
-        # blocks every right-click on the widgets beneath it.
-        env = _xenv()
-        for win in leftover:
+    # X11 janitor: unmap strays (Wayland has no equivalent; the retries above
+    # are the safety net there).
+    strays = x11_stray_ids([n for n in names if n != "submenu"])
+    if strays:
+        env = {k: v for k, v in os.environ.items() if k in ("DISPLAY", "XAUTHORITY")}
+        for win in strays:
             try:
                 subprocess.run(
                     ["xdotool", "windowunmap", win],

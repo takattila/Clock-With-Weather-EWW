@@ -42,12 +42,17 @@ one highlighted; picking an entry writes it through `menu_toggle.py --value`
 
 ## Phase 3: robustness fixes (same release)
 
-Live testing surfaced two reliability gaps, both fixed:
+Live testing surfaced three reliability gaps, all fixed:
   * a dismissed per-monitor dismiss layer occasionally SURVIVED its close
     (the IPC close was dropped while the daemon regenerated) — an invisible
     full-screen layer then blocked every right-click on that monitor.
-    close_popup.py now VERIFIES at the X level (xdotool) that no popup
-    window is still mapped, retrying ~2s and force-unmapping survivors.
+    close_popup.py now VERIFIES via `eww active-windows` that no popup
+    window is still listed, retrying ~2s (compositor-independent, works on
+    Wayland/KDE too) and force-unmapping X11 survivors;
+  * About -> "Open repository": the dismiss layers stayed mapped ABOVE the
+    browser on KDE/Wayland (the overlay level sits over every normal
+    window), making everything unclickable; about_win.py now closes them
+    right before xdg-open.
 
 ## Goal
 
