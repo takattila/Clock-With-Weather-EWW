@@ -19,7 +19,9 @@ v2.0.0 restructure.
 
 - `config.yaml` holds the portable, committed **defaults**; machine-specific
   values live in the **git-ignored `config.local.yaml`**, which every reader
-  deep-merges over it (local keys win down to the leaves).
+  deep-merges over it (local keys win down to the leaves) — **every** setting
+  can be overridden locally, including individual fields of a named weather
+  theme (e.g. just the city or the units, while `weather.name` stays).
 - Everything the widget scripts write lands in the local file only:
   - the right-click **Move / Resize / Reset** actions (per-monitor positions,
     scales, panel gaps),

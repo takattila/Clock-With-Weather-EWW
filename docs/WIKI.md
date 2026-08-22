@@ -248,7 +248,7 @@ The `weather` field accepts **two forms**:
 1. **A theme name (`weather.name`)** — loads
    `assets/themes/weather/<name>/weather.yaml` (the classic behavior).
 2. **An inline map (no `name` key)** — the weather details are defined right in
-   `config.yaml` (a `name` key, if present, takes precedence):
+   `config.yaml`:
 
    ```yaml
    weather:
@@ -262,6 +262,11 @@ The `weather` field accepts **two forms**:
        position_x: 0
        position_y: 0
    ```
+
+The two forms also **mix**: with `name` set, the theme provides the baseline
+values and any inline fields present patch on top of it — handy for local
+overrides (`config.local.yaml` may override a single value of a themed city,
+e.g. just `units`, without redefining the rest).
 
 The `appearance` field accepts **two forms**:
 
@@ -299,11 +304,11 @@ The `appearance` field accepts **two forms**:
 |---|---|---|
 | `appearance` | `light`, `dark`, `light-bg`, ... **or** a custom map | a theme name selects `assets/themes/appearance/<name>/appearance.yaml`; a custom map (`theme`, `icon`, `font`, `background`) defines the appearance inline (see the "Configuration" section) |
 | `appearance.icon.color` | `#rrggbb` (light / dark) | icon color, tinted into the PNGs by `theme.py` (Pillow); `light` is used when the theme is "light", `dark` when "dark". Omit it to keep the icons' original colors |
-| `weather.name` | `default`, `budapest`, `berlin`, ... | which `assets/themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units`. Omit the `name` key to define the city settings **inline** in `config.yaml` (`city`, `language_code`, `lang`, `units`, `api_url`); a `name` key, if present, takes precedence |
-| `weather.city` | string | inline-mode only: the city queried from the weather API (when `weather.name` is absent) |
-| `weather.language_code` | `hu`, `en`, `fr`, ... | inline-mode only: the country code of the city (when `weather.name` is absent) |
-| `weather.lang` | `hu`, `en`, `fr`, ... | inline-mode only: the display language of the weather description (when `weather.name` is absent) |
-| `weather.units` | `metric` / `imperial` | inline-mode only: °C vs °F (when `weather.name` is absent) |
+| `weather.name` | `default`, `budapest`, `berlin`, ... | which `assets/themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units`. Omit the `name` key to define the city settings **inline** in `config.yaml` (`city`, `language_code`, `lang`, `units`, `api_url`). The forms mix: with `name` set, inline fields patch the theme's baseline (useful for `config.local.yaml` overrides) |
+| `weather.city` | string | the city queried from the weather API; in theme mode it patches/overrides the theme's city |
+| `weather.language_code` | `hu`, `en`, `fr`, ... | the country code of the city; in theme mode it patches/overrides the theme's value |
+| `weather.lang` | `hu`, `en`, `fr`, ... | the display language of the weather description; in theme mode it patches/overrides the theme's value |
+| `weather.units` | `metric` / `imperial` | °C vs °F; in theme mode it patches/overrides the theme's value |
 | `weather.api_url` | URL | the OpenWeatherMap API endpoint used by `weather.py` (default: `https://api.openweathermap.org/data/2.5/weather`); taken from the selected theme or the inline map |
 | `weather.window.alignment` | `top_left`, `top_right`, `top_middle`, `bottom_left`, `bottom_right`, `bottom_middle`, `middle_left`, `middle_right`, `middle_middle` | where the clock widget is anchored |
 | `weather.window.position_x` / `position_y` | integer px | pixel offset of the clock widget from its anchor |
