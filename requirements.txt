@@ -1,4 +1,10 @@
+# Runtime dependencies of the widget
+# (install.sh installs these from distro repositories instead; this file is
+# for manual / pip-based setups and CI).
 PyYAML>=6.0
 psutil>=5.9
 requests>=2.28
 pillow>=10.0
+
+# --- development / testing ---
+pytest

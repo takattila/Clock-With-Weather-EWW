@@ -92,7 +92,7 @@ def test_main(monkeypatch, tmp_path, capsys):
 
     panel.main()
     out = json.loads(capsys.readouterr().out)
-    assert out["cpu_file"].startswith("charts/cpu_h1080_")
+    assert out["cpu_file"].startswith("../charts/cpu_h1080_")
     assert "cpu_txt" in out
     assert "mem_txt" in out
     assert "down_txt" in out

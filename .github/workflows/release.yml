@@ -28,8 +28,8 @@ jobs:
           fi
       - name: Assemble release body
         run: |
-          if [ -f RELEASE_NOTES.md ]; then
-            cp RELEASE_NOTES.md /tmp/release-body.md
+          if [ -f docs/RELEASE_NOTES.md ]; then
+            cp docs/RELEASE_NOTES.md /tmp/release-body.md
           else
             echo "### What's changed" > /tmp/release-body.md
           fi
