@@ -69,8 +69,7 @@ context menu's "Hard reset" item.
   invisible full-screen layer above the widgets that swallowed every
   further click. Popups are now closed **verbatim-verified**: close_popup
   checks the actual X state and retries until nothing is mapped (and force-
-  unmaps anything that refuses to die). Move / Resize also closes the
-  per-monitor layers when starting a session.
+  unmaps anything that refuses to die).
 
 ### Changed
 

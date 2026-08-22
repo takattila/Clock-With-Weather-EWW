@@ -47,9 +47,7 @@ Live testing surfaced two reliability gaps, both fixed:
     (the IPC close was dropped while the daemon regenerated) — an invisible
     full-screen layer then blocked every right-click on that monitor.
     close_popup.py now VERIFIES at the X level (xdotool) that no popup
-    window is still mapped, retrying ~2s and force-unmapping survivors;
-  * move.py did not close the per-monitor layers when entering a
-    Move / Resize session.
+    window is still mapped, retrying ~2s and force-unmapping survivors.
 
 ## Goal
 
