@@ -72,6 +72,9 @@ context menu's "Hard reset" item.
 - The context menu window grew to fit ten items (220x440 px); hovering a
   selectable row opens its submenu next to it (flipped/clamped at the screen
   edges, flicker-free via a generation counter).
+- The menu's transparent dismiss layer now covers **every connected monitor**:
+  clicking on another screen also closes the popups (previously only the
+  menu's own monitor was covered).
 
 ### Upgrade from v2.x
 
