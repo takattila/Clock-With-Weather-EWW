@@ -1,46 +1,48 @@
-# Clock-With-Weather-EWW — v2.0.0
+# Clock-With-Weather-EWW — v2.1.0
 
 **A beautiful, fully customizable clock & weather widget with a live system
 monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
 layer-shell) and also works on **X11**. Powered by the
 [OpenWeatherMap](https://openweathermap.org) API.
 
-**v2.0.0 is a structural release**: no new features and no visual changes —
-the whole repository was reorganized into logical folders. Because file
-locations changed, upgrading from v1.x requires the small migration below.
+**v2.1.0 keeps your repository clean**: every machine-specific value now lives
+in a git-ignored `config.local.yaml`, deep-merged over `config.yaml`. Moving,
+resizing or re-configuring the widgets no longer produces changes in git.
+This release also fixes the right-click context menu that broke during the
+v2.0.0 restructure.
 
 ---
 
-## What changed in v2.0.0 (breaking)
+## What changed in v2.1.0
 
-| Old location (v1.x) | New location (v2.0.0) |
-|---|---|
-| `scripts/start.sh`, `stop.sh`, `install.sh`, `setup.sh` | `scripts/bin/` |
-| `scripts/*.py` (flat) | `scripts/core/`, `scripts/widgets/`, `scripts/move/` |
-| `eww.yuck`, `eww.scss` (repo root) | `eww/` — this is the eww **config dir** now |
-| `themes/`, `images/theme/`, `fonts/` | `assets/themes/`, `assets/icons-src/`, `assets/fonts/` |
-| `WIKI.md`, `PLAN.md`, `RELEASE_NOTES.md` | `docs/` |
-| `*.log` / `*.pid` files in the repo root | `logs/` and `run/` |
-| `requirements-dev.txt` | merged into `requirements.txt` |
+### New: local override layer (`config.local.yaml`)
 
-Also new: the generated theme files (`eww.theme.json/.scss`) are written next
-to `eww.yuck` inside `eww/`, and the runtime output folders are kept in git
-via `.gitkeep` placeholders.
+- `config.yaml` holds the portable, committed **defaults**; machine-specific
+  values live in the **git-ignored `config.local.yaml`**, which every reader
+  deep-merges over it (local keys win down to the leaves).
+- Everything the widget scripts write lands in the local file only:
+  - the right-click **Move / Resize / Reset** actions (per-monitor positions,
+    scales, panel gaps),
+  - the **setup wizard** (theme, hour format, alignment, panel).
+  `git status` therefore stays clean while you use the widget.
+- A missing / empty `config.local.yaml` is a no-op; an unparsable one falls
+  back to `config.yaml` with a warning.
+- The file watcher hot-reloads and re-lays out the windows on local-file
+  edits too.
 
-### Upgrade from v1.x
+### Fixed
 
-1. Pull / check out `v2.0.0`.
-2. **Recreate your desktop & menu launchers**: the ones created by v1.x point
-   to the old `scripts/start.sh`. Either run `bash scripts/bin/setup.sh`
-   once, or fix the `Exec=` lines of the existing `.desktop` files to
-   `scripts/bin/start.sh`.
-3. If you drive `eww` manually, pass the new config dir:
-   `eww --config ~/.eww/Clock-With-Weather-EWW/eww ...`.
-4. Delete leftover root-level `*.log` / `*.pid` / `start.log` files — new ones
-   land in `logs/` and `run/`.
-5. pip users: install everything from `pip install -r requirements.txt`
-   (`pytest` is included under the testing section).
-6. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+- The **right-click context menu** (Move / Resize / Reset / About) stopped
+  working in v2.0.0: the restructure moved `menu_pos.py` into
+  `scripts/move/` but `ctx.py` still pointed into `scripts/widgets/`.
+
+### Upgrade from v2.x
+
+1. Pull / check out `v2.1.0`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Nothing else to do — keep editing `config.yaml` for defaults you want on
+   every machine; put machine-specific tweaks into `config.local.yaml`
+   (created automatically on first Move / Resize / Reset / setup run).
 
 ---
 
@@ -69,6 +71,9 @@ via `.gitkeep` placeholders.
 - **Dynamic Scaling** — the network charts auto-adjust their scale and units
   (KiB/s to MiB/s) based on traffic; the active network interface is detected
   automatically.
+- **Git-clean by design** — machine-local settings live in the git-ignored
+  `config.local.yaml`; the committed `config.yaml` only changes when *you*
+  change a default.
 - **Wayland native** — runs via **EWW** + GTK layer-shell; works on X11 too
   (e.g. Linux Mint / Cinnamon).
 - **Light & dark ready** — supports appearance on both light and dark
@@ -82,8 +87,8 @@ via `.gitkeep` placeholders.
   right-click Move / Resize / Reset context menu.
 - **Desktop integration** — automatic menu icons and optional desktop
   shortcuts.
-- **Live reconfiguration** — a file watcher applies your config/theme changes
-  instantly, no restart needed.
+- **Live reconfiguration** — a file watcher applies your config/theme/local
+  override changes instantly, no restart needed.
 - **Continuous integration** — headless unit tests, YAML validation and
   ShellCheck run on every push / pull request; tagged releases are published
   automatically.
@@ -95,8 +100,6 @@ via `.gitkeep` placeholders.
 ```bash
 bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/bin/install.sh)"
 ```
-
-> Note: the one-liner above works only after v2.0.0 lands on `master`.
 
 The installer is **cross-distro** (Arch, Debian/Ubuntu, Fedora/RHEL,
 openSUSE): it detects your package manager and installs **eww + all
@@ -117,7 +120,9 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/setup.sh    # change API key / th
 
 ## Configuration
 
-Everything lives in a single, heavily commented `config.yaml`:
+Defaults live in a single, heavily commented `config.yaml`; machine-specific
+overrides go into the git-ignored `config.local.yaml` (same structure, only
+what you want to change):
 
 - `appearance` — a theme name (`light`, `dark`, `dark-orange-bg`, ...) or a
   custom inline appearance map (fonts, colors, icon set + tint, transparency,
@@ -129,14 +134,16 @@ Everything lives in a single, heavily commented `config.yaml`:
   and the taskbar `gap` baseline.
 
 The right-click context menu lets you **Move / Resize / Reset** each widget
-directly on screen; the resulting values are written back into `config.yaml`
-and applied live by the file watcher.
+directly on screen; the resulting values are written into
+`config.local.yaml` and applied live by the file watcher — so the repository
+stays clean unless you deliberately edit a default.
 
 ## Themes
 
 A wide gallery of ready-made **light** and **dark** appearance themes plus
 per-city weather themes (`assets/themes/weather/<name>/weather.yaml`) — or define
-your own colors inline in `config.yaml`.
+your own colors inline in `config.yaml` (or locally override them in
+`config.local.yaml` without touching the tracked defaults).
 
 ## Documentation
 
@@ -146,7 +153,7 @@ your own colors inline in `config.yaml`.
   — dependencies, version-change risks, `config.yaml` reference, project
   structure, EWW/CSS customization and testing.
 - **[PLAN](https://github.com/takattila/Clock-With-Weather-EWW/blob/master/docs/PLAN.md)**
-  — the executed directory-restructure record behind this release.
+  — the executed plan behind the `config.local.yaml` override layer.
 
 ## Compatibility
 
@@ -160,7 +167,8 @@ your own colors inline in `config.yaml`.
 | Path | Purpose |
 |---|---|
 | `eww/` | the widget tree (`eww.yuck`) and its styling (`eww.scss`) |
-| `config.yaml` | the central, commented configuration |
+| `config.yaml` | the central, commented defaults |
+| `config.local.yaml` | git-ignored machine overrides (+ everything the scripts write) |
 | `scripts/core|widgets|move|bin/` | data-producing Python scripts grouped by role (`core`: config/workarea/theme/weather/system, `widgets`: panel/about/ctx, `move`: Move/Resize + input daemons) and the bash install/start/setup tooling in `bin` |
 | `assets/themes/` | appearance + per-city weather theme YAMLs |
 | `logs/`, `run/` | runtime logs and pid files (git-ignored) |
@@ -170,5 +178,6 @@ your own colors inline in `config.yaml`.
 
 ---
 
-> Looking for the **v1.0.0** notes? They are preserved on the
-> [v1.0.0 release page](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v1.0.0).
+> Looking for older release notes? They are preserved on their release pages:
+> [v2.0.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.0.0),
+> [v1.0.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v1.0.0).
