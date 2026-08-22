@@ -26,6 +26,13 @@
 ;; `literal`: handlers on widgets created inside `(for ...)` loops never fire
 ;; on eww 0.6.0, so dynamic looping is not an option here.
 (defvar sub_yuck "")
+;; The picker pane lives inside the ctx_menu window (right of the item rows):
+;; sub_top positions it next to the hovered row, sub_show toggles it. Pure
+;; variables -> identical behavior on X11 and Wayland, no extra window.
+(defvar sub_top 7)
+(defvar sub_cols 1)
+(defvar sub_show false)
+
 
 ;; --- Clock data ------------------------------------------------------------
 (defpoll hour :interval "1s"
@@ -233,12 +240,14 @@
 
 ;; The five selectable rows (AM/PM switch, Theme, Units, Panel, Side) are
 ;; hover-only: an eventbox opens scripts/widgets/submenu.py --item <key> when
-;; the pointer enters and schedules a close when it leaves; the actual values
-;; are picked from the submenu. Move / Resize / Reset keep their click
-;; behavior. Slower actions are nohup-backgrounded to keep the click instant,
-;; exactly like Move / Resize.
+;; the pointer enters. The submenu lives exactly as long as this menu — every
+;; dismissal path (option click, outside click, ESC, another right-click) goes
+;; through close_popup.py. Move / Resize / Reset keep their click behavior.
+;; Slower actions are nohup-backgrounded to keep the click instant, exactly
+;; like Move / Resize.
 (defwidget widget_ctx_menu [widget monitor]
-  (box :class "ctx-menu" :orientation "v"
+  (box :orientation "h" :space-evenly false
+    (box :class "ctx-menu" :orientation "v"
     ;; move.py opens the overlay + control panel and returns immediately, so it
     ;; is backgrounded (nohup ... &) to keep the shell call instant.
     (button :class "ctx-btn" :timeout "5s"
@@ -260,32 +269,27 @@
     ;; needs; a plain box+label keeps hover working.
     (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item hour_format"
-              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
       (box :class "ctx-btn-box"
            (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"})))
     ;; Theme: every theme under assets/themes/appearance/, two columns.
     (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item appearance"
-              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
       (box :class "ctx-btn-box"
            (label :text {"Theme: " + config.appearance_name + " ▸"})))
     ;; Units metric <-> imperial; picking one also refreshes weather_info
     ;; instantly so °C/°F does not wait for the 10-minute defpoll.
     (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item units"
-              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
       (box :class "ctx-btn-box"
            (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"})))
     ;; Panel visibility: panel.enabled shown / hidden.
     (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item panel_enabled"
-              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
       (box :class "ctx-btn-box"
            (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"})))
     ;; Panel side: panel.window.alignment right / left.
     (eventbox :class "ctx-btn"
               :onhover "../scripts/widgets/submenu.py --item panel_alignment"
-              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
       (box :class "ctx-btn-box"
            (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"})))
     ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and
@@ -295,7 +299,16 @@
             (box :class "ctx-btn-box" (label :text "Hard reset")))
     (button :class "ctx-btn" :timeout "10s"
             :onclick "../scripts/widgets/about.py --open --monitor ${monitor}"
-            (box :class "ctx-btn-box" (label :text "About")))))
+            (box :class "ctx-btn-box" (label :text "About"))))
+    ;; Quick-settings picker pane: submenu.py fills sub_yuck / sub_top and
+    ;; shows it while a selectable row is hovered. Clicking the empty pane
+    ;; area dismisses everything, like the rest of the popup surface.
+    (eventbox :onclick "../scripts/widgets/close_popup.py"
+      (box :class "submenu-pane" :width 250
+        (box :class "submenu" :valign "start" :halign "start"
+             :visible {sub_show}
+             :style "margin-top:${sub_top}px"
+          (literal :content {sub_yuck}))))))
 
 ;; ===========================================================================
 ;; Hover submenu (value picker for the selectable context-menu rows)
@@ -305,27 +318,6 @@
 ;; picker definition (prebuilt by submenu.py as a static yuck literal) and
 ;; the geometry via --arg at hover time. Clicking an entry writes it through
 ;; menu_toggle.py; ESC / outside clicks close everything via close_popup.py.
-(defwidget widget_submenu []
-  ;; Rendered from the prebuilt literal (see scripts/widgets/submenu.py):
-  ;; every option row carries its own hover/click handlers as static yuck.
-  (literal :content {sub_yuck}))
-
-;; ===========================================================================
-;; Windows
-;; ===========================================================================
-
-;; main_window is parametrized so scripts/bin/start.sh can pass the clock widget's
-;; position and size. The clock uses a "top left" anchor: main_x/main_y are the
-;; top-left corner (workarea-local on Wayland, monitor-local on X11), computed
-;; from config.yaml (window.alignment + the per-monitor position/scale in
-;; weather.window.per_monitor) by scripts/move/widget_rect.py. main_w/main_h are
-;; the NATURAL window size (dynamic width ending at the city name x 247,
-;; independent of the scale): the content
-;; is scaled with the transform widget (:scale-* takes a PERCENTAGE in eww
-;; 0.5.0, so main_scale_perc = round(scale * 100)). The transform's cairo
-;; origin is the widget's top-left, so the scaled content stays anchored at the
-;; window's top-left corner and the window position matches the visual (scaled)
-;; position reported by scripts/move/widget_rect.py.
 (defwindow main_window
   [main_x main_y main_w main_h main_scale_perc screen]
   :monitor {screen}
@@ -417,8 +409,8 @@
   :monitor {screen}
   :geometry (geometry :x {pos_x}
                       :y {pos_y}
-                      :width "220px"
-                      :height "440px"
+                      :width "470px"
+                      :height "500px"
                       :anchor "top left")
   :stacking "overlay"
   :windowtype "normal"
@@ -453,17 +445,3 @@
 ;; time. Not focusable: it is pointer-driven only, the keyboard daemon keeps
 ;; handling ESC for the whole popup stack.
 ;; ===========================================================================
-
-(defwindow submenu
-  [screen sx sy sw sh]
-  :monitor {screen}
-  :geometry (geometry :x {sx}
-                      :y {sy}
-                      :width {sw}
-                      :height {sh}
-                      :anchor "top left")
-  :stacking "overlay"
-  :windowtype "normal"
-  :wm-ignore true
-  :focusable false
-  (widget_submenu))

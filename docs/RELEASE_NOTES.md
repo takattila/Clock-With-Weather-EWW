@@ -69,9 +69,9 @@ context menu's "Hard reset" item.
 - `scripts/widgets/menu_toggle.py`: optional `--value` sets an exact value
   instead of flipping/cycling (used by the hover submenus; the old flip
   behavior stays available from the CLI).
-- The context menu window grew to fit ten items (220x440 px); hovering a
-  selectable row opens its submenu next to it (flipped/clamped at the screen
-  edges, flicker-free via a generation counter).
+- The context menu window grew to fit ten items plus a picker pane
+  (470x500 px): hovering a selectable row shows its options right next to it,
+  with the active value highlighted.
 - The menu's transparent dismiss layer now covers **every connected monitor**:
   clicking on another screen also closes the popups (previously only the
   menu's own monitor was covered).

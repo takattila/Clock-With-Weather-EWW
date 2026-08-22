@@ -477,7 +477,7 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 | `menu_toggle.py` (`scripts/widgets/`) | — | context-menu quick settings: with `--value` writes an exact value, without it flips/cycles (hour_format 24↔12, appearance next theme alphabetically, units °C↔°F with an instant weather refresh, panel_enabled, panel_alignment); delegates to `config_set.py`, the watcher applies the change live |
-| `submenu.py` (`scripts/widgets/`) | — | hover submenus of the five selectable context-menu rows: builds the option list per key (Theme dynamically from `assets/themes/appearance/`, two columns), prebuilds the whole picker as a static yuck literal into `sub_yuck`, anchors the generic `submenu` window to the parent menu's real X11 geometry (flip + clamp at the screen edges, generation-counter-based flicker-free closing) and closes it when the parent menu is gone |
+| `submenu.py` (`scripts/widgets/`) | — | hover submenus of the five selectable context-menu rows: builds the option list per key (Theme dynamically from `assets/themes/appearance/`, two balanced columns), prebuilds the whole picker as a static yuck literal into `sub_yuck` and shows it in the ctx_menu window's side pane, vertically aligned with the hovered row |
 | `hard-reset.sh` (`scripts/bin/`) | — | factory reset: deletes the git-ignored `config.local.yaml` (**no backup**) + a stale input session, regenerates the theme from the committed defaults and relayouts; also available as the context menu's "Hard reset" item |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
@@ -575,9 +575,12 @@ images at render time.
 
 ### Right-click quick-settings menu
 
-Right-clicking either widget opens the `ctx_menu` eww window (220x440 px,
-opened at the cursor by `scripts/widgets/ctx.py` + `scripts/move/menu_pos.py`;
-a full-screen dismiss layer closes it on outside clicks, ESC works too).
+Right-clicking either widget opens the `ctx_menu` eww window (470x500 px:
+the 220px menu column plus a picker pane on its right, opened at the cursor
+by `scripts/widgets/ctx.py` + `scripts/move/menu_pos.py`; transparent
+full-screen dismiss layers on EVERY connected monitor close it on outside
+clicks — clicking on another screen dismisses the popups too — ESC works as
+well).
 The five selectable rows are **hover-only parents**: pointing at one opens a
 small submenu next to it (`scripts/widgets/submenu.py`) with the possible
 values, the active one highlighted; picking an entry writes it and closes
@@ -596,21 +599,21 @@ the popups.
 
 Submenu mechanics:
 
-- One generic `submenu` eww window is reused for all rows. `submenu.py`
-  prebuilds the whole picker as a static yuck string — every option row an
-  `eventbox` with its own hover/click handlers and the active value
-  highlighted (Theme split across two balanced columns) — pushes it into the
-  `sub_yuck` eww variable and opens the window rendered via `(literal ...)`
-  at the hovered row. Handlers inside `(for ...)` loops never fire on
+- The picker is NOT a separate window: it renders INSIDE the ctx_menu
+  window, in a 250px-wide pane to the right of the item rows, vertically
+  aligned with the hovered row. This sidesteps every X11/Wayland window
+  placement pitfall and works identically on both compositors.
+- `submenu.py` prebuilds the whole picker as one static yuck definition —
+  every option row an `eventbox` with its click handler and the active value
+  highlighted (Theme = all themes in two balanced columns) — pushes it into
+  the `sub_yuck` eww variable and shows the pane (`sub_show=true`,
+  `sub_top=<row offset>`). Handlers inside `(for ...)` loops never fire on
   eww 0.6.0, which is why the definition is generated instead of looped.
-- The position is RELATIVE to the parent menu's real X11 geometry: queried
-  with `xwininfo` at hover time (right of its edge with a small overlap,
-  flipped to its left side when it would not fit, clamped to the monitor
-  frame; vertical anchor calibrated from the menu's actual height). If the
-  ctx_menu window is gone, no submenu is opened — no orphans.
-- Leaving a row schedules a close after 300 ms; entering any row or the
-  submenu itself cancels pending timers via a generation counter
-  (`generated/submenu_gen`), which makes item→item transitions flicker-free.
+- LIFETIME: the pane lives exactly as long as the context menu. There are no
+  hover-out timers: option clicks, outside clicks, ESC and re-opening the
+  menu all go through close_popup.py / ctx.py which hide the pane together
+  with the menu. (Timer/generation races measured earlier made this fragile,
+  so they are gone on purpose.)
 - Values are written through `menu_toggle.py --key <key> --value <value>`
   → `config_set.py` into the git-ignored `config.local.yaml`; the watcher
   regenerates / reloads / relayouts automatically.

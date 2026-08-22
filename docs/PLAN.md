@@ -11,37 +11,30 @@
 
 Follow-up within v2.2.0: the five selectable quick-settings rows
 (AM/PM switch, Theme, Units, Panel, Side) become **hover-only parents** —
-pointing at a row opens a small submenu listing the possible values, the
-active one highlighted; picking an entry writes it through `menu_toggle.py
---value` → `config_set.py`. Clicking a parent row does nothing.
+pointing at a row shows a picker pane with the possible values, the active
+one highlighted; picking an entry writes it through `menu_toggle.py --value`
+→ `config_set.py`. Clicking a parent row does nothing.
 
-- **One generic eww window** (`submenu`) reused by all five items; its
-  geometry arrives via `--arg` at hover time — no extra GTK window.
-  `submenu.py` **prebuilds the entire picker as a static yuck string**
-  (real values, active-state class and hover/click handlers baked in) and
-  pushes it into the `sub_yuck` eww variable, rendered with `(literal ...)`.
-  This is deliberate: on eww 0.6.0 event handlers attached to widgets created
-  inside `(for ...)` loops never fire (measured), while literal-rendered
-  definitions behave exactly like hand-written config. The submenu position
-  is computed RELATIVE to the parent menu's real X11 geometry (queried via
-  `xwininfo`, incl. monitor resolution), not from cached estimates.
-- **New `scripts/widgets/submenu.py`**: `--item <key>` opens the picker
-  (options built per key, Theme dynamically from `assets/themes/appearance/`
-  split across two balanced columns), `--schedule-close` closes after 300 ms
-  unless a newer hover/cancel bumped the generation counter in
-  `generated/submenu_gen`, which makes item→item hover transitions flicker-
-  free. All entry actions re-spawn detached (ctx.py pattern) so eww's
-  command timeout can never kill them.
-- **Positioning**: anchored right of the context menu with 4 px overlap,
-  flipped to the menu's left side when it would not fit, clamped to the
-  monitor frame; vertical anchor = parent row offset (`ROWS` map × 42 px row
-  height). ctx.py stores the menu position (`x`/`y`/`screen`) in the session
-  file for this purpose.
-- **close_popup.py** closes the submenu too, so ESC / outside clicks /
-  any other action dismiss it.
-- Verified: unit tests for options/split/geometry/generation (23 new), and
-  both submenu layouts + the eventbox-wrapped menu validated in an isolated
-  eww daemon with zero expression errors.
+- **The picker renders INSIDE the ctx_menu window**: a 250px pane to the
+  right of the item rows (window widened to 470x500), vertically aligned
+  with the hovered row. No extra window exists at all — this removes an
+  entire class of problems measured with a standalone popup window on
+  X11 (invisible override-redirect copies stacking up and eating pointer
+  input) and makes Wayland behave exactly like X11.
+- **New `scripts/widgets/submenu.py`**: builds the option list per key
+  (Theme = every directory under `assets/themes/appearance/`, split across
+  two balanced columns), bakes values + active-state class + click handler
+  into ONE static yuck definition pushed into the `sub_yuck` eww variable,
+  rendered via `(literal ...)`, shown with `sub_show=true` /
+  `sub_top=<calibrated row offset>`.
+- Measured eww 0.6.0 constraints that shaped this design: handlers on
+  widgets created inside `(for ...)` loops never fire; defwindow geometry
+  cannot see global defvars; literal-rendered eventboxes deliver clicks but
+  not hover events. All three are avoided by construction.
+- Dismissal stays with close_popup.py / ctx.py (option click, outside click
+  on the per-monitor dismiss layers, ESC, re-opening the menu), which also
+  hides the pane. The pane lives exactly as long as its parent menu.
+
 
 ## Goal
 

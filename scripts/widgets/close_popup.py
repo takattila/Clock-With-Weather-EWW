@@ -43,8 +43,13 @@ def read_session_data():
 
 
 def windows_to_close(session_data=None):
-    """Ordered, de-duplicated list of popup windows to close."""
-    names = ["ctx_menu", "submenu"]
+    """Ordered, de-duplicated list of popup windows to close.
+
+    The hover-submenu pane lives INSIDE the ctx_menu window (rendered from
+    the `sub_show` / `sub_yuck` variables), so closing `ctx_menu` hides it;
+    the variables are reset separately in main().
+    """
+    names = ["ctx_menu"]
     if isinstance(session_data, dict):
         for idx in session_data.get("overlays") or []:
             try:
@@ -72,6 +77,34 @@ def close_all(names):
             pass
 
 
+def destroy_stray_windows():
+    """X11: unmap leftover override-redirect popup windows.
+
+    Re-opening the same eww window id quickly can leave the previous X window
+    behind (measured leak on eww 0.6.0); such invisible strays keep eating
+    pointer input. Unmapping them by name makes the desktop clickable again
+    even when the daemon-side bookkeeping already lost track of them.
+    """
+    env = {k: v for k, v in os.environ.items()
+           if k in ("DISPLAY", "XAUTHORITY")}
+    try:
+        out = subprocess.run(
+            ["xdotool", "search", "--name", r"^Eww - (submenu|ctx_menu)$"],
+            capture_output=True, text=True, timeout=3, env=env,
+        ).stdout
+    except Exception:
+        return
+    for win in out.split():
+        try:
+            subprocess.run(
+                ["xdotool", "windowunmap", win],
+                check=False, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=3,
+            )
+        except Exception:
+            pass
+
+
 def main():
     session_data = read_session_data()
     names = windows_to_close(session_data)
@@ -80,6 +113,14 @@ def main():
     # busy regenerating/reloading and can drop an IPC close.
     time.sleep(0.15)
     close_all(names)
+    destroy_stray_windows()
+    # Hide/reset the picker pane of the (already closed) ctx_menu window.
+    subprocess.run(
+        ["eww", "--config", EWW_CONFIG_DIR, "update",
+         "sub_show=false", "sub_yuck="],
+        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        timeout=5,
+    )
     # Deactivate the keyboard daemon session (ESC / click-outside closed the
     # popups), so the daemon goes back to idle.
     session.clear_session()

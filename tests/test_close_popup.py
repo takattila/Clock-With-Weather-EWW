@@ -5,7 +5,6 @@ def test_windows_to_close_per_monitor_overlays():
     data = {"mode": "ctx", "overlays": [1, 0]}
     assert close_popup.windows_to_close(data) == [
         "ctx_menu",
-        "submenu",
         "dismiss_overlay_1",
         "dismiss_overlay_0",
         "dismiss_overlay",
@@ -14,10 +13,10 @@ def test_windows_to_close_per_monitor_overlays():
 
 def test_windows_to_close_defaults_without_session():
     assert close_popup.windows_to_close(None) == [
-        "ctx_menu", "submenu", "dismiss_overlay"
+        "ctx_menu", "dismiss_overlay"
     ]
     assert close_popup.windows_to_close({}) == [
-        "ctx_menu", "submenu", "dismiss_overlay"
+        "ctx_menu", "dismiss_overlay"
     ]
 
 

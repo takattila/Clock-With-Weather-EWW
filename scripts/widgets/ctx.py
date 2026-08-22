@@ -88,6 +88,10 @@ def main():
         run(["eww", "--config", EWW_CONFIG_DIR, "close",
              "dismiss_overlay_%d" % idx])
     run(["eww", "--config", EWW_CONFIG_DIR, "close", "submenu"])
+    try:
+        os.remove(os.path.join(CONFIG_DIR, "generated", "submenu_open"))
+    except OSError:
+        pass
     run(["eww", "--config", EWW_CONFIG_DIR, "close", "ctx_menu"])
     for idx in screens:
         run(["eww", "--config", EWW_CONFIG_DIR, "open",
