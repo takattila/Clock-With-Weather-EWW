@@ -308,11 +308,19 @@ class MovePanel:
             self.win.move(x, y)
 
         self.build_ui(bg, light, alpha, radius, font)
-        self.win.connect("destroy", lambda *_: Gtk.main_quit())
+        self.win.connect("destroy", lambda *_: (self._release_keyboard(), Gtk.main_quit()))
         # On X11 the full-screen eww move overlay is override-redirect, which
         # always floats above managed windows - so the panel must be
         # override-redirect too to receive clicks and be draggable at all.
         self.win.connect("realize", self.on_realize)
+
+    def _release_keyboard(self, *_):
+        """Safety net: never leave a keyboard grab behind."""
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
 
     def on_realize(self, widget):
         if not WAYLAND:
@@ -392,6 +400,7 @@ class MovePanel:
         self.size_entry.set_text("%d%%" % self.last_pct)
         # Enter applies the typed percentage; clicking/leaving the field
         # guards the poll overwrite and the keyboard daemon (typing flag).
+        self.size_entry.connect("button-press-event", self.on_pct_button_press)
         self.size_entry.connect("activate", self.on_pct_activate)
         self.size_entry.connect("focus-in-event", self.on_pct_focus_in)
         self.size_entry.connect("focus-out-event", self.on_pct_focus_out)
@@ -440,18 +449,78 @@ class MovePanel:
         action(self.widget, self.monitor, act)
 
     # ---- hand-typed resize percentage --------------------------------------
-    def on_pct_focus_in(self, entry, event):
+    # X11: the panel is an override-redirect toplevel, so clicking the entry
+    # NEVER moves the server-side input focus - keystrokes would keep going
+    # to whatever application was focused before. While the entry owns the
+    # pointer we therefore take a GDK KEYBOARD GRAB: every key event is
+    # routed into this GTK app and delivered to the focused entry normally
+    # (typing selects-all first, so digits REPLACE the old value). The grab
+    # is released on focus-out / when editing ends. On Wayland the
+    # layer-shell ON_DEMAND keyboard mode already delivers keys after a
+    # click, no grab needed.
+    def on_pct_button_press(self, entry, event):
         self.pct_editing = True
         set_session_typing(True)
         if not WAYLAND:
-            # Override-redirect toplevels receive no automatic focus on click;
-            # take the X input focus explicitly so the entry can be typed in.
             try:
-                window = self.win.get_window()
-                if window is not None:
-                    window.focus(Gdk.CURRENT_TIME)
+                Gdk.keyboard_grab(self.win.get_window(), True, Gdk.CURRENT_TIME)
             except Exception:
                 pass
+        # Select the whole current value AFTER GTK's own press handling ran
+        # (otherwise it clears our selection and typed digits would land
+        # inside the old number). idle = post-default-handler.
+        GLib.idle_add(entry.select_region, 0, -1)
+        return False
+
+    def on_pct_focus_in(self, entry, event):
+        self.pct_editing = True
+        set_session_typing(True)
+        return False
+
+    def on_pct_button_press(self, entry, event):
+        self.pct_editing = True
+        set_session_typing(True)
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_grab(self.win.get_window(), True, Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        # Select the whole current value AFTER GTK's own press handling ran
+        # (otherwise it clears our selection and typed digits would land
+        # inside the old number). idle = post-default-handler.
+        GLib.idle_add(entry.select_region, 0, -1)
+        return False
+
+    def on_pct_focus_in(self, entry, event):
+        self.pct_editing = True
+        set_session_typing(True)
+        return False
+
+    def on_win_key(self, wdg, ev):
+        """Route keys into the resize entry while it owns the keyboard.
+
+        The override-redirect toplevel never gains the X input focus, so the
+        entry cannot rely on normal key delivery - with the GDK keyboard
+        grab held (button press on the entry), this window-level handler
+        receives every keystroke and edits the text directly. Handles
+        digits, backspace, +/- prefix and Return (=apply).
+        """
+        if not self.pct_editing:
+            return False
+        name = Gdk.keyval_name(ev.keyval) or ""
+        if name in ("Return", "KP_Enter"):
+            self.on_pct_activate(self.size_entry)
+            return True
+        if name == "BackSpace":
+            txt = self.size_entry.get_text()
+            self.size_entry.set_text(txt[:-1])
+            return True
+        if name and len(name) == 1 and (name.isdigit() or name in "+-."):
+            self.size_entry.insert_text(name, self.size_entry.get_position())
+            return True
+        if name in ("Escape",):
+            self._end_pct_editing(self.size_entry)
+            return True
         return False
 
     def on_pct_activate(self, entry):
@@ -466,11 +535,19 @@ class MovePanel:
         action(self.widget, self.monitor, "set_scale", value)
         entry.set_text("%d%%" % max(30, min(150, int(round(value)))))
 
-    def on_pct_focus_out(self, entry, event):
+    def _end_pct_editing(self, entry):
         self.pct_editing = False
         set_session_typing(False)
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
         # Discard an uncommitted draft; the poll refreshes the real value.
         entry.set_text("%d%%" % self.last_pct)
+
+    def on_pct_focus_out(self, entry, event):
+        self._end_pct_editing(entry)
         return False
 
     # ---- dragging ----------------------------------------------------------
