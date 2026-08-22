@@ -48,11 +48,11 @@ SUB_PAD_V = 8    # picker vertical padding (top+bottom)
 
 # Row index of every selectable item inside widget_ctx_menu (0-based).
 ROWS = {
-    "hour_format": 3,
-    "appearance": 4,
-    "units": 5,
-    "panel_enabled": 6,
-    "panel_alignment": 7,
+    "hour_format": 4,       # +1: actions|settings separator
+    "appearance": 5,
+    "units": 6,
+    "panel_enabled": 7,
+    "panel_alignment": 8,   # settings|system separator follows
 }
 KEYS = tuple(ROWS)
 

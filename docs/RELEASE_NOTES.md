@@ -70,8 +70,9 @@ context menu's "Hard reset" item.
   instead of flipping/cycling (used by the hover submenus; the old flip
   behavior stays available from the CLI).
 - The context menu window grew to fit ten items plus a picker pane
-  (470x500 px): hovering a selectable row shows its options right next to it,
-  with the active value highlighted.
+  (470x550 px): hovering a selectable row shows its options right next to it,
+  with the active value highlighted. Items are visually grouped into
+  Actions / Settings / System sections separated by thin lines.
 - The menu's transparent dismiss layer now covers **every connected monitor**:
   clicking on another screen also closes the popups (previously only the
   menu's own monitor was covered).

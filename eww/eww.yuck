@@ -263,6 +263,8 @@
     (button :class "ctx-btn" :timeout "10s"
             :onclick "../scripts/widgets/close_popup.py && ../scripts/move/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
             (box :class "ctx-btn-box" (label :text "Reset")))
+    ;; --- group separator: actions | settings -----------------------------
+    (label :class "ctx-sep" :text "───────────────────────────")
     ;; AM/PM switch: system.hour_format 24h / 12h picker.
     ;; NOTE: deliberately NOT a button — a nested GTK button owns its own
     ;; input window, which swallows the enter/leave events the eventbox
@@ -292,6 +294,8 @@
               :onhover "../scripts/widgets/submenu.py --item panel_alignment"
       (box :class "ctx-btn-box"
            (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"})))
+    ;; --- group separator: settings | system -------------------------------
+    (label :class "ctx-sep" :text "───────────────────────────")
     ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and
     ;; relayouts, restoring every committed default (scripts/bin/hard-reset.sh).
     (button :class "ctx-btn" :timeout "10s"
@@ -410,7 +414,7 @@
   :geometry (geometry :x {pos_x}
                       :y {pos_y}
                       :width "470px"
-                      :height "500px"
+                      :height "550px"
                       :anchor "top left")
   :stacking "overlay"
   :windowtype "normal"

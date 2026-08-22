@@ -150,8 +150,8 @@ def test_open_item_updates_pane_vars(themes, tmp_path, monkeypatch):
     assert '"dark-blue"' in yuck and '"light"' in yuck
     assert ':class "sub-btn active"' in yuck
     assert "--key appearance --value dark-blue" in yuck
-    # pane position: Theme is row 4 -> MENU_PAD + 4 * ROW_H
-    assert payload["sub_top"] == str(int(submenu.MENU_PAD + 4 * submenu.ROW_H))
+    # pane position: Theme row offset comes from ROWS (shifted by separators)
+    assert payload["sub_top"] == str(submenu.pane_top_for("appearance"))
     assert payload["sub_show"] == "true"
 
 

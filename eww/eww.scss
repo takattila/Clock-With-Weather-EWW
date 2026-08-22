@@ -344,14 +344,21 @@
 }
 
 .sub-btn.active {
-  background-color: rgba($color-light, 0.18);
+  background-color: red;
 }
 
 .sub-btn-box {
   padding: 4px 10px;
 }
 
-.sub-btn-box label {
+'.sub-btn-box label {
   font-size: 12px;
   color: rgba($color-light, $color-light-alpha);
+}
+
+.ctx-sep {
+  font-size: 7px;
+  letter-spacing: 4px;
+  color: rgba($color-light, 0.35);
+  margin: 2px 14px;
 }

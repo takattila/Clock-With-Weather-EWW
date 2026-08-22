@@ -16,8 +16,12 @@ one highlighted; picking an entry writes it through `menu_toggle.py --value`
 → `config_set.py`. Clicking a parent row does nothing.
 
 - **The picker renders INSIDE the ctx_menu window**: a 250px pane to the
-  right of the item rows (window widened to 470x500), vertically aligned
-  with the hovered row. No extra window exists at all — this removes an
+  right of the item rows (window widened to 470x550), vertically aligned
+  with the hovered row.
+- Items are GROUPED with thin separators: actions (Move / Resize / Reset)
+  | quick settings (AM/PM / Theme / Units / Panel / Side) | system
+  (Hard reset / About). The picker's vertical offset accounts for the
+  two separators (`submenu.py` ROWS map). No extra window exists at all — this removes an
   entire class of problems measured with a standalone popup window on
   X11 (invisible override-redirect copies stacking up and eating pointer
   input) and makes Wayland behave exactly like X11.
