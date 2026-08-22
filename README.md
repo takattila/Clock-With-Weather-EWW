@@ -76,10 +76,11 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/setup.sh    # change API key / th
 
 ### Right click on the Widgets
 
-The context menu is a quick-settings panel: Move / Resize / Reset, an
-**AM/PM switch** (12 ↔ 24 hour), a **theme cycler**, a **°C/°F toggle**
-(with instant weather refresh), **panel show/hide + side flip**, a factory
-**Hard reset** and the About dialog. Every switch is written to the
+The context menu is a quick-settings panel: Move / Resize / Reset, plus hover
+submenus for the **AM/PM format** (12 ↔ 24 hour), the **theme** (all
+ready-made themes, two columns, active one highlighted), **°C/°F** (with
+instant weather refresh), **panel show/hide** and **panel side** — and a
+factory **Hard reset** + About dialog. Every selection is written to the
 git-ignored `config.local.yaml` and applied live.
 
 <table>
@@ -114,12 +115,13 @@ git-ignored `config.local.yaml` and applied live.
   detected automatically.
 - **Wayland native** — runs via **EWW** + GTK layer-shell; works on X11 too.
 - **Light & dark ready** — supports appearance on both light and dark
-  backgrounds, with a wide gallery of ready-made themes (cycled from the
-  right-click menu).
+  backgrounds, with a wide gallery of ready-made themes (pickable from the
+  right-click menu's Theme submenu).
 - **12 / 24-hour clock** — switch the hour format any time (config, setup
-  wizard or right-click AM/PM switch).
-- **Quick-settings context menu** — hour format, theme, °C/°F, panel
-  show/hide + side flip and a factory Hard reset, one right click away.
+  wizard or right-click AM/PM submenu).
+- **Quick-settings context menu** — hover submenus for hour format, theme,
+  °C/°F, panel show/hide and side flip, plus a factory Hard reset, one right
+  click away.
 - **Per-widget scaling** — scale the clock and the panel independently; each
   shrinks as a single object, so the relative distances between its parts never
   change. The Move / Resize dialog accepts a hand-typed exact percentage too.

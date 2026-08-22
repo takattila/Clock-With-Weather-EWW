@@ -312,3 +312,46 @@
   font-size: 15px;
   color: rgba($color-light, $color-light-alpha);
 }
+
+/* ============================================================
+   Hover submenu (value picker of the quick-settings rows)
+   ============================================================ */
+
+.submenu {
+  background-color: rgba($bg-color, 0.95);
+  border: 1px solid rgba($color-light, 0.15);
+  border-radius: $bg-radius;
+  padding: 4px 3px;
+}
+
+.sub-col {
+  margin: 0 1px;
+}
+
+.sub-btn {
+  min-width: 100px;
+  margin: 1px;
+  background-color: transparent;
+  border-radius: 6px;
+}
+
+.sub-btn:hover {
+  background-color: rgba($color-light, 0.12);
+}
+
+.sub-btn:active {
+  background-color: rgba($color-light, 0.22);
+}
+
+.sub-btn.active {
+  background-color: rgba($color-light, 0.18);
+}
+
+.sub-btn-box {
+  padding: 5px 10px;
+}
+
+.sub-btn-box label {
+  font-size: 13px;
+  color: rgba($color-light, $color-light-alpha);
+}

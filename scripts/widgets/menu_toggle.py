@@ -27,6 +27,7 @@ Usage:
   ./menu_toggle.py --key hour_format
   ./menu_toggle.py --key appearance
   ./menu_toggle.py --key units
+  ./menu_toggle.py --key panel_enabled --value false   # direct set (submenu)
 """
 
 import argparse
@@ -155,16 +156,26 @@ def refresh_weather(units):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--key", required=True, choices=KEYS)
+    ap.add_argument("--value", default=None,
+                    help="set this exact value instead of flipping/cycling "
+                         "(used by the hover submenus; validated by "
+                         "config_set.py)")
     args = ap.parse_args()
 
     cfg = load_merged(CONFIG_DIR)
-    value = next_value(args.key, cfg)
+    if args.value is not None:
+        value = args.value
+        if args.key == "units":
+            # Keep the °C/°F switch instant for direct sets as well.
+            refresh_weather(str(value))
+    else:
+        value = next_value(args.key, cfg)
 
     out = write(args.key, value)
     if out:
         print(out)
 
-    if args.key == "units":
+    if args.key == "units" and args.value is None:
         refresh_weather(value)
 
 

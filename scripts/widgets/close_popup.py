@@ -24,7 +24,7 @@ import session
 
 
 def main():
-    for window in ("ctx_menu", "dismiss_overlay"):
+    for window in ("ctx_menu", "submenu", "dismiss_overlay"):
         try:
             subprocess.run(
                 ["eww", "--config", EWW_CONFIG_DIR, "close", window],

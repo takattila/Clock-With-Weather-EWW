@@ -88,8 +88,15 @@ def main():
         ]
     )
     # The invisible keyboard daemon (scripts/input_daemon.py) reads the session
-    # file: while it exists, ESC closes the popups.
-    session.set_session({"mode": "ctx"})
+    # file: while it exists, ESC closes the popups. The menu position is stored
+    # as well so the hover submenus (scripts/widgets/submenu.py) can anchor
+    # themselves next to their parent row.
+    session.set_session({
+        "mode": "ctx",
+        "x": int(pos["x"]),
+        "y": int(pos["y"]),
+        "screen": int(pos["screen"]),
+    })
 
 
 if __name__ == "__main__":

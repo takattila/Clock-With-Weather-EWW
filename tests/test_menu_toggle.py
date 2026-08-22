@@ -146,6 +146,50 @@ def test_main_panel_enabled_writes_bool_string(writes, monkeypatch):
     assert writes == [("panel_enabled", "false")]
 
 
+# --- direct set (--value, used by the hover submenus) -------------------------------
+
+def run_main_with_value(monkeypatch, key, value):
+    monkeypatch.setattr(
+        "sys.argv", ["menu_toggle.py", "--key", key, "--value", value]
+    )
+
+
+def test_main_value_sets_exact_value(writes, monkeypatch):
+    run_main_with_value(monkeypatch, "hour_format", "12")
+    menu_toggle.main()
+    assert writes == [("hour_format", "12")]
+
+
+def test_main_value_skips_flip_logic(themes, writes, monkeypatch):
+    # even though the current theme is 'dark' (flip would pick dark-blue),
+    # an explicit --value writes exactly what was asked
+    run_main_with_value(monkeypatch, "appearance", "light-blue-bg")
+    menu_toggle.main()
+    assert writes == [("appearance", "light-blue-bg")]
+
+
+def test_main_value_units_refreshes_weather(writes, monkeypatch):
+    calls = {"weather": None}
+
+    def fake_config_key(name):
+        return {"api_key": "KEY", "city": "Budapest", "lang": "hu",
+                "api_url": "https://x/weather"}[name]
+
+    def fake_run(cmd, capture=False):
+        joined = " ".join(str(part) for part in cmd)
+        if "weather.py" in joined:
+            calls["weather"] = cmd
+            return "{}"
+        return ""
+
+    monkeypatch.setattr(menu_toggle, "config_key", fake_config_key)
+    monkeypatch.setattr(menu_toggle, "run", fake_run)
+    run_main_with_value(monkeypatch, "units", "metric")
+    menu_toggle.main()
+    assert writes == [("units", "metric")]
+    assert calls["weather"][5] == "metric"
+
+
 def test_write_invokes_config_set(monkeypatch, tmp_path):
     seen = {}
 

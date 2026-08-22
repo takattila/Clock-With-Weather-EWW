@@ -327,8 +327,8 @@ Several of these keys can also be changed at runtime without touching any
 file by hand: `scripts/core/config_set.py` writes them into
 `config.local.yaml` (`--key hour_format|appearance|units|panel_enabled|
 panel_alignment --value ...`, no `--widget`/`--monitor` needed), and the
-right-click quick-settings menu exposes the most useful ones as one-click
-toggles (see the "Right-click quick-settings menu" section).
+right-click quick-settings menu exposes them as hover submenus (see the
+"Right-click quick-settings menu" section).
 
 #### API key (`OPENWEATHER_API_KEY`)
 
@@ -476,7 +476,8 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 | `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key, creates the desktop/menu icons and starts the widgets |
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
-| `menu_toggle.py` (`scripts/widgets/`) | — | context-menu quick toggles: reads the merged config, computes the next value (`hour_format` 24↔12, `appearance` next theme alphabetically, `units` °C↔°F with an instant weather refresh, `panel_enabled`, `panel_alignment`) and writes it via `config_set.py` into `config.local.yaml`; the watcher applies the change live |
+| `menu_toggle.py` (`scripts/widgets/`) | — | context-menu quick settings: with `--value` writes an exact value, without it flips/cycles (hour_format 24↔12, appearance next theme alphabetically, units °C↔°F with an instant weather refresh, panel_enabled, panel_alignment); delegates to `config_set.py`, the watcher applies the change live |
+| `submenu.py` (`scripts/widgets/`) | — | hover submenus of the five selectable context-menu rows: builds the option list per key (Theme dynamically from `assets/themes/appearance/`, two columns), pushes it into eww vars and opens/closes the generic `submenu` window next to the hovered row (flip + clamp at the screen edges, generation-counter-based flicker-free closing) |
 | `hard-reset.sh` (`scripts/bin/`) | — | factory reset: deletes the git-ignored `config.local.yaml` (**no backup**) + a stale input session, regenerates the theme from the committed defaults and relayouts; also available as the context menu's "Hard reset" item |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
@@ -576,26 +577,39 @@ images at render time.
 
 Right-clicking either widget opens the `ctx_menu` eww window (220x440 px,
 opened at the cursor by `scripts/widgets/ctx.py` + `scripts/move/menu_pos.py`;
-a full-screen dismiss layer closes it on outside clicks, ESC works too):
+a full-screen dismiss layer closes it on outside clicks, ESC works too).
+The five selectable rows are **hover-only parents**: pointing at one opens a
+small submenu next to it (`scripts/widgets/submenu.py`) with the possible
+values, the active one highlighted; picking an entry writes it and closes
+the popups.
 
-| Item | Action |
-|---|---|
-| Move / Resize | opens the GTK Move / Resize overlay session (`scripts/move/move.py`) |
-| Reset | per-widget factory geometry (position 0/0, scale 1.0) via `move_ctl.py --action reset` |
-| AM/PM: 24h ▸ / 12h ▸ | flips `system.hour_format` (label shows the current state) |
-| Theme: \<name\> ▸ | cycles through every theme under `assets/themes/appearance/` alphabetically |
-| Units: °C ▸ / °F ▸ | flips `weather.units`; `menu_toggle.py` also re-fetches the weather immediately so °C/°F does not wait for the 10-minute poll |
-| Panel: shown ▸ / hidden ▸ | flips `panel.enabled` (the watcher's relayout opens/closes the panel windows) |
-| Side: right ▸ / left ▸ | flips `panel.window.alignment` |
-| Hard reset | runs `scripts/bin/hard-reset.sh`: deletes `config.local.yaml` (no backup), so every setting returns to the committed `config.yaml` default |
+| Row | Submenu values | Config key |
+|---|---|---|
+| Move / Resize / Reset | — (click actions: GTK move/resize session, factory geometry) |
+| AM/PM switch | `24h` / `12h` | `system.hour_format` |
+| Theme | every theme under `assets/themes/appearance/`, two columns | `appearance` |
+| Units | `°C (metric)` / `°F (imperial)` — picking one also re-fetches the weather instantly so °C/°F does not wait for the 10-minute poll | `weather.units` |
+| Panel | shown / hidden (applied by the watcher's relayout) | `panel.enabled` |
+| Side | right / left | `panel.window.alignment` |
+| Hard reset | runs `scripts/bin/hard-reset.sh`: deletes `config.local.yaml` (no backup), so every setting returns to the committed default |
 | About | the GTK About dialog |
 
-Every toggle goes through `scripts/widgets/menu_toggle.py`, which writes the
-new value with `scripts/core/config_set.py` into the git-ignored
-`config.local.yaml`; the running watcher then regenerates / reloads /
-relayouts automatically. The dynamic labels come from the `config` defpoll
-(5 s refresh), so right after a switch the reopened menu can show the previous
-state for up to 5 seconds.
+Submenu mechanics:
+
+- One generic `submenu` eww window is reused for all rows; `submenu.py`
+  pushes the option lists as JSON into `sub_col_a` / `sub_col_b` (Theme is
+  split across two balanced columns) plus `sub_active`, then opens the window
+  anchored to the parent row (right of the menu with 4 px overlap, flipped to
+  its left side when it would not fit, clamped to the monitor frame). The
+  menu position comes from the session file, stored there by `ctx.py`.
+- Leaving a row schedules a close after 300 ms; entering any row or the
+  submenu itself cancels pending timers via a generation counter
+  (`generated/submenu_gen`), which makes item→item transitions flicker-free.
+- Values are written through `menu_toggle.py --key <key> --value <value>`
+  → `config_set.py` into the git-ignored `config.local.yaml`; the watcher
+  regenerates / reloads / relayouts automatically.
+- The parent-row labels still show the current state from the `config`
+  defpoll (5 s refresh), so right after a selection they can lag up to 5 s.
 
 ### Hand-typed resize percentage
 

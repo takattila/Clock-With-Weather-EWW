@@ -7,6 +7,38 @@
 >
 > Target release: **v2.2.0** (branch `feature/context-menu-items`).
 
+## Phase 2: hover submenus for every selectable item (same release)
+
+Follow-up within v2.2.0: the five selectable quick-settings rows
+(AM/PM switch, Theme, Units, Panel, Side) become **hover-only parents** —
+pointing at a row opens a small submenu listing the possible values, the
+active one highlighted; picking an entry writes it through `menu_toggle.py
+--value` → `config_set.py`. Clicking a parent row does nothing.
+
+- **One generic eww window** (`submenu`) reused by all five items; its
+  geometry and contents arrive via `--arg` / `eww update` at hover time —
+  no extra GTK window. JSON option lists are pushed into `sub_col_a` /
+  `sub_col_b` eww variables and iterated with yuck `(for ...)` loops
+  (variables holding a JSON string index/iterate natively, exactly like the
+  existing `weather_info.*` accesses).
+- **New `scripts/widgets/submenu.py`**: `--item <key>` opens the picker
+  (options built per key, Theme dynamically from `assets/themes/appearance/`
+  split across two balanced columns), `--schedule-close` closes after 300 ms
+  unless a newer hover/cancel bumped the generation counter in
+  `generated/submenu_gen`, which makes item→item hover transitions flicker-
+  free. All entry actions re-spawn detached (ctx.py pattern) so eww's
+  command timeout can never kill them.
+- **Positioning**: anchored right of the context menu with 4 px overlap,
+  flipped to the menu's left side when it would not fit, clamped to the
+  monitor frame; vertical anchor = parent row offset (`ROWS` map × 42 px row
+  height). ctx.py stores the menu position (`x`/`y`/`screen`) in the session
+  file for this purpose.
+- **close_popup.py** closes the submenu too, so ESC / outside clicks /
+  any other action dismiss it.
+- Verified: unit tests for options/split/geometry/generation (23 new), and
+  both submenu layouts + the eventbox-wrapped menu validated in an isolated
+  eww daemon with zero expression errors.
+
 ## Goal
 
 Turn the right-click context menu into a real quick-settings panel and make

@@ -20,6 +20,14 @@
 (defvar move_h 100)
 (defvar move_pct 100)
 
+;; --- Hover submenu state (see scripts/widgets/submenu.py) ------------------------
+;; The option lists are pushed as JSON when a row is hovered; sub_active holds
+;; the current value for highlighting, sub_cols selects the layout.
+(defvar sub_col_a "[]")
+(defvar sub_col_b "[]")
+(defvar sub_active "")
+(defvar sub_cols 1)
+
 ;; --- Clock data ------------------------------------------------------------
 (defpoll hour :interval "1s"
   `date +$(../scripts/core/config.py --key hour_format | sed 's/24/%H/; s/12/%I/')`)
@@ -224,12 +232,12 @@
 ;; Context menu (quick settings: Move / Resize / Reset / toggles / About)
 ;; ===========================================================================
 
-;; The toggle buttons run scripts/widgets/menu_toggle.py (one flip per click,
-;; value written into config.local.yaml by config_set.py; the watcher then
-;; reloads + relays out). Labels show the CURRENT state from the `config`
-;; defpoll (5 s refresh), so a just-toggled value can lag up to 5 s when the
-;; menu is reopened quickly. Slower actions are nohup-backgrounded to keep
-;; the click instant, exactly like Move / Resize.
+;; The five selectable rows (AM/PM switch, Theme, Units, Panel, Side) are
+;; hover-only: an eventbox opens scripts/widgets/submenu.py --item <key> when
+;; the pointer enters and schedules a close when it leaves; the actual values
+;; are picked from the submenu. Move / Resize / Reset keep their click
+;; behavior. Slower actions are nohup-backgrounded to keep the click instant,
+;; exactly like Move / Resize.
 (defwidget widget_ctx_menu [widget monitor]
   (box :class "ctx-menu" :orientation "v"
     ;; move.py opens the overlay + control panel and returns immediately, so it
@@ -247,32 +255,42 @@
     (button :class "ctx-btn" :timeout "10s"
             :onclick "../scripts/widgets/close_popup.py && ../scripts/move/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
             (box :class "ctx-btn-box" (label :text "Reset")))
-    ;; AM/PM switch: system.hour_format "24" <-> "12".
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key hour_format >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box"
-                 (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"})))
-    ;; Theme cycler: next directory under assets/themes/appearance/.
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key appearance >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box"
-                 (label :text {"Theme: " + config.appearance_name + " ▸"})))
-    ;; Units metric <-> imperial; menu_toggle also refreshes weather_info
+    ;; AM/PM switch: system.hour_format 24h / 12h picker.
+    (eventbox :timeout "10s"
+              :onhover "../scripts/widgets/submenu.py --item hour_format"
+              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
+      (button :class "ctx-btn"
+              (box :class "ctx-btn-box"
+                   (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"}))))
+    ;; Theme: every theme under assets/themes/appearance/, two columns.
+    (eventbox :timeout "10s"
+              :onhover "../scripts/widgets/submenu.py --item appearance"
+              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
+      (button :class "ctx-btn"
+              (box :class "ctx-btn-box"
+                   (label :text {"Theme: " + config.appearance_name + " ▸"}))))
+    ;; Units metric <-> imperial; picking one also refreshes weather_info
     ;; instantly so °C/°F does not wait for the 10-minute defpoll.
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key units >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box"
-                 (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"})))
-    ;; Panel visibility: panel.enabled true <-> false.
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key panel_enabled >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box"
-                 (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"})))
-    ;; Panel side: panel.window.alignment right <-> left.
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key panel_alignment >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box"
-                 (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"})))
+    (eventbox :timeout "10s"
+              :onhover "../scripts/widgets/submenu.py --item units"
+              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
+      (button :class "ctx-btn"
+              (box :class "ctx-btn-box"
+                   (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"}))))
+    ;; Panel visibility: panel.enabled shown / hidden.
+    (eventbox :timeout "10s"
+              :onhover "../scripts/widgets/submenu.py --item panel_enabled"
+              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
+      (button :class "ctx-btn"
+              (box :class "ctx-btn-box"
+                   (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"}))))
+    ;; Panel side: panel.window.alignment right / left.
+    (eventbox :timeout "10s"
+              :onhover "../scripts/widgets/submenu.py --item panel_alignment"
+              :onhoverlost "../scripts/widgets/submenu.py --schedule-close"
+      (button :class "ctx-btn"
+              (box :class "ctx-btn-box"
+                   (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"}))))
     ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and
     ;; relayouts, restoring every committed default (scripts/bin/hard-reset.sh).
     (button :class "ctx-btn" :timeout "10s"
@@ -281,6 +299,29 @@
     (button :class "ctx-btn" :timeout "10s"
             :onclick "../scripts/widgets/about.py --open --monitor ${monitor}"
             (box :class "ctx-btn-box" (label :text "About")))))
+
+;; ===========================================================================
+;; Hover submenu (value picker for the selectable context-menu rows)
+;; ===========================================================================
+
+;; One generic window reused by all five items: submenu.py pushes the option
+;; lists (sub_col_a / sub_col_b as JSON), the active value (sub_active) and
+;; the geometry via --arg at hover time. Clicking an entry writes it through
+;; menu_toggle.py; ESC / outside clicks close everything via close_popup.py.
+(defwidget widget_submenu [key]
+  (box :class "submenu" :orientation "h" :space-evenly false
+    (box :orientation "v" :space-evenly false
+      (for o in sub_col_a
+        (button :class {o.value == sub_active ? "sub-btn active" : "sub-btn"}
+                :timeout "10s"
+                :onclick {"../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key " + key + " --value " + o.value + " >/dev/null 2>&1 &"}
+          (box :class "sub-btn-box" (label :text {o.label})))))
+    (box :orientation "v" :space-evenly false :visible {sub_cols == 2}
+      (for o in sub_col_b
+        (button :class {o.value == sub_active ? "sub-btn active" : "sub-btn"}
+                :timeout "10s"
+                :onclick {"../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key " + key + " --value " + o.value + " >/dev/null 2>&1 &"}
+          (box :class "sub-btn-box" (label :text {o.label})))))))
 
 ;; ===========================================================================
 ;; Windows
@@ -417,3 +458,25 @@
   :focusable true
   (eventbox :timeout "10s" :onclick "../scripts/widgets/close_popup.py"
     (box :class "move-overlay")))
+
+;; ===========================================================================
+;; Hover submenu: value picker for the selectable context-menu rows (AM/PM,
+;; Theme, Units, Panel, Side). Opened by scripts/widgets/submenu.py next to the
+;; hovered row; geometry and contents arrive via --arg / eww update at hover
+;; time. Not focusable: it is pointer-driven only, the keyboard daemon keeps
+;; handling ESC for the whole popup stack.
+;; ===========================================================================
+
+(defwindow submenu
+  [screen key sx sy sw sh]
+  :monitor {screen}
+  :geometry (geometry :x {sx}
+                      :y {sy}
+                      :width {sw}
+                      :height {sh}
+                      :anchor "top left")
+  :stacking "overlay"
+  :windowtype "normal"
+  :wm-ignore true
+  :focusable false
+  (widget_submenu :key key))

@@ -5,37 +5,39 @@ monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
 layer-shell) and also works on **X11**. Powered by the
 [OpenWeatherMap](https://openweathermap.org) API.
 
-**v2.2.0 turns the right-click menu into a quick-settings panel**: switch the
-hour format, cycle appearance themes, flip °C/°F, show/hide or re-side the
-panel and hard-reset the configuration — all from the context menu, all
-written to the git-ignored `config.local.yaml` and applied live. The
-Move / Resize dialog gained a hand-typed resize percentage, and a new
-`hard-reset.sh` restores the factory defaults with one command.
+**v2.2.0 turns the right-click menu into a quick-settings panel**: hover the
+hour format, theme, °C/°F, panel visibility or panel side rows to pick their
+value from an inline submenu (the active one highlighted), and hard-reset the
+configuration — all from the context menu, all written to the git-ignored
+`config.local.yaml` and applied live. The Move / Resize dialog gained a
+hand-typed resize percentage, and a new `hard-reset.sh` restores the factory
+defaults with one command.
 
 ---
 
 ## What changed in v2.2.0
 
-### New: context-menu quick settings
+### New: context-menu quick settings with hover submenus
 
-The right-click menu now has **ten items** (labels show the current state):
+The right-click menu now has **ten items**; hovering any selectable row opens
+a small submenu with its possible values (the active one highlighted):
 
-| Item | What it does |
+| Item | Submenu values |
 |---|---|
 | Move / Resize | unchanged GTK move / resize session |
 | Reset | unchanged per-widget factory geometry |
-| `AM/PM: 24h ▸` / `12h ▸` | toggles `system.hour_format` (24 ↔ 12) |
-| `Theme: <name> ▸` | cycles through every theme under `assets/themes/appearance/` |
-| `Units: °C ▸` / `°F ▸` | flips `weather.units`; the weather is re-fetched instantly instead of waiting for the next 10-minute poll |
-| `Panel: shown ▸` / `hidden ▸` | toggles `panel.enabled` (panel windows open/close via relayout) |
-| `Side: right ▸` / `left ▸` | flips `panel.window.alignment` |
-| `Hard reset` | deletes `config.local.yaml` → every setting returns to the committed defaults |
+| AM/PM | `24h` / `12h` (`system.hour_format`) |
+| Theme | every theme under `assets/themes/appearance/`, two columns |
+| Units | `°C` / `°F` (`weather.units`; picking one re-fetches the weather instantly instead of waiting for the next 10-minute poll) |
+| Panel | shown / hidden (`panel.enabled`, applied via relayout) |
+| Side | right / left (`panel.window.alignment`) |
+| Hard reset | deletes `config.local.yaml` → every setting returns to the committed defaults |
 | About | unchanged |
 
-All toggles run through the new `scripts/widgets/menu_toggle.py`, which
-writes with the existing single-writer `scripts/core/config_set.py` into the
-git-ignored local override layer; the file watcher applies every change
-immediately — the repository stays clean.
+All selections run through `scripts/widgets/submenu.py` +
+`scripts/widgets/menu_toggle.py`, which write with the existing single-writer
+`scripts/core/config_set.py` into the git-ignored local override layer; the
+file watcher applies every change immediately — the repository stays clean.
 
 ### New: hand-typed resize percentage
 
@@ -64,7 +66,12 @@ context menu's "Hard reset" item.
   `units`, `panel_enabled`, `panel_alignment`) writable without
   `--widget`/`--monitor`; `--widget` is now optional (still required for the
   per-widget position/scale/gap keys).
-- The context menu window grew to fit ten items (220x440 px).
+- `scripts/widgets/menu_toggle.py`: optional `--value` sets an exact value
+  instead of flipping/cycling (used by the hover submenus; the old flip
+  behavior stays available from the CLI).
+- The context menu window grew to fit ten items (220x440 px); hovering a
+  selectable row opens its submenu next to it (flipped/clamped at the screen
+  edges, flicker-free via a generation counter).
 
 ### Upgrade from v2.x
 
@@ -100,9 +107,10 @@ context menu's "Hard reset" item.
 - **Dynamic Scaling** — the network charts auto-adjust their scale and units
   (KiB/s to MiB/s) based on traffic; the active network interface is detected
   automatically.
-- **Quick-settings context menu** — AM/PM switch, theme cycler, °C/°F toggle,
-  panel show/hide + side flip and a factory "Hard reset", right on the widget;
-  everything applied live through the git-clean local override layer.
+- **Quick-settings context menu** — hover AM/PM, theme, °C/°F, panel
+  show/hide or side flip to pick the value from an inline submenu, plus a
+  factory "Hard reset"; everything applied live through the git-clean local
+  override layer.
 - **Git-clean by design** — machine-local settings live in the git-ignored
   `config.local.yaml`; the committed `config.yaml` only changes when *you*
   change a default.
@@ -167,20 +175,20 @@ what you want to change):
   and the taskbar `gap` baseline.
 
 The right-click context menu lets you **Move / Resize / Reset** each widget
-and flips the most common settings (hour format, theme, units, panel state /
-side) directly on screen; the resulting values are written into
-`config.local.yaml` and applied live by the file watcher — so the repository
-stays clean unless you deliberately edit a default. `hard-reset.sh` (or the
-menu's "Hard reset") deletes that local file and returns everything to the
-committed defaults.
+and pick the most common settings (hour format, theme, units, panel state /
+side) from hover submenus directly on screen; the resulting values are
+written into `config.local.yaml` and applied live by the file watcher — so
+the repository stays clean unless you deliberately edit a default.
+`hard-reset.sh` (or the menu's "Hard reset") deletes that local file and
+returns everything to the committed defaults.
 
 ## Themes
 
 A wide gallery of ready-made **light** and **dark** appearance themes plus
 per-city weather themes (`assets/themes/weather/<name>/weather.yaml`) — or define
 your own colors inline in `config.yaml` (or locally override them in
-`config.local.yaml` without touching the tracked defaults). Cycle through all
-appearance themes from the right-click menu.
+`config.local.yaml` without touching the tracked defaults). Pick any of them
+from the right-click menu's Theme submenu.
 
 ## Documentation
 
