@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Open the context menu for a widget.
 
-Computes the menu position (scripts/menu_pos.py: cursor on X11, widget corner
-on Wayland), closes any previously open menu and opens ctx_menu at that spot.
+Computes the menu position (scripts/move/menu_pos.py: cursor on X11, widget
+corner on Wayland), closes any previously open menu and opens ctx_menu at
+that spot.
 
 Usage:
   ./ctx.py --widget clock --monitor 0
@@ -55,7 +56,8 @@ def main():
     args = ap.parse_args()
 
     out = run(
-        ["python3", os.path.join(SCRIPT_DIR, "menu_pos.py"), "--widget", args.widget, "--monitor", str(args.monitor)],
+        ["python3", os.path.join(CONFIG_DIR, "scripts", "move", "menu_pos.py"),
+         "--widget", args.widget, "--monitor", str(args.monitor)],
         capture=True,
     )
     try:
