@@ -60,6 +60,18 @@ the committed `config.yaml` is never touched), removes stale session state,
 regenerates the theme and relayouts the running widget. Also available as the
 context menu's "Hard reset" item.
 
+### Fixed
+
+- **The right-click menu sometimes failed to re-open** after using
+  Move / Resize and dismissing it (ESC or outside click): one of the new
+  per-monitor dismiss layers could survive a `close` that was silently
+  dropped while the daemon was busy regenerating the theme — leaving an
+  invisible full-screen layer above the widgets that swallowed every
+  further click. Popups are now closed **verbatim-verified**: close_popup
+  checks the actual X state and retries until nothing is mapped (and force-
+  unmaps anything that refuses to die). Move / Resize also closes the
+  per-monitor layers when starting a session.
+
 ### Changed
 
 - `scripts/core/config_set.py`: new global keys (`hour_format`, `appearance`,

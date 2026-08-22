@@ -40,6 +40,17 @@ one highlighted; picking an entry writes it through `menu_toggle.py --value`
   hides the pane. The pane lives exactly as long as its parent menu.
 
 
+## Phase 3: robustness fixes (same release)
+
+Live testing surfaced two reliability gaps, both fixed:
+  * a dismissed per-monitor dismiss layer occasionally SURVIVED its close
+    (the IPC close was dropped while the daemon regenerated) — an invisible
+    full-screen layer then blocked every right-click on that monitor.
+    close_popup.py now VERIFIES at the X level (xdotool) that no popup
+    window is still mapped, retrying ~2s and force-unmapping survivors;
+  * move.py did not close the per-monitor layers when entering a
+    Move / Resize session.
+
 ## Goal
 
 Turn the right-click context menu into a real quick-settings panel and make

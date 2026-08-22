@@ -103,9 +103,21 @@ def main():
     h = int(round(rect["height"]))
 
     # Close popups and any stale session windows; the rectangle window + the
-    # control panel own the Move/Resize session.
+    # control panel own the Move/Resize session. The per-monitor dismiss
+    # layers are closed as well (they would otherwise stay mapped above the
+    # widgets and block right-clicks until something re-closes them).
     eww("close", "ctx_menu")
     eww("close", "dismiss_overlay")
+    mon_out = run(
+        ["python3", os.path.join(CONFIG_DIR, "scripts", "core", "monitors.py")],
+        capture=True,
+    )
+    try:
+        screens = [int(m["index"]) for m in json.loads(mon_out).get("monitors", [])]
+    except Exception:
+        screens = []
+    for idx in screens or [args.monitor]:
+        eww("close", "dismiss_overlay_%d" % idx)
 
     # Activate the keyboard daemon first (scripts/session.py starts it if
     # needed and writes generated/input_session.json): the daemon then maps
