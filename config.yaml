@@ -4,6 +4,18 @@
 # The OpenWeatherMap API key is intentionally NOT here (it would land in git).
 # Provide it via the OPENWEATHER_API_KEY environment variable or the local,
 # git-ignored file ./.api_key (first line, chmod 600).
+#
+# LOCAL OVERRIDES: this file holds the portable defaults. Machine-specific
+# values (and everything the widget scripts write, e.g. Move/Resize -> Save)
+# live in the git-ignored config.local.yaml, deep-merged over this file
+# (local keys win). Example override:
+#
+#     weather:
+#       window:
+#         per_monitor:
+#           0: { scale: 0.85 }
+#
+# Edit this file only when you want to change a DEFAULT for every machine.
 # ============================================================================
 
 # appearance -> the color theme. Two forms are accepted:00

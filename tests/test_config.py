@@ -145,3 +145,47 @@ def test_main_full_json(cfg, monkeypatch, capsys):
     data = json.loads(capsys.readouterr().out)
     assert data["city"] == "Tatabánya"
     assert data["api_key"] == ""
+
+
+# ------------------------------------------------------- local override layer
+
+
+def test_local_overrides_scalars(cfg, write_local_config):
+    write_local_config("appearance: dark\nsystem:\n  hour_format: \"12\"\n")
+    merged = cfg.load_config()
+    assert merged["appearance"] == "dark"
+    assert merged["hour_format"] == "12"
+    # untouched base keys survive the merge
+    assert merged["city"] == "Tatabánya"
+    assert merged["units"] == "metric"
+
+
+def test_local_per_monitor_leaf_merge(cfg, write_local_config, monkeypatch):
+    # Only scale is overridden for monitor 0: its base position survives.
+    write_local_config(
+        "weather:\n  window:\n    per_monitor:\n      0:\n        scale: 0.85\n"
+        "panel:\n  window:\n    per_monitor:\n      1:\n        position_x: -7\n"
+    )
+    monkeypatch.setattr(sys, "argv", ["config.py", "--monitor", "0"])
+    merged = cfg.load_config()
+    assert merged["position_x"] == 10
+    assert merged["position_y"] == 20
+    assert merged["scale"] == 0.85
+    monkeypatch.setattr(sys, "argv", ["config.py", "--monitor", "1"])
+    merged = cfg.load_config()
+    assert merged["panel_scale"] == 0.70
+    assert merged["panel_position_x"] == -7
+    assert merged["panel_position_y"] == 40
+
+
+def test_missing_local_file_means_base(cfg):
+    assert cfg.load_config()["appearance"] == "light"
+
+
+def test_broken_local_yaml_falls_back_to_base(cfg, write_local_config, capsys):
+    write_local_config("appearance: [unclosed\n")
+    merged = cfg.load_config()
+    assert merged["appearance"] == "light"
+    err = capsys.readouterr().err
+    assert "WARN" in err
+    assert "config.local.yaml" in err

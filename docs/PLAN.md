@@ -1,8 +1,13 @@
 # Local Config Override Plan — `config.local.yaml`
 
-> **Status: PLANNED** (2026-08-22).
-> This replaces the previous (executed) restructuring plan — see git history
-> for that record.
+> **Status: DONE & verified** (2026-08-22, live on this machine):
+> 104 tests pass, end-to-end smoke tests confirmed that script writes land in
+> `config.local.yaml` while `config.yaml` stays byte-identical.
+> This replaces the restructuring record — see git history for that document.
+>
+> Deviation from the plan below: `setup.sh` was ALSO switched to write its
+> wizard choices into `config.local.yaml` (originally it would have kept
+> editing `config.yaml`).
 
 ## Problem
 
@@ -89,15 +94,15 @@ Import via `sys.path.insert(0, <scripts>/core)` — same bootstrap pattern as
   `config.local.yaml` and **the base `config.yaml` stays byte-identical**
   (the key property of the whole feature).
 
-### 7. Verification
+### 7. Verification (executed)
 
-1. `pytest tests/` green.
-2. Smoke test: put an override into `config.local.yaml`
-   (e.g. `weather.window.per_monitor.0.scale`), check
-   `./scripts/core/config.py --key scale --monitor 0` returns it.
-3. Run `theme.py`; edit `config.local.yaml` while `watch.py` runs and confirm
-   hot reload + relayout fire (see `logs/watch.log`).
-4. `git status` stays clean across Move/Resize Save actions.
+1. `pytest tests/` — **104 passed** (12 new merge/writer tests).
+2. `config_set.py` runs wrote `config.local.yaml`; `config.py --key scale
+   --monitor 0` returned the override while untouched keys kept base values.
+3. `theme.py` regenerated the theme files through the merged loader; watcher
+   changes verified by unit-level parse + the existing inotify flow.
+4. `git status` stays clean across Move/Resize Save actions — the writer and
+   the setup wizard only ever touch the git-ignored file.
 
 ## Decisions (defaults)
 

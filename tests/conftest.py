@@ -61,3 +61,15 @@ def write_config(config_dir):
         return p
 
     return _write
+
+
+@pytest.fixture
+def write_local_config(config_dir):
+    """Write the git-ignored config.local.yaml override file."""
+
+    def _write(content="{}"):
+        p = config_dir / "config.local.yaml"
+        p.write_text(content, encoding="utf-8")
+        return p
+
+    return _write

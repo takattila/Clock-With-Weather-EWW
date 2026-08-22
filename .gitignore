@@ -8,5 +8,6 @@ __pycache__/
 *.log
 .layout.json
 .api_key
+config.local.yaml
 eww.theme.json
 eww.theme.scss

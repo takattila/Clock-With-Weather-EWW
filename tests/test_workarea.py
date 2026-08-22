@@ -14,6 +14,12 @@ def write_cfg(config_dir, body):
     return p
 
 
+def write_local(config_dir, body):
+    p = config_dir / "config.local.yaml"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
 # ---------------------------------------------------------------- detect_taskbar
 
 
@@ -67,6 +73,39 @@ def test_load_gaps_missing(config_dir):
 def test_load_gaps_invalid_value(config_dir):
     write_cfg(config_dir, "panel:\n  gap: abc\n")
     assert workarea.load_gaps(str(config_dir)) == DEFAULT_GAPS
+
+
+def test_load_gaps_local_override(config_dir):
+    write_cfg(config_dir, "panel:\n  gap: { top: 5, bottom: 5 }\n")
+    write_local(config_dir, "panel:\n  gap:\n    top: 12\n")
+    gaps = workarea.load_gaps(str(config_dir))
+    assert gaps == {"top": 12, "right": 16, "bottom": 5, "left": 16}
+
+
+def test_load_panel_offsets_local_only(config_dir):
+    write_cfg(config_dir, "panel:\n  enabled: true\n")
+    write_local(
+        config_dir,
+        "panel:\n  window:\n    per_monitor:\n      0:\n"
+        "        position_x: 15\n        position_y: -25\n",
+    )
+    offsets = workarea.load_panel_offsets(str(config_dir))
+    assert offsets == {0: {"position_x": 15, "position_y": -25}}
+
+
+def test_load_panel_offsets_local_leaf_merge(config_dir):
+    # Base defines monitor 1 fully; the local file overrides only position_x.
+    write_cfg(
+        config_dir,
+        "panel:\n  window:\n    per_monitor:\n      1:\n"
+        "        position_x: 30\n        position_y: 40\n",
+    )
+    write_local(
+        config_dir,
+        "panel:\n  window:\n    per_monitor:\n      1:\n        position_x: -7\n",
+    )
+    offsets = workarea.load_panel_offsets(str(config_dir))
+    assert offsets == {1: {"position_x": -7, "position_y": 40}}
 
 
 # ---------------------------------------------------------------- load_panel_offsets

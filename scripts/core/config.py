@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Read the central YAML config (config.yaml) and the selected weather theme
-(assets/themes/weather/<name>/weather.yaml), print the merged configuration.
+Read the central YAML config (config.yaml + config.local.yaml overrides) and
+the selected weather theme (assets/themes/weather/<name>/weather.yaml), print
+the merged configuration.
 
 The eww widget cannot parse YAML directly, so the defpoll commands call this
 bridge instead of reading a JSON config file.
@@ -51,6 +52,8 @@ import sys
 
 import yaml
 
+from config_io import load_merged
+
 # scripts/core/ -> scripts/ -> repo (widget) root
 CONFIG_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 API_KEY_ENV = "OPENWEATHER_API_KEY"
@@ -72,8 +75,9 @@ def resolve_api_key():
 
 
 def load_config():
-    with open(os.path.join(CONFIG_DIR, "config.yaml"), "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
+    # config.yaml deep-merged with the git-ignored config.local.yaml
+    # overrides (see config_io.py).
+    cfg = load_merged(CONFIG_DIR)
 
     appearance = cfg.get("appearance", "light")
     weather_cfg = cfg.get("weather") or {}

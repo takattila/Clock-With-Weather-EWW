@@ -6,10 +6,11 @@ change (auto-reload, low resource usage).
 Uses the Linux inotify API directly through ctypes, so no third-party packages
 are needed. The main loop blocks in select(), so it wakes up only when a
 watched file changes (~0 CPU while idle). After a burst of changes it runs
-theme.py and then `eww reload`, so edits to config.yaml / the appearance theme
-take effect immediately without restarting the widget. A config.yaml change
-(panel.gap etc.) additionally triggers `start.sh --relayout` so the per-monitor
-panel geometry is recomputed and reapplied.
+theme.py and then `eww reload`, so edits to config.yaml / config.local.yaml /
+the appearance theme take effect immediately without restarting the widget.
+A root config change (panel.gap, per_monitor positions etc.) additionally
+triggers `start.sh --relayout` so the per-monitor panel geometry is
+recomputed and reapplied.
 
 Usage: ./watch.py [config_dir]
 """
@@ -93,10 +94,11 @@ class Watcher(object):
         self._dirs[path] = wd
 
     def _scan(self):
-        # config.yaml is watched in the eww root dir; the runtime outputs
-        # (generated theme files, charts/, logs/, run/) never match
-        # the interesting-name filter, so they cannot trigger a reload loop.
-        self._add_watch(self.config_dir, {"config.yaml"})
+        # config.yaml + config.local.yaml are watched in the eww root dir; the
+        # runtime outputs (generated theme files, charts/, logs/, run/) never
+        # match the interesting-name filter, so they cannot trigger a reload
+        # loop.
+        self._add_watch(self.config_dir, {"config.yaml", "config.local.yaml"})
         for kind, fname in (("appearance", "appearance.yaml"), ("weather", "weather.yaml")):
             base = os.path.join(self.config_dir, "assets", "themes", kind)
             if not os.path.isdir(base):
@@ -167,7 +169,7 @@ class Watcher(object):
                 continue
             if ev.mask & (IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE):
                 self.log("change: %s" % os.path.join(path, fname))
-                if fname == "config.yaml":
+                if fname in ("config.yaml", "config.local.yaml"):
                     self.config_changed = True
                 changed = True
         return changed
@@ -229,7 +231,7 @@ class Watcher(object):
             self.log("eww reload failed (after retries)")
         if self.config_changed:
             self.config_changed = False
-            self.log("config.yaml changed; re-laying-out windows")
+            self.log("root config changed; re-laying-out windows")
             # Redirect the relayout output to watch.log instead of a pipe: the
             # eww open clients it spawns can outlive start.sh and would keep the
             # pipe write-end open, making subprocess.run block forever (which

@@ -61,6 +61,18 @@ def test_load_appearance_missing_theme(config_dir):
         theme.load_appearance(str(config_dir), "does-not-exist")
 
 
+def test_load_config_merges_local_overrides(config_dir):
+    (config_dir / "config.yaml").write_text(
+        "appearance: light\nsystem:\n  corner_radius: 20\n", encoding="utf-8"
+    )
+    (config_dir / "config.local.yaml").write_text(
+        "appearance: dark\nsystem:\n  corner_radius: 8\n", encoding="utf-8"
+    )
+    cfg = theme.load_config(str(config_dir))
+    assert cfg["appearance"] == "dark"
+    assert cfg["system"]["corner_radius"] == 8
+
+
 def test_parse_color():
     assert theme._parse_color("#ff0000") == (255, 0, 0)
     assert theme._parse_color("00ff00") == (0, 255, 0)
