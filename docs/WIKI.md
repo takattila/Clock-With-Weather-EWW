@@ -323,6 +323,13 @@ The widget itself cannot parse YAML, so `scripts/core/config.py` reads `config.y
 + the selected weather theme and prints the merged values as JSON for the
 `defpoll`s (see the "Structure" section). `jq` is no longer needed.
 
+Several of these keys can also be changed at runtime without touching any
+file by hand: `scripts/core/config_set.py` writes them into
+`config.local.yaml` (`--key hour_format|appearance|units|panel_enabled|
+panel_alignment --value ...`, no `--widget`/`--monitor` needed), and the
+right-click quick-settings menu exposes the most useful ones as one-click
+toggles (see the "Right-click quick-settings menu" section).
+
 #### API key (`OPENWEATHER_API_KEY`)
 
 The OpenWeatherMap key is **not** stored in `config.yaml` (that file is part of
@@ -469,6 +476,8 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 | `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key, creates the desktop/menu icons and starts the widgets |
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
+| `menu_toggle.py` (`scripts/widgets/`) | — | context-menu quick toggles: reads the merged config, computes the next value (`hour_format` 24↔12, `appearance` next theme alphabetically, `units` °C↔°F with an instant weather refresh, `panel_enabled`, `panel_alignment`) and writes it via `config_set.py` into `config.local.yaml`; the watcher applies the change live |
+| `hard-reset.sh` (`scripts/bin/`) | — | factory reset: deletes the git-ignored `config.local.yaml` (**no backup**) + a stale input session, regenerates the theme from the committed defaults and relayouts; also available as the context menu's "Hard reset" item |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
 ### `charts/` — generated SVGs
@@ -562,6 +571,48 @@ The **icon color** is not a CSS variable: `appearance.icon.color` (light|dark,
 chosen by `$theme`) is applied to the PNGs themselves by `theme.py` (see the
 "Configuration" section), so the tint works even though GTK/EWW cannot colorize
 images at render time.
+
+### Right-click quick-settings menu
+
+Right-clicking either widget opens the `ctx_menu` eww window (220x440 px,
+opened at the cursor by `scripts/widgets/ctx.py` + `scripts/move/menu_pos.py`;
+a full-screen dismiss layer closes it on outside clicks, ESC works too):
+
+| Item | Action |
+|---|---|
+| Move / Resize | opens the GTK Move / Resize overlay session (`scripts/move/move.py`) |
+| Reset | per-widget factory geometry (position 0/0, scale 1.0) via `move_ctl.py --action reset` |
+| AM/PM: 24h ▸ / 12h ▸ | flips `system.hour_format` (label shows the current state) |
+| Theme: \<name\> ▸ | cycles through every theme under `assets/themes/appearance/` alphabetically |
+| Units: °C ▸ / °F ▸ | flips `weather.units`; `menu_toggle.py` also re-fetches the weather immediately so °C/°F does not wait for the 10-minute poll |
+| Panel: shown ▸ / hidden ▸ | flips `panel.enabled` (the watcher's relayout opens/closes the panel windows) |
+| Side: right ▸ / left ▸ | flips `panel.window.alignment` |
+| Hard reset | runs `scripts/bin/hard-reset.sh`: deletes `config.local.yaml` (no backup), so every setting returns to the committed `config.yaml` default |
+| About | the GTK About dialog |
+
+Every toggle goes through `scripts/widgets/menu_toggle.py`, which writes the
+new value with `scripts/core/config_set.py` into the git-ignored
+`config.local.yaml`; the running watcher then regenerates / reloads /
+relayouts automatically. The dynamic labels come from the `config` defpoll
+(5 s refresh), so right after a switch the reopened menu can show the previous
+state for up to 5 seconds.
+
+### Hand-typed resize percentage
+
+In the Move / Resize control panel (`scripts/move/move_panel.py`) the value
+between − and + is an editable entry, not just a label:
+
+- type a percentage (30–150) and press **Enter** — or just leave the field;
+- on focus-out an uncommitted draft is discarded and the field snaps back to
+  the live value polled from the eww variable `move_pct` every 250 ms;
+- typed values are applied by `move_ctl.py --action set_scale --value N`,
+  which clamps to 30–150% and keeps the anchored corner / panel side gap
+  fixed exactly like the ± buttons do.
+
+While the field owns the keyboard, the panel marks the session file with
+`"typing": true`; the evdev daemon ignores every key during that time
+(otherwise Enter would save and −/+ would zoom while typing). Click outside
+the field first if you want ESC to cancel the session.
 
 ### Resize / reposition workflow
 

@@ -27,7 +27,7 @@ sys.path.insert(0, SCRIPT_DIR)
 
 import widget_rect as wr  # noqa: E402
 
-MENU_W, MENU_H = 180, 190
+MENU_W, MENU_H = 220, 440
 
 
 def get_cursor():

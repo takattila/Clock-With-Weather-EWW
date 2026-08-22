@@ -10,6 +10,10 @@ Actions:
   left/right/up/down  move the rectangle by STEP px (clamped to the frame)
   zoom_in/zoom_out    scale by SCALE_STEP (clamped 0.3..1.5), keeping the
                       widget's anchored corner / right gap fixed
+  set_scale           scale to an EXACT percentage given via --value
+                      (30..150; out-of-range values are clamped), same
+                      anchoring rules as zoom_in/zoom_out -- used by the
+                      hand-typed resize field of the GTK control panel
   reset               write the defaults to config.yaml via scripts/
                       config_set.py and close, like save but with the default
                       values (both widgets: position 0/0, scale 1.0)
@@ -188,7 +192,10 @@ def main():
     ap.add_argument("--widget", required=True, choices=["clock", "panel"])
     ap.add_argument("--monitor", type=int, default=0)
     ap.add_argument("--action", required=True,
-                    choices=["left", "right", "up", "down", "zoom_in", "zoom_out", "reset", "save", "cancel"])
+                    choices=["left", "right", "up", "down", "zoom_in", "zoom_out",
+                             "set_scale", "reset", "save", "cancel"])
+    ap.add_argument("--value", type=float, default=None,
+                    help="percentage for --action set_scale")
     args = ap.parse_args()
 
     if args.action == "cancel":
@@ -231,14 +238,19 @@ def main():
         eww("update", "move_x=%d" % x, "move_y=%d" % y)
         return
 
-    if args.action in ("zoom_in", "zoom_out"):
+    if args.action in ("zoom_in", "zoom_out", "set_scale"):
         base_w, base_h, scale, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
         # Start from the CURRENT session size (move_w/move_h), not the saved
         # config scale: clicking zoom_out repeatedly must keep stepping down
         # instead of recomputing from the untouched config value each time.
         current = (w / base_w) if base_w else scale
-        delta = SCALE_STEP if args.action == "zoom_in" else -SCALE_STEP
-        scale = clamp(current + delta, MIN_SCALE, MAX_SCALE)
+        if args.action == "set_scale":
+            if args.value is None:
+                sys.exit("ERROR: --action set_scale requires --value <percent>")
+            scale = clamp(args.value / 100.0, MIN_SCALE, MAX_SCALE)
+        else:
+            delta = SCALE_STEP if args.action == "zoom_in" else -SCALE_STEP
+            scale = clamp(current + delta, MIN_SCALE, MAX_SCALE)
         w = int(round(base_w * scale))
         h = int(round(base_h * scale))
         if right_gap is not None:

@@ -76,6 +76,12 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/setup.sh    # change API key / th
 
 ### Right click on the Widgets
 
+The context menu is a quick-settings panel: Move / Resize / Reset, an
+**AM/PM switch** (12 ↔ 24 hour), a **theme cycler**, a **°C/°F toggle**
+(with instant weather refresh), **panel show/hide + side flip**, a factory
+**Hard reset** and the About dialog. Every switch is written to the
+git-ignored `config.local.yaml` and applied live.
+
 <table>
     <tr>
         <th>Right click</th>
@@ -108,11 +114,15 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/setup.sh    # change API key / th
   detected automatically.
 - **Wayland native** — runs via **EWW** + GTK layer-shell; works on X11 too.
 - **Light & dark ready** — supports appearance on both light and dark
-  backgrounds, with a wide gallery of ready-made themes.
-- **12 / 24-hour clock** — switch the hour format any time.
+  backgrounds, with a wide gallery of ready-made themes (cycled from the
+  right-click menu).
+- **12 / 24-hour clock** — switch the hour format any time (config, setup
+  wizard or right-click AM/PM switch).
+- **Quick-settings context menu** — hour format, theme, °C/°F, panel
+  show/hide + side flip and a factory Hard reset, one right click away.
 - **Per-widget scaling** — scale the clock and the panel independently; each
   shrinks as a single object, so the relative distances between its parts never
-  change.
+  change. The Move / Resize dialog accepts a hand-typed exact percentage too.
 - **Taskbar-aware panel** — the panel aligns perfectly to your taskbar with
   per-side gaps (`panel.gap`).
 - **Desktop integration** — automatic menu icons and optional desktop shortcuts.
@@ -161,7 +171,8 @@ weather:
 ```
 
 The setup wizard writes its choices there too; edit `config.yaml` only when a
-default should change for every machine.
+default should change for every machine. The right-click menu toggles and the
+`scripts/bin/hard-reset.sh` factory reset write / delete this file for you.
 
 ---
 
@@ -172,9 +183,9 @@ Clock-With-Weather-EWW/
 ├── eww/                # the eww config dir: eww.yuck + eww.scss (+ generated theme files)
 ├── scripts/
 │   ├── core/           # config / theme / watch / weather / system data scripts
-│   ├── widgets/        # panel charts, context menu, About popups
+│   ├── widgets/        # panel charts, context menu + quick toggles, About popups
 │   ├── move/           # Move/Resize overlay + input daemons
-│   └── bin/            # start.sh, stop.sh, install.sh, setup.sh
+│   └── bin/            # start.sh, stop.sh, install.sh, setup.sh, hard-reset.sh
 ├── assets/
 │   ├── themes/         # appearance + per-city weather YAMLs
 │   ├── icons-src/      # source icons (tinted copies go to generated/)
@@ -193,8 +204,10 @@ Clock-With-Weather-EWW/
 
 - **[WIKI — Technical documentation](docs/WIKI.md)** — dependencies, configuration
   (`config.yaml`), project structure, EWW/CSS customization, testing and more.
-- **[PLAN — local override plan](docs/PLAN.md)** — the `config.local.yaml`
-  override layer (loader, writer, watcher changes) with verification results.
+- **[PLAN — feature plan](docs/PLAN.md)** — the executed plan behind the
+  quick-settings context menu, the hand-typed resize percentage and the hard
+  reset (the previous plan for the `config.local.yaml` override layer is
+  preserved in git history).
 - **Screenshots** — [view all](#screenshots).
 
 ---

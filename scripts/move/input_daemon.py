@@ -158,6 +158,14 @@ def handle_key(code, shift, session):
     if mode != "move":
         return
 
+    # While the hand-typed resize field of the GTK control panel owns the
+    # keyboard (move_panel.py sets session["typing"] on entry focus), every
+    # key is ignored here: Enter would otherwise SAVE the session and -/+
+    # would zoom in/out while the user is just typing a percentage. ESC is
+    # ignored too -- click outside the entry first, then ESC cancels.
+    if session.get("typing"):
+        return
+
     widget = str(session.get("widget", "clock"))
     monitor = str(session.get("monitor", 0))
     action = None

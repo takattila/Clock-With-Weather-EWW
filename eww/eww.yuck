@@ -4,7 +4,9 @@
 ;; Windows:
 ;;   1. main_window     -> Clock + Weather widget (dynamic width x 247 x scale)
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
-;;   3. ctx_menu        -> right-click context menu (Move / Resize / Reset / About)
+;;   3. ctx_menu        -> right-click quick-settings menu (Move / Resize /
+;;                         Reset / AM-PM switch / Theme / Units / Panel on-off /
+;;                         Side / Hard reset / About)
 ;;
 ;; The Move/Resize rectangle + control panel and the About dialog are GTK3
 ;; windows (scripts/move/move_rect.py + move/move_panel.py + widgets/about_win.py), not eww
@@ -219,9 +221,15 @@
           (image :class "panel-chart" :path {panel.files[ph].up} :halign "start"))))))
 
 ;; ===========================================================================
-;; Context menu (Move / Resize / About)
+;; Context menu (quick settings: Move / Resize / Reset / toggles / About)
 ;; ===========================================================================
 
+;; The toggle buttons run scripts/widgets/menu_toggle.py (one flip per click,
+;; value written into config.local.yaml by config_set.py; the watcher then
+;; reloads + relays out). Labels show the CURRENT state from the `config`
+;; defpoll (5 s refresh), so a just-toggled value can lag up to 5 s when the
+;; menu is reopened quickly. Slower actions are nohup-backgrounded to keep
+;; the click instant, exactly like Move / Resize.
 (defwidget widget_ctx_menu [widget monitor]
   (box :class "ctx-menu" :orientation "v"
     ;; move.py opens the overlay + control panel and returns immediately, so it
@@ -239,6 +247,37 @@
     (button :class "ctx-btn" :timeout "10s"
             :onclick "../scripts/widgets/close_popup.py && ../scripts/move/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
             (box :class "ctx-btn-box" (label :text "Reset")))
+    ;; AM/PM switch: system.hour_format "24" <-> "12".
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key hour_format >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box"
+                 (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"})))
+    ;; Theme cycler: next directory under assets/themes/appearance/.
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key appearance >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box"
+                 (label :text {"Theme: " + config.appearance_name + " ▸"})))
+    ;; Units metric <-> imperial; menu_toggle also refreshes weather_info
+    ;; instantly so °C/°F does not wait for the 10-minute defpoll.
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key units >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box"
+                 (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"})))
+    ;; Panel visibility: panel.enabled true <-> false.
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key panel_enabled >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box"
+                 (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"})))
+    ;; Panel side: panel.window.alignment right <-> left.
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/widgets/menu_toggle.py --key panel_alignment >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box"
+                 (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"})))
+    ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and
+    ;; relayouts, restoring every committed default (scripts/bin/hard-reset.sh).
+    (button :class "ctx-btn" :timeout "10s"
+            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/bin/hard-reset.sh >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box" (label :text "Hard reset")))
     (button :class "ctx-btn" :timeout "10s"
             :onclick "../scripts/widgets/about.py --open --monitor ${monitor}"
             (box :class "ctx-btn-box" (label :text "About")))))
@@ -350,8 +389,8 @@
   :monitor {screen}
   :geometry (geometry :x {pos_x}
                       :y {pos_y}
-                      :width "180px"
-                      :height "190px"
+                      :width "220px"
+                      :height "440px"
                       :anchor "top left")
   :stacking "overlay"
   :windowtype "normal"
