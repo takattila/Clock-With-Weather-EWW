@@ -247,7 +247,7 @@
 ;; like Move / Resize.
 (defwidget widget_ctx_menu [widget monitor]
   (box :orientation "h" :space-evenly false
-    (box :class "ctx-menu" :orientation "v"
+    (box :class "ctx-menu" :orientation "v" :valign "start"
     ;; move.py opens the overlay + control panel and returns immediately, so it
     ;; is backgrounded (nohup ... &) to keep the shell call instant.
     (button :class "ctx-btn" :timeout "5s"
@@ -304,7 +304,7 @@
     ;; shows it while a selectable row is hovered. Clicking the empty pane
     ;; area dismisses everything, like the rest of the popup surface.
     (eventbox :onclick "../scripts/widgets/close_popup.py"
-      (box :class "submenu-pane" :width 250
+      (box :class "submenu-pane" :width 250 :valign "start"
         (box :class "submenu" :valign "start" :halign "start"
              :visible {sub_show}
              :style "margin-top:${sub_top}px"
