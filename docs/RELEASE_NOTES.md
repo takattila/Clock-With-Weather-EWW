@@ -48,15 +48,15 @@ via `.gitkeep` placeholders.
 
 | Dark text with light background | Light text with dark background |
 |---|---|
-| ![Budapest dark blue](./docs/images/screenshots/budapest-dark-blue.png) | ![New York light bg](./docs/images/screenshots/new-york-light-bg.png) |
+| ![Budapest dark blue](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/budapest-dark-blue.png) | ![New York light bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/new-york-light-bg.png) |
 
 | System panel — light-orange | System panel — dark-orange-bg |
 |---|---|
-| ![Panel light orange](./docs/images/screenshots/panel-light-orange.png) | ![Panel dark orange bg](./docs/images/screenshots/panel-dark-orange-bg.png) |
+| ![Panel light orange](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/panel-light-orange.png) | ![Panel dark orange bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/panel-dark-orange-bg.png) |
 
 | Right click | Resize weather | Resize panel | About |
 |---|---|---|---|
-| ![Context menu 1](./docs/images/screenshots/context-menu-01.png) | ![Context menu 2](./docs/images/screenshots/context-menu-02.png) | ![Context menu 3](./docs/images/screenshots/context-menu-03.png) | ![Context menu 4](./docs/images/screenshots/context-menu-04.png) |
+| ![Context menu 1](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/context-menu-01.png) | ![Context menu 2](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/context-menu-02.png) | ![Context menu 3](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/context-menu-03.png) | ![Context menu 4](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/context-menu-04.png) |
 
 ---
 
