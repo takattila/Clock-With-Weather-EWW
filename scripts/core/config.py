@@ -17,7 +17,11 @@ The `weather` section of config.yaml accepts two forms:
   1. a theme name: weather: { name: <name>, window: {...} } loads
      assets/themes/weather/<name>/weather.yaml (the classic behavior),
   2. an inline map: weather: { city, language_code, lang, units, api_url }
-     used directly (a `name` key takes precedence over inline fields).
+     used directly (without a `name` key this is the "custom" city).
+
+The forms also mix (handy for config.local.yaml overrides): with `name` set,
+the theme provides the baseline values and any inline fields present patch
+on top of it.
 
 Usage:
   ./config.py             merged JSON (for the `config` defpoll)
@@ -86,16 +90,21 @@ def load_config():
     panel = cfg.get("panel") or {}
     panel_window = panel.get("window") or {}
 
+    # Layered resolution: `name` selects the theme whose values act as the
+    # baseline, then every inline field present in the merged view (base or
+    # local override) patches on top of it. Without `name` the inline fields
+    # alone define the city (custom mode). This keeps both classic forms
+    # intact while letting config.local.yaml override any single value.
     weather_name = weather_cfg.get("name", "")
+    weather = {}
     if weather_name:
-        # Theme mode: load assets/themes/weather/<name>/weather.yaml
+        # Theme baseline: assets/themes/weather/<name>/weather.yaml
         weather_path = os.path.join(CONFIG_DIR, "assets", "themes", "weather", weather_name, "weather.yaml")
         with open(weather_path, "r", encoding="utf-8") as f:
             weather = (yaml.safe_load(f) or {}).get("weather", {})
     else:
-        # Inline mode: use the weather map directly (minus the window key)
         weather_name = "custom"
-        weather = {k: v for k, v in weather_cfg.items() if k != "window"}
+    weather.update({k: v for k, v in weather_cfg.items() if k != "window"})
 
     weather_scale = float(weather_window.get("scale", 1.0) or 1.0)
     panel_scale = float(panel_window.get("scale", 1.0) or 1.0)

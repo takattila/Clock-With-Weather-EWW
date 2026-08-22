@@ -55,7 +55,7 @@ appearance: light
 weather:
 
   # name -> which city settings to use. Options: default | budapest | berlin |
-  #         any directory name under themes/weather/<name>/weather.yaml.
+  #         any directory name under assets/themes/weather/<name>/weather.yaml.
   #         OMIT this key to define the city settings inline below (see the
   #         comment above), e.g.:
   #
@@ -65,6 +65,11 @@ weather:
   #           lang: hu
   #           units: metric
   #           api_url: https://api.openweathermap.org/data/2.5/weather
+  #
+  #         The two forms also mix: when `name` is set, the theme provides the
+  #         baseline values and inline fields patch on top of it — handy for
+  #         config.local.yaml overrides (e.g. keep `name: default` here and
+  #         override just the units or the whole city locally).
 
   name: default
 

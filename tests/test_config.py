@@ -47,20 +47,50 @@ def test_weather_theme_name_mode(cfg, config_dir, monkeypatch):
     assert merged["city"] == "Budapest"
 
 
-def test_inline_weather_name_wins(write_config, config_dir, monkeypatch):
+def test_inline_fields_patch_named_theme(cfg, config_dir):
+    # With `name` set, the theme provides the baseline and any inline fields
+    # patch on top of it.
     theme_dir = config_dir / "assets" / "themes" / "weather" / "budapest"
     theme_dir.mkdir(parents=True)
     (theme_dir / "weather.yaml").write_text(
-        "weather:\n  city: Budapest\n", encoding="utf-8"
+        "weather:\n  city: Budapest\n  lang: en\n", encoding="utf-8"
+    )
+    (config_dir / "config.yaml").write_text(
+        "appearance: light\nweather:\n  name: budapest\n  lang: hu\n  units: metric\n"
+        "  window:\n    alignment: middle_middle\n",
+        encoding="utf-8",
+    )
+    merged = cfg.load_config()
+    assert merged["weather"] == "budapest"
+    assert merged["city"] == "Budapest"   # untouched baseline from the theme
+    assert merged["lang"] == "hu"         # inline field wins
+    assert merged["units"] == "metric"
+
+
+def test_local_overrides_named_theme_fields(write_config, write_local_config, config_dir, monkeypatch):
+    # The reported case: config.local.yaml patches individual values of a
+    # themed city (base selects `name`, local provides inline fields).
+    theme_dir = config_dir / "assets" / "themes" / "weather" / "default"
+    theme_dir.mkdir(parents=True)
+    (theme_dir / "weather.yaml").write_text(
+        "weather:\n  city: Default City\n  language_code: en\n  lang: en\n"
+        "  units: metric\n  api_url: https://api.openweathermap.org/data/2.5/weather\n",
+        encoding="utf-8",
     )
     write_config(
-        "appearance: light\nweather:\n  name: budapest\n  city: Inline\n"
+        "appearance: light\nweather:\n  name: default\n"
         "  window:\n    alignment: middle_middle\n"
+    )
+    write_local_config(
+        "weather:\n  city: Tatabánya\n  language_code: hu\n  lang: hu\n"
+        "  units: metric\n  api_url: https://api.openweathermap.org/data/2.5/weather\n"
     )
     monkeypatch.setattr(config, "CONFIG_DIR", str(config_dir))
     merged = config.load_config()
-    assert merged["weather"] == "budapest"
-    assert merged["city"] == "Budapest"
+    assert merged["city"] == "Tatabánya"
+    assert merged["language_code"] == "hu"
+    assert merged["lang"] == "hu"
+    assert merged["units"] == "metric"
 
 
 def test_per_monitor_resolution(cfg, monkeypatch):

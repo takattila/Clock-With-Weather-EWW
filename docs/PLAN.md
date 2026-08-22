@@ -1,13 +1,23 @@
 # Local Config Override Plan — `config.local.yaml`
 
 > **Status: DONE & verified** (2026-08-22, live on this machine):
-> 104 tests pass, end-to-end smoke tests confirmed that script writes land in
+> 105 tests pass, end-to-end smoke tests confirmed that script writes land in
 > `config.local.yaml` while `config.yaml` stays byte-identical.
 > This replaces the restructuring record — see git history for that document.
 >
 > Deviation from the plan below: `setup.sh` was ALSO switched to write its
 > wizard choices into `config.local.yaml` (originally it would have kept
 > editing `config.yaml`).
+>
+> Follow-up fixes folded into the same release (v2.1.0):
+> - **Layered weather resolution**: with `weather.name` set, the theme now
+>   provides only the baseline and inline fields patch on top of it —
+>   previously the base's `name: default` silently ignored local inline city
+>   settings, so not EVERY value could be overridden via `config.local.yaml`.
+> - **Right-click context menu fixed**: `ctx.py` still looked for
+>   `menu_pos.py` at its pre-restructure location (`scripts/widgets/`
+>   instead of `scripts/move/`), so every right click died before opening
+>   the menu.
 
 ## Problem
 
@@ -106,7 +116,8 @@ Import via `sys.path.insert(0, <scripts>/core)` — same bootstrap pattern as
 
 ## Decisions (defaults)
 
-- `setup.sh` keeps writing installation defaults into the committed
-  `config.yaml` — install-time defaults belong there.
+- `setup.sh` originally would have kept writing the committed `config.yaml`;
+  per user request it now writes into `config.local.yaml` (see the deviation
+  note above).
 - No separate `config.local.yaml.example` shipped; the `config.yaml` header
   + README cover discoverability.
