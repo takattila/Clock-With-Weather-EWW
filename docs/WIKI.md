@@ -684,7 +684,12 @@ The order is detected at runtime from the git hash in `eww --version`
 (see `_divide_translate_by_scale`); the per-monitor config key
 `translate_divide_scale: auto|yes|no` overrides it ("auto" = detect, falling
 back to divide on Wayland when the probe fails). install.sh pins the eww
-source build to `EWW_REPO_REF` (default v0.6.0).
+source build to `EWW_REPO_REF` (default v0.6.0) and — via
+`ensurePinnedEww()` — compares the INSTALLED binary's hash against that
+ref's commit SHA (queried from the GitHub API), offering a pinned source
+build whenever they differ, even when a distro package or a newer master
+build is already present. Identity = embedded git hash; the printed
+version number can be stale.
 
 ### Resize / reposition workflow
 

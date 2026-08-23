@@ -13,6 +13,9 @@ EWW_REPO="elkowar/eww"
 # build reports itself as "eww 0.5.0 d87c2fdb..." (stale Cargo version string)
 # and applies transform :scale before :translate; the widget scripts detect
 # the actual behavior from the embedded git hash, so any identified build works.
+# ensurePinnedEww() compares the installed binary's hash against the ref's
+# commit SHA and offers a pinned source build whenever they differ -- even when
+# a distro package or a newer master build is already present.
 EWW_REPO_REF="${EWW_REPO_REF:-v0.6.0}"
 BASE_DIR="${HOME}/.eww"
 REPO_DIR="${BASE_DIR}/${REPO}"
@@ -140,6 +143,16 @@ function helperGetLatestRelease() {
   curl --silent "https://api.github.com/repos/$1/releases/latest" |
     grep '"tag_name":' |
     sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+function helperGetEwwRefSha() {
+  # Full commit SHA the pinned ${EWW_REPO_REF} points at ("" when the API is
+  # unreachable / rate-limited / the ref is unknown). The top-level "sha" is
+  # the first match in the commits-API response.
+  curl --silent --max-time 10 \
+    "https://api.github.com/repos/${EWW_REPO}/commits/${EWW_REPO_REF}" |
+    grep -m1 '"sha":' |
+    sed -E 's/.*"([0-9a-f]{40})".*/\1/'
 }
 
 function helperCheckout() {
@@ -298,6 +311,7 @@ function helperInstallEwwBuildDeps() {
 }
 
 function helperBuildEwwFromSource() {
+    local force=${1:-n}
     local eww_features="x11"
     [[ -n "${WAYLAND_DISPLAY}" ]] && eww_features="wayland"
     local eww_bin="${EWW_INSTALL_BIN}"
@@ -306,7 +320,7 @@ function helperBuildEwwFromSource() {
     echo
     echo "- Building ${C_Y}eww${C_D} from source (feature: ${eww_features}) ... "
 
-    if [[ -x "${eww_bin}" ]]; then
+    if [[ -x "${eww_bin}" && "${force}" != "force" ]]; then
         rebuild_eww="$(
             helperPrompt "  == ${C_Y}eww${C_D} is already installed at ${C_Y}${eww_bin}${C_D}. Rebuild it from source? ${C_Y}[y or n]${C_D}: " "n" "y n"
         )"
@@ -502,8 +516,24 @@ function installEwwDependencies() {
     fi
 }
 
-function verifyEwwVersion() {
+function ewwInstalledHash() {
+    # 40-hex git hash reported by the installed eww binary ("" when missing).
     local ver=""
+    if command -v eww &> /dev/null; then
+        ver="$(eww --version 2> /dev/null)"
+    fi
+    if [[ "${ver}" =~ ([0-9a-f]{40}) ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    fi
+}
+
+function ensurePinnedEww() {
+    # Prints what is installed and reconciles it with the pinned
+    # ${EWW_REPO_REF}. NOTE: upstream ships a stale Cargo version string, so
+    # builds of the v0.6.0 tag report themselves as "eww 0.5.0 ..." -- the
+    # embedded git hash is the only reliable identity, and the widget scripts
+    # read exactly that to pick the transform order.
+    local ver="" inst_hash="" exp_sha="" ans="" new_hash=""
     if command -v eww &> /dev/null; then
         ver="$(eww --version 2> /dev/null)"
     fi
@@ -516,13 +546,43 @@ function verifyEwwVersion() {
         return
     fi
 
-    if [[ "${ver}" =~ [0-9a-f]{40} ]]; then
-        # Identified build: the widget scripts read the embedded hash and pick
-        # the matching transform behavior automatically.
-        echo ""
-    else
-        echo ""
+    inst_hash="$(ewwInstalledHash)"
+    if [[ -z "${inst_hash}" ]]; then
+        echo
         echo "  ${C_Y}NOTE:${C_D} unrecognized eww build (no git hash); the widget assumes the modern transform order."
+        return
+    fi
+
+    exp_sha="$(helperGetEwwRefSha)"
+    if [[ -z "${exp_sha}" ]]; then
+        echo
+        echo "  ${C_Y}NOTE:${C_D} could not verify the build against ${C_Y}${EWW_REPO_REF}${C_D} (GitHub unreachable or rate-limited)."
+        return
+    fi
+
+    if [[ "${inst_hash}" = "${exp_sha}" ]]; then
+        echo
+        echo "  == Content matches ${C_Y}${EWW_REPO_REF}${C_D}. NOTE: upstream ships a stale Cargo version string, so builds of this tag report themselves as 'eww 0.5.0' -- the embedded hash (${C_Y}${inst_hash:0:7}${C_D}) is the identity that matters."
+        return
+    fi
+
+    echo
+    ans="$(helperPrompt \
+        "  == Installed build (${C_Y}${inst_hash:0:7}${C_D}) differs from pinned ${C_Y}${EWW_REPO_REF}${C_D}. Build & install it now? ${C_Y}[y or n]${C_D}: " \
+        "y" "y n")"
+
+    if [[ "${ans}" != "y" ]]; then
+        echo "  ${C_Y}NOTE:${C_D} keeping the installed build; the widget detects its transform order automatically."
+        return
+    fi
+
+    helperBuildEwwFromSource "force"
+    new_hash="$(ewwInstalledHash)"
+    echo "- Installed eww now: ${C_Y}$(eww --version 2> /dev/null || echo 'NOT FOUND')${C_D}"
+    if [[ -n "${new_hash}" && "${new_hash}" = "${exp_sha}" ]]; then
+        echo "  == The installed build now matches ${C_Y}${EWW_REPO_REF}${C_D}."
+    elif [[ -n "${new_hash}" ]]; then
+        echo "  ${C_Y}NOTE:${C_D} the fresh build reports a different hash (${C_Y}${new_hash:0:7}${C_D}); leaving it in place."
     fi
 }
 
@@ -536,7 +596,7 @@ function installEww() {
 
         if [[ "$(helperExistsProgram eww)" = "0" ]]; then
             echo "done."
-            verifyEwwVersion
+            ensurePinnedEww
             return
         fi
 
@@ -546,7 +606,7 @@ function installEww() {
         helperBuildEwwFromSource
     fi
 
-    verifyEwwVersion
+    ensurePinnedEww
 }
 
 function installWidgetFromGitHub() {

@@ -61,6 +61,13 @@ still written (mirroring the width axis) for older external tooling.
 
 ### Changed
 
+- **Installer pins and verifies the eww build by git hash.** `install.sh`
+  clones the pinned `EWW_REPO_REF` (default `v0.6.0`) and, after any install
+  path (distro package included), compares the installed binary's embedded
+  hash against the ref's commit SHA — offering a pinned source build
+  whenever they differ (default: y). Also clarifies the confusing upstream
+  version string: builds of the v0.6.0 tag print "eww 0.5.0 …" while their
+  content is v0.6.0.
 - **Single-instance process management + orphan cleanup.** Repeated widget
   restarts used to accumulate orphaned background helpers (measured: 4x
   config watcher, 4x monitor watcher and 2x keyboard daemon pairs after one
