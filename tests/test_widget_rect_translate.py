@@ -40,12 +40,20 @@ CFG = {
     "position_y": "392",
     "city": "Budapest",
 }
+# Scenario tests mutate CFG (scales AND the translate_divide_scale
+# override); the autouse fixture must restore this pristine baseline,
+# otherwise a leftover "no"/"yes" override short-circuits the version
+# detection in later tests (measured: all True-expectation detector cases
+# failed when run after the scenarios).
+BASE_CFG = dict(CFG)
 
 
 @pytest.fixture(autouse=True)
 def patched(monkeypatch):
     """Fresh config + cleared order cache for every test."""
     monkeypatch.setattr(wr, "config_value", lambda k, m=None: CFG.get(k, ""))
+    CFG.clear()
+    CFG.update(BASE_CFG)
     wr._EWW_TRANSLATE_ORDER_CACHE.clear()
     yield
 
