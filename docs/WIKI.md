@@ -668,7 +668,10 @@ Rendering note: the widget window is a transparent canvas sized
 max(natural, visible) per axis — above 100% it grows so the enlarged drawing
 is never clipped, below 100% a transform translate shifts the scaled content
 onto the saved rectangle while the canvas itself stays fully on-screen (an
-overflowing managed window would be relocated by the WM).
+overflowing managed window would be relocated by the WM). Every move/resize
+action, its computed numbers and any refusal are appended to
+`logs/move_ctl.log` — the first place to look when a Save appears to do
+nothing.
 
 Transform-order caveat: which matrix order an eww build uses inside its
 transform widget decides the :translate unit. The v0.6.0 TAG build (git hash

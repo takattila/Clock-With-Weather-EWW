@@ -52,9 +52,10 @@ bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.g
 ### 3. Start / stop / configure
 
 ```bash
-bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh    # start the widget
-bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/stop.sh     # stop the widget
-bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/setup.sh    # change API key / theme / hour format
+bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh      # start the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/stop.sh       # stop the widget
+bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/setup.sh      # change API key / theme / hour format
+bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/hard-reset.sh # factory-reset the local config
 ```
 
 ---
