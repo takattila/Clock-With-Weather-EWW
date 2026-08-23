@@ -206,6 +206,18 @@ double-start test keeps exactly one instance of each helper; total related
 RSS dropped from ~272 MB to ~95 MB while the GUI daemon idles at ~55 MB /
 0% CPU.
 
+## Follow-up fix: instant context menu
+
+Ownership forwarding had made right-clicks take ~3.5 s: 6 helper
+processes, each re-running the slow monitor enumeration (xrandr ≈250 ms),
+config/YAML parsing and PIL font loading. ctx.py now computes ownership
+AND placement in ONE process on top of shared data
+(`menu_pos.menu_position()` extracted for reuse; widget_rect gained
+in-process merged-config + font/natural-size caches), plus a 30 s TTL
+monitor cache invalidated by monitor_watch on hotplug. Measured pipeline:
+~280 ms cold / ~2 ms warm (legacy subprocess path kept as fallback).
+Tests: menu_position placement/clamping/monitor-pick (4 new cases).
+
 ## Verification (executed)
 
 1. `pytest tests/` — **160 passed** (existing suite + the new axis-scale

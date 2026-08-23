@@ -87,6 +87,13 @@ still written (mirroring the width axis) for older external tooling.
 
 ### Fixed
 
+- **The context menu now opens instantly.** Ownership resolution and menu
+  placement used to spawn 6 helper processes (each re-running the slow
+  monitor enumeration and config/YAML parsing), costing ~3.5 s before the
+  menu appeared. Everything runs in a single process now, with a short-TTL
+  monitor cache and in-process config/font caches: ~0.3 s cold,
+  imperceptible afterwards. `menu_pos.py` exposes the placement as a
+  reusable function; hotplug invalidates the cache.
 - **Moving the panel and pressing Save silently did nothing.** The off-screen
   safety check validated the panel's saved POSITION OFFSETS as if they were
   absolute screen coordinates — every drag AWAY from the anchored edge

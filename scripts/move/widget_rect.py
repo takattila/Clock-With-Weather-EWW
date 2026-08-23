@@ -80,6 +80,13 @@ RIGHT_FIXED_END = 584
 CLOCK_PAD = 8           # small gap after the city name for the bg corner
 
 
+# Process-level caches: ctx.py now computes every rectangle in ONE process,
+# so repeated ImageFont.truetype() parses (the dominant cost, ~0.2 s per
+# open) and city measurements must be reused across calls.
+_FONT_CACHE = {}
+_NATURAL_SIZE_CACHE = {}
+
+
 def measure_text(text, size, bold=False):
     """Rendered width (px) of `text` at `size` in Noto Sans.
 
@@ -93,7 +100,12 @@ def measure_text(text, size, bold=False):
         paths.append(os.path.join(CONFIG_DIR, "fonts", "NotoSans-Regular.ttf"))
         for path in paths:
             try:
-                return ImageFont.truetype(path, size).getlength(text)
+                key = (path, size)
+                font = _FONT_CACHE.get(key)
+                if font is None:
+                    font = ImageFont.truetype(path, size)
+                    _FONT_CACHE[key] = font
+                return font.getlength(text)
             except Exception:
                 continue
     return len(text) * size * 0.6
@@ -101,10 +113,14 @@ def measure_text(text, size, bold=False):
 
 def clock_natural_size(monitor_index):
     """Natural (scale = 1.0) clock window size, ending at the city name."""
+    key = (monitor_index,)
+    if key in _NATURAL_SIZE_CACHE:
+        return _NATURAL_SIZE_CACHE[key]
     city = config_value("city", monitor_index) or "Budapest"
     city_w = measure_text(city, CITY_FONT_SIZE, bold=CITY_FONT_BOLD)
     natural_w = max(CITY_X + city_w, RIGHT_FIXED_END) + CLOCK_PAD
-    return int(round(natural_w)), CLOCK_H
+    _NATURAL_SIZE_CACHE[key] = (int(round(natural_w)), CLOCK_H)
+    return _NATURAL_SIZE_CACHE[key]
 
 
 def _run(cmd):
@@ -136,11 +152,38 @@ def get_workarea():
         return None
 
 
+_MERGED_CONFIG_CACHE = {}
+
+
 def config_value(key, monitor=None):
-    cmd = ["python3", os.path.join(SCRIPTS_DIR, "core", "config.py"), "--key", key]
-    if monitor is not None:
-        cmd += ["--monitor", str(monitor)]
-    return _run(cmd)
+    """Merged config value as a string, resolved IN-PROCESS with caching.
+
+    The old implementation spawned `config.py --key ...` per call (~100 ms
+    each, several calls per rectangle) which dominated the right-click
+    latency once ctx.py computes every rect in one process. Here the merged
+    view (config.load_config) is built at most once per monitor and reused;
+    the returned representation matches the CLI's printed output.
+    """
+    cache_key = "-1" if monitor is None else str(monitor)
+    merged = _MERGED_CONFIG_CACHE.get(cache_key)
+    if merged is None:
+        sys.path.insert(0, os.path.join(SCRIPTS_DIR, "core"))
+        import config as _config  # noqa: E402
+
+        old_argv = sys.argv
+        sys.argv = ["config.py"] + (["--monitor", cache_key]
+                                    if monitor is not None else [])
+        try:
+            merged = _config.load_config()
+        finally:
+            sys.argv = old_argv
+        _MERGED_CONFIG_CACHE[cache_key] = merged
+    val = merged.get(key)
+    if val is None:
+        return ""
+    if isinstance(val, bool):
+        return "true" if val else "false"
+    return str(val)
 
 
 def split_anchor(alignment):
