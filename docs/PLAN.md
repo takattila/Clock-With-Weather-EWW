@@ -168,6 +168,21 @@ reversed the order — drop the division when upgrading. Verified by portal
 screenshot pixel probes (content left edge lands exactly on visible_tl)
 and synthetic corner/clamp/overscale cases.
 
+SECOND CORRECTION (Cinnamon/X11, newer eww build 48f5aa8b): builds after
+the v0.6.0 tag already use the fixed translate-after-scale order, so the
+unconditional division OVERSHOOTS there by 1/scale — content pushed past
+the screen's right edge, only "21:" of the clock stayed visible when the
+widget was parked under a shrunken panel. The required behavior is a
+property of the BINARY, not of the compositor (and note: the v0.6.0 tag's
+binary mislabels itself "eww 0.5.0" — only the embedded hash is reliable).
+`widget_rect.py` therefore detects the order at runtime from the
+`eww --version` hash (`_divide_translate_by_scale`, per-process cache):
+d87c2fdb → divide; any other identified 40-hex hash → plain delta;
+unparseable probe → divide only on Wayland. The per-monitor config key
+`translate_divide_scale: auto|yes|no` overrides detection. install.sh pins
+its source build to `EWW_REPO_REF=v0.6.0` so fresh installs are
+deterministic while both existing machines keep working unchanged.
+
 ## Follow-up fix: dead right-click after Move/Resize
 
 The per-monitor dismiss overlays are intentionally left open during a

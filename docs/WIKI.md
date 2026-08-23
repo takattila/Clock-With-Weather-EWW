@@ -670,12 +670,18 @@ is never clipped, below 100% a transform translate shifts the scaled content
 onto the saved rectangle while the canvas itself stays fully on-screen (an
 overflowing managed window would be relocated by the WM).
 
-Transform-order caveat: the eww build this project targets applies
-`cr.scale()` BEFORE `cr.translate()` inside its transform widget, so cairo
-composes S·R·T and the effective on-screen offset is `scale × translate`.
-`widget_rect.py` therefore emits `translate = (visible_tl − canvas_tl) / scale`
-per axis. Newer eww versions reversed the order to translate-after-scale; if
-the binary is upgraded past this build, drop that division again.
+Transform-order caveat: which matrix order an eww build uses inside its
+transform widget decides the :translate unit. The v0.6.0 TAG build (git hash
+d87c2fdb..., misleadingly printing "eww 0.5.0") calls cr.scale() BEFORE
+cr.translate(), so cairo composes S·R·T and the on-screen offset is
+`scale × translate`; `widget_rect.py` then emits
+`translate = (visible_tl − canvas_tl) / scale` per axis. Newer builds (e.g.
+48f5aa8b...) already apply translate-after-scale and get the plain delta.
+The order is detected at runtime from the git hash in `eww --version`
+(see `_divide_translate_by_scale`); the per-monitor config key
+`translate_divide_scale: auto|yes|no` overrides it ("auto" = detect, falling
+back to divide on Wayland when the probe fails). install.sh pins the eww
+source build to `EWW_REPO_REF` (default v0.6.0).
 
 ### Resize / reposition workflow
 

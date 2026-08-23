@@ -40,10 +40,10 @@ Output (stdout, JSON):
         max(natural, visible) per axis, positioned so the canvas always fits
         the monitor,
     "translate_x"/"translate_y": transform :translate values placing the
-        scaled content exactly on the visible rectangle. This eww build applies
-        :scale BEFORE :translate inside cairo, so the emitted value is the
-        desired device-pixel offset DIVIDED by the axis scale (see the
-        canvas/transform notes in clock_rect/panel_rect below).
+        scaled content exactly on the visible rectangle, already adjusted
+        for the running binary's transform order (old builds apply :scale
+        before :translate and need the value pre-divided by the axis scale;
+        see _divide_translate_by_scale),
     "natural_w": natural (scale = 1.0) width,
     "natural_h": natural (scale = 1.0) height,
     "anchor": window anchor ("top left" for the clock; panel anchor on X11)
@@ -131,6 +131,49 @@ def _run(cmd):
         return subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True, timeout=5).strip()
     except Exception:
         return ""
+
+
+# Whether the running eww binary applies :scale BEFORE :translate inside its
+# transform widget (so the emitted :translate must be pre-divided by the axis
+# scale), cached per compositor. The order is a property of the BINARY, not of
+# the compositor — identify it from the git hash embedded in `eww --version`:
+#   - d87c2fdb... is the v0.6.0 TAG build (its stale Cargo version string
+#     prints "eww 0.5.0"): cr.scale() runs before cr.translate(), cairo
+#     composes S·R·T and the on-screen offset is scale × translate,
+#   - any other identified build (e.g. 48f5aa8b..., newer master) already uses
+#     the fixed translate-after-scale order: :translate is unscaled device px.
+# A per-monitor config key `translate_divide_scale` ("yes" | "no" | "auto",
+# default) overrides the detection; with an unparseable probe the fleet
+# heuristic falls back to wayland → divide.
+_EWW_TRANSLATE_ORDER_CACHE = {}
+
+
+def _divide_translate_by_scale(compositor):
+    key = str(compositor)
+    if key in _EWW_TRANSLATE_ORDER_CACHE:
+        return _EWW_TRANSLATE_ORDER_CACHE[key]
+    override = (config_value("translate_divide_scale") or "auto").strip().lower()
+    if override == "yes":
+        result = True
+    elif override == "no":
+        result = False
+    else:
+        out = _run(["eww", "--version"])
+        if "d87c2fdb" in out:
+            result = True
+        elif re.search(r"\b[0-9a-f]{40}\b", out):
+            result = False
+        else:
+            result = compositor == "wayland"
+    _EWW_TRANSLATE_ORDER_CACHE[key] = result
+    return result
+
+
+def _emit_translate(delta, scale, compositor):
+    """Transform :translate value for `delta` device px at axis `scale`."""
+    if _divide_translate_by_scale(compositor):
+        return int(round(delta / max(scale, 0.05)))
+    return int(round(delta))
 
 
 def get_monitors():
@@ -246,21 +289,18 @@ def clock_rect(monitor, compositor, workarea, monitor_index):
 
     # --- render canvas (the GTK window) vs the visible content ---------------
     # The transform only scales the DRAWING inside a fixed-size transparent
-    # canvas. This eww build calls cr.scale() BEFORE cr.translate()
-    # (crates/eww/src/widgets/transform.rs @ d87c2fdb), so cairo composes the
-    # matrix as S·R·T and the effective on-screen offset is scale × translate.
-    # To land the content at `delta = visible_tl - canvas_tl` device pixels we
-    # therefore emit translate = delta / scale per axis (guarded against a
-    # degenerate 0 scale). Per axis:
+    # canvas; the :translate unit depends on the binary's internal matrix
+    # order (see _divide_translate_by_scale): v0.6.0-tag builds (d87c2fdb)
+    # call cr.scale() BEFORE cr.translate(), so cairo composes S·R·T, the
+    # on-screen offset is scale × translate and we emit delta / scale
+    # (guarded against a degenerate 0 scale); newer builds use the fixed
+    # translate-after-scale order and get the plain delta. Per axis:
     #   canvas    = max(natural, visible)   (>100% grows the canvas: no clip)
     #   canvas_tl = clamp(visible_tl, 0, frame - canvas)
     #   delta     = visible_tl - canvas_tl  (0 when visible >= natural)
     # so the scaled content lands exactly on the visible rectangle while the
     # canvas itself always fits the monitor — an overflowing managed window
     # would be relocated by the X11 WM, dragging the widget off its spot.
-    # NOTE: newer eww versions reordered the transform to apply :translate
-    # after :scale; if the binary is ever upgraded past this build, drop the
-    # division below again.
     win_w = max(int(natural_w), vis_w)
     win_h = max(int(natural_h), vis_h)
     win_x = min(max(top_left_x, 0), max(0, frame_w - win_w))
@@ -278,8 +318,8 @@ def clock_rect(monitor, compositor, workarea, monitor_index):
         "win_y": win_y,
         "win_w": win_w,
         "win_h": win_h,
-        "translate_x": int(round((top_left_x - win_x) / max(scale_x, 0.05))),
-        "translate_y": int(round((top_left_y - win_y) / max(scale_y, 0.05))),
+        "translate_x": _emit_translate(top_left_x - win_x, scale_x, compositor),
+        "translate_y": _emit_translate(top_left_y - win_y, scale_y, compositor),
         "natural_w": int(natural_w),
         "natural_h": int(natural_h),
         "frame_w": int(frame_w),
@@ -349,10 +389,10 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
     abs_y = frame_y + top_left_y
 
     # --- render canvas: the same rule as for the clock -----------------------
-    # The transform scales only the drawing inside a fixed-size canvas, and
-    # this eww build applies :scale BEFORE :translate (S·R·T matrix), so the
-    # on-screen offset is scale × translate and we emit
-    # (visible_tl - canvas_tl) / scale per axis. Per axis: canvas =
+    # The transform scales only the drawing inside a fixed-size canvas; the
+    # :translate unit depends on the binary's transform order (see
+    # _divide_translate_by_scale): v0.6.0-tag builds need delta / scale per
+    # axis, newer builds the plain delta. Per axis: canvas =
     # max(natural, visible), canvas_tl = clamp(visible_tl, 0, frame - canvas).
     # This keeps the scaled content exactly on the visible rectangle while the
     # oversized transparent canvas never leaves the monitor (an overflowing
@@ -376,8 +416,8 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
         "win_y": win_y,
         "win_w": win_w,
         "win_h": win_h,
-        "translate_x": int(round((top_left_x - win_x) / max(scale_x, 0.05))),
-        "translate_y": int(round((top_left_y - win_y) / max(scale_y, 0.05))),
+        "translate_x": _emit_translate(top_left_x - win_x, scale_x, compositor),
+        "translate_y": _emit_translate(top_left_y - win_y, scale_y, compositor),
         "natural_w": nat_w,
         "natural_h": natural_h,
         "frame_w": int(frame_w),
