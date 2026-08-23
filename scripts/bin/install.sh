@@ -14,6 +14,11 @@ EWW_DIR="${REPO_DIR}"
 EWW_BUILD_DIR="${EWW_BUILD_DIR:-/tmp/eww-src}"
 EWW_INSTALL_BIN="${EWW_INSTALL_BIN:-/usr/local/bin/eww}"
 
+# City preselected by the setup wizard during the installation (Enter picks
+# this instead of the value saved in config.local.yaml; override by exporting
+# DEFAULT_CITY before running the installer).
+DEFAULT_CITY="${DEFAULT_CITY:-Budapest}"
+
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
 C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
 C_R=$(echo -en "\e[1;31m") # COLOR: RED
@@ -374,8 +379,11 @@ function installEwwDependencies() {
     local packages=""
 
     # Runtime deps for the widget scripts:
-    #   - python3-gi + GTK3 typelibs (move_keys.py keyboard grab)
-    #   - xdotool               (menu_pos.py / move_keys.py cursor on X11)
+    #   - python3-gi + GTK3 typelibs (keyboard grab helpers)
+    #   - xdotool               (menu positioning / cursor centering on X11)
+    # NOTE: never name the helper files in this script: with the wget/curl
+    # one-liner install this whole file IS the installer process command line,
+    # and the pkill patterns in stop.sh must never match it.
     #   - xdg-utils             (xdg-open for the About window)
     #   - librsvg               (SVG loader for the panel charts)
     # qt6-tools provides qdbus6, used by workarea.py to query the KDE taskbar
@@ -473,7 +481,7 @@ function installFont() {
     echo -e "- The ${C_Y}'${font}'${C_D} font installed."
 }
 function installSourceSetup() {
-    source "${EWW_DIR}/scripts/bin/setup.sh" --from-install true
+    source "${EWW_DIR}/scripts/bin/setup.sh" --from-install true --city "${DEFAULT_CITY}"
 }
 
 function main() {

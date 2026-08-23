@@ -49,10 +49,30 @@ stop_eww() {
   done
 }
 
-# Stop helper processes that may linger (ESC listener, move keys)
+# Stop helper processes that may linger (ESC listener, move keys).
+#
+# SAFETY: a plain `pkill -f <name>` can kill our own calling chain. Example:
+# the one-line installer runs as `bash -c "<full install.sh source>"`, so the
+# installer command line embeds this repo's file names; if any pkill pattern
+# below appears in that text, the installer dies with SIGTERM mid-run. Walk
+# the ancestor chain up to init and spare those PIDs explicitly.
+helper_ancestor_pids() {
+  local pid=$1
+  while [ -n "$pid" ] && [ "$pid" != "0" ] && [ "$pid" != "1" ]; do
+    printf '%s\n' "$pid"
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
+  done
+}
+
 stop_helpers() {
-  pkill -f "esc_listener.py" 2>/dev/null || true
-  pkill -f "move_keys.py" 2>/dev/null || true
+  local protected pid
+  protected=" $(helper_ancestor_pids $$ | tr '\n' ' ')"
+  for pid in $(pgrep -f 'esc_listener\.py|move_keys\.py' 2>/dev/null || true); do
+    case "${protected} " in
+      *" ${pid} "*) continue ;;
+    esac
+    kill "$pid" 2>/dev/null || true
+  done
 }
 
 main() {
