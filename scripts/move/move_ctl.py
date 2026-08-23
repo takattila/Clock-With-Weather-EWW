@@ -163,6 +163,18 @@ def base_rect(monitor, w, h):
         sys.exit("ERROR: workarea.py --base-rect failed:\n%s" % out)
 
 
+def is_degenerate_rect(x, y, w, h):
+    """True when move_x/y/w/h still carry the pre-session defaults.
+
+    eww variables persist between sessions; if a Save somehow fires before
+    move.py ever initialized them for this round (race, stray keypress,
+    ghost panel), the stored rect reads 100x100 at (0,0). Writing THAT
+    produced scale=MIN + top-left positions for users (measured bug), so
+    such a state is refused instead of saved.
+    """
+    return (w, h) == (100, 100) and (x, y) == (0, 0)
+
+
 def finish():
     # The rectangle window (scripts/move_rect.py) and the control panel
     # (scripts/move_panel.py) both watch the session file and quit by
@@ -265,9 +277,22 @@ def main():
         return
 
     if args.action == "save":
+        # SAFETY: never persist a degenerate/unreachable rect (see helpers).
+        if is_degenerate_rect(x, y, w, h):
+            sys.exit("ERROR: refusing to save default-sized rect at origin "
+                     "(nothing was resized/dragged this session)")
         base_w, base_h, scale, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
         if base_w:
             scale = clamp(w / base_w, MIN_SCALE, MAX_SCALE)
+        margin = 40  # the saved widget must keep at least this much on-screen
+
+        def refuse_outside(px, py, pw, ph):
+            """Refuse (exit) when the saved widget would be fully off-screen."""
+            if px + pw < margin or px > frame_w - margin or \
+               py + ph < margin or py > frame_h - margin:
+                sys.exit("ERROR: refusing to save off-screen position "
+                         "(%d,%d %dx%d on %dx%d frame)" % (px, py, pw, ph, frame_w, frame_h))
+
         if args.widget == "panel":
             # The panel position is a per-monitor offset added to the global
             # panel.gap baseline, so Save writes the delta between the dragged
@@ -276,11 +301,15 @@ def main():
             base = base_rect(args.monitor, w, h)
             new_x = int(round(x - base["base_left"]))
             new_y = int(round(y - base["base_top"]))
+            refuse_outside(new_x, new_y, w, h)
             save_value(args.widget, args.monitor, "position_x", new_x)
             save_value(args.widget, args.monitor, "position_y", new_y)
         else:
             new_x = int(round(x - align_pos(w, frame_w, h_align)))
             new_y = int(round(y - align_pos(h, frame_h, v_align)))
+            vw = int(round(base_w * scale))
+            vh = int(round(base_h * scale))
+            refuse_outside(new_x, new_y, vw, vh)
             save_value(args.widget, args.monitor, "position_x", new_x)
             save_value(args.widget, args.monitor, "position_y", new_y)
         save_value(args.widget, args.monitor, "scale", "%.2f" % scale)

@@ -81,6 +81,14 @@ context menu's "Hard reset" item.
   Wayland too): a `close` silently dropped while the daemon regenerates the
   theme is retried instead of leaving a ghost layer behind.
 
+### Fixed
+
+- **Move / Resize Save refuses degenerate states**: if a save fires while
+  the overlay rectangle still carries pre-session defaults (100x100 at the
+  origin) or would place the widget completely off-screen, it is REFUSED
+  instead of writing e.g. scale=30% + top-left corner positions into
+  `config.local.yaml`.
+
 ### Changed
 
 - `scripts/core/config_set.py`: new global keys (`hour_format`, `appearance`,

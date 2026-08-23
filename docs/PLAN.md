@@ -53,6 +53,10 @@ Live testing surfaced three reliability gaps, all fixed:
     browser on KDE/Wayland (the overlay level sits over every normal
     window), making everything unclickable; about_win.py now closes them
     right before xdg-open.
+  * a Save firing on a never-initialized overlay rect (eww defaults:
+    100x100 at the origin) wrote scale=MIN + top-left positions for users;
+    move_ctl.py now refuses degenerate rects and any save that would place
+    the widget completely off its monitor.
 
 ## Goal
 
