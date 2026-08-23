@@ -34,33 +34,42 @@ ensure_plasma_running() {
 
 # --- Display environment bootstrap ----------------------------------------
 # The widget is often started from a terminal/autostart context that does not
-# export the graphical session variables (DISPLAY / WAYLAND_DISPLAY /
-# XAUTHORITY / XDG_RUNTIME_DIR / XDG_SESSION_TYPE). The eww daemon (a GTK
-# application) needs them to connect to the compositor; without them every
-# window fails with "Display parsing error" and the defpolls stay empty.
-# Import the variables from a running desktop process (kwin_wayland first,
-# then plasma/x11/gnome shells) when they are missing.
+# export the full graphical session variables. A shell may carry DISPLAY
+# (XWayland) WITHOUT WAYLAND_DISPLAY even on a Wayland desktop -- the stack
+# then misdetects X11 and opens WM-managed windows whose positions KWin
+# ignores (widgets could not be parked at screen edges). So instead of an
+# early exit, every MISSING variable is imported individually from a running
+# desktop process; existing values always win.
+missing_session_vars() {
+  local v out=""
+  for v in DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_RUNTIME_DIR XDG_SESSION_TYPE; do
+    [ -n "${!v:-}" ] || out="$out $v"
+  done
+  printf '%s' "$out"
+}
+
 ensure_display_env() {
-  if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
-    return 0
-  fi
-  local pid line
-  for pid in $(pgrep -x kwin_wayland 2>/dev/null) \
-             $(pgrep -x plasmashell 2>/dev/null) \
-             $(pgrep -x gnome-shell 2>/dev/null) \
-             $(pgrep -x cinnamon 2>/dev/null) \
-             $(pgrep -x Xorg 2>/dev/null); do
-    [ -r "/proc/$pid/environ" ] || continue
-    while IFS= read -r -d '' line; do
-      case "$line" in
-        DISPLAY=*|WAYLAND_DISPLAY=*|XAUTHORITY=*|XDG_RUNTIME_DIR=*|XDG_SESSION_TYPE=*)
-          export "$line" ;;
-      esac
-    done < "/proc/$pid/environ"
-    if [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; then
-      echo "display env imported from session process (PID $pid)"
-      break
-    fi
+  while :; do
+    local need imported=0 pid line v
+    need="$(missing_session_vars)"
+    [ -n "$need" ] || return 0
+    for pid in $(pgrep -x kwin_wayland 2>/dev/null) \
+               $(pgrep -x plasmashell 2>/dev/null) \
+               $(pgrep -x gnome-shell 2>/dev/null) \
+               $(pgrep -x cinnamon 2>/dev/null) \
+               $(pgrep -x Xorg 2>/dev/null); do
+      [ -r "/proc/$pid/environ" ] || continue
+      while IFS= read -r -d '' line; do
+        v="${line%%=*}"
+        case "$need" in
+          *" $v "*)
+            export "$line"
+            imported=1
+            ;;
+        esac
+      done < "/proc/$pid/environ"
+    done
+    [ "$imported" = "1" ] || break   # nothing new found -> stop retrying
   done
   if [ -z "${WAYLAND_DISPLAY:-}" ] && [ -z "${DISPLAY:-}" ]; then
     echo "WARNING: no graphical session detected (no DISPLAY/WAYLAND_DISPLAY); the widget may not be visible."

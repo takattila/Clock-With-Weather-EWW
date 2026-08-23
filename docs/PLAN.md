@@ -225,6 +225,18 @@ compositor-correct source (xdotool on X11, KWin scripting via
 workarea.kde_cursor on Wayland) and forwarding stays OFF when no reliable
 cursor exists (4 new cases).
 
+Follow-up: KDE/Wayland stack fell back to X11-compat mode when started
+without WAYLAND_DISPLAY in its environment (SSH / some terminals) — KWin
+ignores client-requested X11 positions, so shrunken widgets refused to sit
+at screen edges even though Save persisted correct values. Shared
+`scripts/core/detect.py` now detects the session via env, XDG_SESSION_TYPE,
+running Wayland-compositor process names and gnome-shell's own environ
+(monitors.py + workarea.py both use it — a mismatch would mix window
+backends), and start.sh imports each missing session variable individually
+instead of early-returning when only DISPLAY is present. Diagnosed live on
+the affected KDE box: locally `compositor=wayland`, geometry math exact,
+Save wrote offsets — only the XWayland placement was wrong.
+
 ## Verification (executed)
 
 1. `pytest tests/` — **160 passed** (existing suite + the new axis-scale

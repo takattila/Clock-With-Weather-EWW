@@ -87,6 +87,16 @@ still written (mirroring the width axis) for older external tooling.
 
 ### Fixed
 
+- **KDE / Wayland: widgets could not be parked at the screen edges when the
+  stack was started without `WAYLAND_DISPLAY` in its environment** (SSH
+  session, some autostart/terminal contexts). Detection then silently fell
+  back to X11-compat windows, whose requested positions KWin ignores — the
+  resize rectangle showed the target spot but the widget landed elsewhere.
+  Compositor detection is now robust (env + `XDG_SESSION_TYPE` + running
+  compositor processes via a shared `scripts/core/detect.py`) and
+  `start.sh` imports each missing session variable individually, so a
+  Wayland desktop always gets native layer-shell windows with exact margin
+  placement. Genuine X11 sessions are unaffected.
 - **KDE / Wayland: right-clicking the system panel opened the weather
   menu** (so the panel could not be moved or resized). Ownership forwarding
   trusted xdotool for the cursor, but on Wayland it only tracks the pointer

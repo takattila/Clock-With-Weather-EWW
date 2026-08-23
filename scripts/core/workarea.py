@@ -111,6 +111,7 @@ import time
 import yaml
 
 from config_io import load_merged
+from detect import compositor as detect_compositor
 
 PANEL_WIDTH = 250
 
@@ -350,10 +351,8 @@ def detect_taskbar(screen, workarea):
     return "none"
 
 
-def detect_compositor():
-    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("SWAYSOCK"):
-        return "wayland"
-    return "x11"
+# detect_compositor comes from the shared scripts/core/detect.py (imported
+# above): monitors.py and workarea.py must never disagree about the mode.
 
 
 def compute_panel(screen, workarea, taskbar, gaps, compositor, kde_frame=None):

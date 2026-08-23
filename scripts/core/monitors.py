@@ -30,13 +30,9 @@ import re
 import subprocess
 import sys
 
+from detect import compositor as detect_compositor
+
 SYSFS_DRM = "/sys/class/drm"
-
-
-def detect_compositor():
-    if os.environ.get("WAYLAND_DISPLAY") or os.environ.get("SWAYSOCK"):
-        return "wayland"
-    return "x11"
 
 
 def drm_connectors():
