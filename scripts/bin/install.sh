@@ -112,8 +112,14 @@ function helperPrompt() {
     shift
 
     local validAnswersArray=("${@:2}")
+    local promptText="${printHelperText}"
 
-    read -p "${printHelperText}" answer
+    # Mark the default answer (taken on plain Enter).
+    if [[ -n "${defaultAnswer}" && "${defaultAnswer}" != "EMPTY_ANSWER_NOT_ALLOWED" ]]; then
+        promptText+="${C_Y} [default: ${defaultAnswer}]${C_D}"
+    fi
+
+    read -p "${promptText}" answer
 
     if [[ -z "${answer}" ]]; then
         if [[ "${defaultAnswer}" = "EMPTY_ANSWER_NOT_ALLOWED" ]]; then

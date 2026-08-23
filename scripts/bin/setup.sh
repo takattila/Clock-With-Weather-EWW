@@ -90,7 +90,10 @@ names = sorted(os.listdir(os.path.join(sys.argv[1], "assets", "themes", "appeara
 try:
     print(names.index(sys.argv[2]) + 1)
 except ValueError:
-    print(11)
+    try:
+        print(names.index("light") + 1)
+    except ValueError:
+        print(1)
 ' "$DIR" "$(python3 "${DIR}/scripts/core/config.py" --key appearance)" )"
 DEFAULT_HOUR_FORMAT="$(          [[ -n "${ARG_HOUR_FORMAT}" ]]       && echo "${ARG_HOUR_FORMAT}"       || python3 "${DIR}/scripts/core/config.py" --key hour_format )"
 DEFAULT_ALIGNMENT_NUMBER="$(     [[ -n "${ARG_ALIGNMENT_NUMBER}" ]]  && echo "${ARG_ALIGNMENT_NUMBER}"  || python3 -c '
@@ -169,8 +172,14 @@ function helperPrompt() {
     shift
 
     local validAnswersArray=("${@:2}")
+    local promptText="${printHelperText}"
 
-    read -p "${printHelperText}" answer
+    # Mark the default answer (taken on plain Enter).
+    if [[ -n "${defaultAnswer}" && "${defaultAnswer}" != "EMPTY_ANSWER_NOT_ALLOWED" ]]; then
+        promptText+="${C_Y} [default: ${defaultAnswer}]${C_D}"
+    fi
+
+    read -p "${promptText}" answer
 
     if [[ -z "${answer}" ]]; then
         if [[ "${defaultAnswer}" = "EMPTY_ANSWER_NOT_ALLOWED" ]]; then
