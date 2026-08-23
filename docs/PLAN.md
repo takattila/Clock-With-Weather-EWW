@@ -218,6 +218,13 @@ monitor cache invalidated by monitor_watch on hotplug. Measured pipeline:
 ~280 ms cold / ~2 ms warm (legacy subprocess path kept as fallback).
 Tests: menu_position placement/clamping/monitor-pick (4 new cases).
 
+Follow-up: on KDE/Wayland the same pipeline trusted xdotool, whose pointer
+is stale above native layer-shell widgets — every panel right-click could
+be forwarded to the clock. `ctx.resolve_cursor()` now picks the
+compositor-correct source (xdotool on X11, KWin scripting via
+workarea.kde_cursor on Wayland) and forwarding stays OFF when no reliable
+cursor exists (4 new cases).
+
 ## Verification (executed)
 
 1. `pytest tests/` — **160 passed** (existing suite + the new axis-scale

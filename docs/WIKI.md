@@ -619,6 +619,12 @@ Submenu mechanics:
   regenerates / reloads / relayouts automatically.
 - The parent-row labels still show the current state from the `config`
   defpoll (5 s refresh), so right after a selection they can lag up to 5 s.
+- SPEED + OWNERSHIP: the whole geometry (which widget is under the pointer,
+  where the menu opens) is computed in ONE process on shared data — a 30 s
+  TTL monitor cache, in-process config/font caches and a compositor-aware
+  cursor source (xdotool on X11, KWin scripting on KDE/Wayland; without a
+  reliable cursor the clicked widget wins). Opens in ~0.1–0.3 s; hotplug
+  invalidates the cache. Details: `ctx.choose_widget` / `resolve_cursor`.
 
 ### Resize percentages & independent width / height
 

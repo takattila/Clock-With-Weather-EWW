@@ -87,6 +87,13 @@ still written (mirroring the width axis) for older external tooling.
 
 ### Fixed
 
+- **KDE / Wayland: right-clicking the system panel opened the weather
+  menu** (so the panel could not be moved or resized). Ownership forwarding
+  trusted xdotool for the cursor, but on Wayland it only tracks the pointer
+  over XWayland surfaces and reports a stale position above the native
+  widgets. The context menu now uses KDE's global cursor (KWin scripting)
+  on Wayland, and keeps clicks on the claimed widget when no cursor API is
+  available instead of acting on stale coordinates.
 - **The context menu now opens instantly.** Ownership resolution and menu
   placement used to spawn 6 helper processes (each re-running the slow
   monitor enumeration and config/YAML parsing), costing ~3.5 s before the

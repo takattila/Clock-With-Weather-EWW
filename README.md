@@ -80,8 +80,10 @@ The context menu is a quick-settings panel: Move / Resize / Reset, plus hover
 submenus for the **AM/PM format** (12 ↔ 24 hour), the **theme** (all
 ready-made themes, two columns, active one highlighted), **°C/°F** (with
 instant weather refresh), **panel show/hide** and **panel side** — and a
-factory **Hard reset** + About dialog. Every selection is written to the
-git-ignored `config.local.yaml` and applied live.
+factory **Hard reset** + About dialog. The menu opens instantly and always
+belongs to the widget actually sitting under the pointer — even where their
+transparent edges overlap. Every selection is written to the git-ignored
+`config.local.yaml` and applied live.
 
 <table>
     <tr>

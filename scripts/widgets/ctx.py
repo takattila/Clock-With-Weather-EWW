@@ -71,6 +71,27 @@ def get_monitors_cached():
     return data
 
 
+def resolve_cursor(data):
+    """Compositor-appropriate global cursor (px, py), or None.
+
+    X11 trusts xdotool. On Wayland xdotool only tracks the pointer over
+    XWayland surfaces -- above our native layer-shell widgets it returns a
+    stale position, which once redirected EVERY panel right-click to the
+    clock. KDE exposes the real global pointer through the KWin scripting
+    API (workarea.kde_cursor); compositors without such an API yield None,
+    in which case ownership forwarding must stay off (keep the claimed
+    widget) instead of acting on garbage coordinates.
+    """
+    if data.get("compositor", "x11") == "wayland":
+        try:
+            import workarea as _wa
+
+            return _wa.kde_cursor()
+        except Exception:
+            return None
+    return cursor_position()
+
+
 def collect_rects_data(screens, data, workarea):
     """Visible rectangles for BOTH widgets on every screen, in-process.
 
@@ -197,7 +218,7 @@ def main():
         workarea = wr.get_workarea()
         screens = sorted(int(m["index"]) for m in data.get("monitors", []))
         rects = collect_rects_data(screens, data, workarea)
-        cursor = cursor_position()
+        cursor = resolve_cursor(data)
         widget, monitor = choose_widget(
             args.widget, args.monitor, cursor, rects)
         pos = menu_pos.menu_position(widget, monitor, data, workarea,
