@@ -620,22 +620,49 @@ Submenu mechanics:
 - The parent-row labels still show the current state from the `config`
   defpoll (5 s refresh), so right after a selection they can lag up to 5 s.
 
-### Hand-typed resize percentage
+### Resize percentages & independent width / height
 
-In the Move / Resize control panel (`scripts/move/move_panel.py`) the value
-between − and + is an editable entry, not just a label:
+The Move / Resize control panel (`scripts/move/move_panel.py`) has THREE
+resize rows, each with a − / % / + group:
 
-- type a percentage (30–150) and press **Enter** — or just leave the field;
-- on focus-out an uncommitted draft is discarded and the field snaps back to
-  the live value polled from the eww variable `move_pct` every 250 ms;
-- typed values are applied by `move_ctl.py --action set_scale --value N`,
-  which clamps to 30–150% and keeps the anchored corner / panel side gap
-  fixed exactly like the ± buttons do.
+| Row | eww variable | typed-value action | Effect |
+|---|---|---|---|
+| *(unlabeled)* | `move_pct` | `move_ctl.py --action set_scale` | proportional zoom — aspect ratio preserved |
+| **W** | `move_pct` | `--action set_scale_x` | width only |
+| **H** | `move_pct_h` | `--action set_scale_y` | height only |
 
-While the field owns the keyboard, the panel marks the session file with
+- Every `%` value between − and + is an editable entry: type a percentage
+  (30–150) and press **Enter** — or just leave the field; on focus-out an
+  uncommitted draft is discarded and the field snaps back to the live value
+  polled from its eww variable every 250 ms. Typed values are clamped and
+  keep the anchored corner / panel side gap fixed exactly like the ± buttons.
+- Keyboard (evdev daemon): plain arrows move, +/- zoom proportionally,
+  **Shift+Up/Down** = height ±, **Shift+Right/Left** = width ±.
+- Mouse on the overlay rectangle (`scripts/move_rect.py`): corner drags keep
+  the aspect ratio, **edge drags resize a single axis** (left/right = width,
+  top/bottom = height).
+- Anchoring per axis: width changes keep the panel's right gap fixed (it
+  grows/shrinks leftward) and realign the clock horizontally to its anchor;
+  height changes realign the clock vertically while the panel keeps its
+  top/gap-derived baseline.
+
+While a field owns the keyboard, the panel marks the session file with
 `"typing": true`; the evdev daemon ignores every key during that time
 (otherwise Enter would save and −/+ would zoom while typing). Click outside
 the field first if you want ESC to cancel the session.
+
+Persistence: Move / Resize -> Save writes `scale_x` (= width / natural width)
+and `scale_y` (= height / natural height) into the widget's per_monitor entry
+(next to position_x/position_y), plus the classic `scale` key mirroring the
+width axis for backward compatibility. Readers resolve each axis as
+`scale_x -> scale -> 1.0`, so configs that only carry `scale` still scale both
+axes uniformly.
+
+Rendering note: the widget window is a transparent canvas sized
+max(natural, visible) per axis — above 100% it grows so the enlarged drawing
+is never clipped, below 100% a transform translate shifts the scaled content
+onto the saved rectangle while the canvas itself stays fully on-screen (an
+overflowing managed window would be relocated by the WM).
 
 ### Resize / reposition workflow
 

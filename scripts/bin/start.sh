@@ -2,6 +2,14 @@
 # Start the eww widget.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." >/dev/null 2>&1 && pwd )"
 
+# Pattern-based leftover killer shared with stop.sh (single-instance
+# guarantee: repeated starts used to accumulate orphaned watcher/daemon
+# generations whose pidfile entry had been overwritten).
+if [ -f "$DIR/scripts/bin/process_sweep.sh" ]; then
+  # shellcheck source=process_sweep.sh
+  . "$DIR/scripts/bin/process_sweep.sh"
+fi
+
 # Runtime output locations (git-ignored via the global *.log / *.pid rules)
 LOGS_DIR="$DIR/logs"   # every *.log file
 RUN_DIR="$DIR/run"     # every *.pid file
@@ -104,44 +112,83 @@ layout_windows() {
   panel_enabled="$(python3 "$DIR/scripts/core/config.py" --key panel_enabled)"
 
   count=0
-  while IFS='|' read -r idx px py pw ph panchor; do
+  # px/py/panchor are no longer consumed here (the panel geometry comes from
+  # widget_rect.py's canvas keys); the layout line keeps its 6-field shape.
+  while IFS='|' read -r idx _ _ pw ph _; do
     [ -z "$idx" ] && continue
 
-    # Clock widget geometry (top-left position; the window keeps its NATURAL
-    # size and the transform widget scales the content, so the window size does
-    # NOT depend on the scale -- only the visual position/size do, which
-    # widget_rect.py computes). The natural width is dynamic: it hugs the
-    # content and ends right after the city name, so the Move/Resize rectangle
-    # matches the visible widget.
-    local main_geom main_x main_y main_w main_h main_scale_perc panel_scale_perc panel_translate_x panel_translate_y
+    # Clock widget geometry. The eww window is a fixed-size transparent
+    # CANVAS and the transform widget only scales the drawing inside it, so
+    # widget_rect.py computes BOTH:
+    #   - the VISIBLE rectangle (x/y/width/height: what the user sees, what
+    #     the Move/Resize overlay drags and Save persists), and
+    #   - the CANVAS geometry (win_x/win_y/win_w/win_h + translate_x/y):
+    #     above 100% the canvas grows to the scaled size (otherwise the
+    #     window surface would clip the enlarged drawing), below 100% it
+    #     stays natural-sized but is positioned so it always fits the
+    #     monitor — an overflowing managed X11 window would be relocated by
+    #     the WM, dragging the widget away from its saved spot — while the
+    #     transform :translate values (device pixels) place the scaled
+    #     content exactly on the visible rectangle.
+    # The natural width is dynamic (hugs the content, ends after the city
+    # name). Width and height scale INDEPENDENTLY (scale_x / scale_y, each
+    # falling back to `scale`).
+    local main_geom main_scale_perc_x main_scale_perc_y \
+          main_win_x main_win_y main_win_w main_win_h main_translate_x main_translate_y \
+          main_natural_w main_natural_h val k \
+          panel_geom panel_scale_x panel_scale_y \
+          panel_scale_perc_x panel_scale_perc_y \
+          pwin_x pwin_y pwin_w pwin_h ptranslate_x ptranslate_y
     main_geom="$(python3 "$DIR/scripts/move/widget_rect.py" --widget clock --monitor "$idx")" || {
       echo "ERROR: widget_rect.py (clock, monitor $idx) failed"; return 1
     }
-    main_x="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["x"])')"
-    main_y="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["y"])')"
-    main_w="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["natural_w"])')"
-    main_h="$(printf '%s' "$main_geom" | python3 -c 'import json,sys; print(json.load(sys.stdin)["natural_h"])')"
-    main_scale_perc="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key scale --monitor "$idx") * 100)))")"
+    for k in win_x win_y win_w win_h translate_x translate_y natural_w natural_h; do
+      # shellcheck disable=SC2034  # consumed through the eval below
+      val="$(printf '%s' "$main_geom" | python3 -c "import json,sys; print(json.load(sys.stdin)[\"$k\"])")"
+      eval "main_$k=\$val"
+    done
+    main_scale_perc_x="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key scale_x --monitor "$idx") * 100)))")"
+    main_scale_perc_y="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key scale_y --monitor "$idx") * 100)))")"
 
     eww --config "$DIR/eww" open --id "main_$idx" --screen "$idx" \
-      --arg "main_x=$main_x" --arg "main_y=$main_y" \
-      --arg "main_w=$main_w" --arg "main_h=$main_h" \
-      --arg "main_scale_perc=$main_scale_perc" --arg "screen=$idx" \
+      --arg "main_win_x=$main_win_x" --arg "main_win_y=$main_win_y" \
+      --arg "main_win_w=$main_win_w" --arg "main_win_h=$main_win_h" \
+      --arg "main_w=$main_natural_w" --arg "main_h=$main_natural_h" \
+      --arg "main_scale_perc_x=$main_scale_perc_x" \
+      --arg "main_scale_perc_y=$main_scale_perc_y" \
+      --arg "main_translate_x=$main_translate_x" \
+      --arg "main_translate_y=$main_translate_y" \
+      --arg "screen=$idx" \
       "$win_main"
 
     if [ "$panel_enabled" = "true" ]; then
-      panel_scale_perc="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key panel_scale --monitor "$idx") * 100)))")"
-      panel_translate_x="$(python3 -c "print(int(round(250 * (1.0/$(python3 "$DIR/scripts/core/config.py" --key panel_scale --monitor "$idx") - 1))))")"
-      case "$panchor" in
-        *bottom*) panel_translate_y="$(python3 -c "print(int(round($ph * (1.0/$(python3 "$DIR/scripts/core/config.py" --key panel_scale --monitor "$idx") - 1))))")" ;;
-        *)         panel_translate_y="0" ;;
-      esac
+      panel_scale_x="$(python3 "$DIR/scripts/core/config.py" --key panel_scale_x --monitor "$idx")"
+      panel_scale_y="$(python3 "$DIR/scripts/core/config.py" --key panel_scale_y --monitor "$idx")"
+      panel_scale_perc_x="$(python3 -c "print(int(round($panel_scale_x * 100)))")"
+      panel_scale_perc_y="$(python3 -c "print(int(round($panel_scale_y * 100)))")"
+      # Same canvas rule as the clock, computed by widget_rect.py (panel):
+      # pwin_* is max(natural, visible) positioned so it always fits the
+      # monitor; the translates (device px) put the scaled content exactly
+      # on the visible rectangle. Geometry uses a "top left" anchor with
+      # these absolute frame coords on both compositors.
+      local panel_geom pwin_x pwin_y
+      panel_geom="$(python3 "$DIR/scripts/move/widget_rect.py" --widget panel --monitor "$idx")" || {
+        echo "ERROR: widget_rect.py (panel, monitor $idx) failed"; return 1
+      }
+      for k in win_x win_y win_w win_h translate_x translate_y; do
+        # shellcheck disable=SC2034  # consumed through the eval below
+        val="$(printf '%s' "$panel_geom" | python3 -c "import json,sys; print(json.load(sys.stdin)[\"$k\"])")"
+        eval "p$k=\$val"
+      done
       eww --config "$DIR/eww" open --id "panel_$idx" --screen "$idx" \
-        --arg "screen=$idx" --arg "px=$px" --arg "py=$py" \
-        --arg "pw=$pw" --arg "ph=$ph" --arg "panchor=$panchor" \
-        --arg "panel_scale_perc=$panel_scale_perc" \
-        --arg "panel_translate_x=$panel_translate_x" \
-        --arg "panel_translate_y=$panel_translate_y" \
+        --arg "screen=$idx" \
+        --arg "pw=$pw" --arg "ph=$ph" \
+        --arg "pwin_x=$pwin_x" --arg "pwin_y=$pwin_y" \
+        --arg "pwin_w=$pwin_w" --arg "pwin_h=$pwin_h" \
+        --arg "panel_scale_perc_x=$panel_scale_perc_x" \
+        --arg "panel_scale_perc_y=$panel_scale_perc_y" \
+        --arg "panel_translate_x=$ptranslate_x" \
+        --arg "panel_translate_y=$ptranslate_y" \
         "$win_panel"
     fi
     count=$((count + 1))
@@ -179,6 +226,9 @@ start_eww() {
 # setsid detaches it into its own session so it survives the caller's shell /
 # process-group cleanup (nohup alone is not enough here).
 start_watcher() {
+  # Single-instance guarantee: sweep older generations first (a stale
+  # pidfile would otherwise leave them running forever).
+  sweep_kill "${DIR}/scripts/core/watch\.py"
   setsid python3 "$DIR/scripts/core/watch.py" "$DIR" >> "$LOGS_DIR/watch.log" 2>&1 &
   echo $! > "$RUN_DIR/watch.pid"
   disown 2>/dev/null || true
@@ -188,6 +238,7 @@ start_watcher() {
 # Start the monitor watcher (hotplug / mode changes). Event-driven and ~0 CPU
 # while idle; see scripts/core/monitor_watch.py.
 start_monitor_watch() {
+  sweep_kill "${DIR}/scripts/core/monitor_watch\.py"
   setsid python3 "$DIR/scripts/core/monitor_watch.py" "$DIR" >> "$LOGS_DIR/monitor_watch.log" 2>&1 &
   echo $! > "$RUN_DIR/monitor_watch.pid"
   disown 2>/dev/null || true
@@ -203,6 +254,10 @@ start_monitor_watch() {
 # appears on screen or in the taskbar. Log goes to logs/input_daemon.log, its PID to
 # run/input_daemon.pid.
 start_input_daemon() {
+  # Single-instance guarantee (same rationale as the watchers): kill any
+  # leftover daemon first -- its pidfile may point at a newer instance,
+  # leaving older ones running invisible in the background.
+  sweep_kill "${DIR}/scripts/move/input_daemon\.py"
   if [ -f "$RUN_DIR/input_daemon.pid" ]; then
     local opid
     opid="$(cat "$RUN_DIR/input_daemon.pid" 2>/dev/null)"

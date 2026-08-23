@@ -48,6 +48,76 @@ def list_monitor_indices():
         return []
 
 
+def widget_visible_rect(widget, monitor):
+    """Absolute visible rectangle {x,y,w,h} or None (widget_rect failed)."""
+    out = run(
+        ["python3", os.path.join(CONFIG_DIR, "scripts", "move", "widget_rect.py"),
+         "--widget", widget, "--monitor", str(monitor)],
+        capture=True,
+    )
+    try:
+        r = json.loads(out)
+        return {"x": int(r["abs_x"]), "y": int(r["abs_y"]),
+                "w": int(r["width"]), "h": int(r["height"])}
+    except Exception:
+        return None
+
+
+def cursor_position():
+    """Global cursor (px, py) via xdotool, or None (unavailable / Wayland)."""
+    out = run(["xdotool", "getmouselocation"], capture=True)
+    m = {}
+    for part in out.split():
+        if ":" in part:
+            k, v = part.split(":", 1)
+            m[k] = v
+    try:
+        return int(m["x"]), int(m["y"])
+    except (KeyError, ValueError):
+        return None
+
+
+def choose_widget(claimed_widget, claimed_monitor, cursor, rects):
+    """(widget, monitor) whose VISIBLE area actually sits under the cursor.
+
+    The scaled content is drawn inside a larger transparent canvas window,
+    so the X server may deliver a right-click aimed at one widget to the
+    OTHER one's canvas overlapping it (measured: clicks on the clock's
+    visible part that fell into the panel's transparent bottom strip opened
+    the panel menu). If the claimed widget's visible rect does not contain
+    the cursor but exactly one other candidate rect does, that other
+    wins. Ambiguity keeps the claimed widget; unknown cursor / rects keep
+    it too (behaviour identical to pre-forwarding).
+    """
+    if not cursor:
+        return claimed_widget, claimed_monitor
+
+    def contains(r):
+        return bool(r) and r["x"] <= cursor[0] < r["x"] + r["w"] \
+            and r["y"] <= cursor[1] < r["y"] + r["h"]
+
+    claimed_rect = next((r for r in rects if r["widget"] == claimed_widget
+                         and r["monitor"] == claimed_monitor), None)
+    others = [r for r in rects
+              if (r["widget"], r["monitor"]) != (claimed_widget, claimed_monitor)]
+    if contains(claimed_rect) or not any(contains(r) for r in others):
+        return claimed_widget, claimed_monitor
+    hits = [r for r in others if contains(r)]
+    # Deterministic pick: the SMALLEST containing rect (most specific hit).
+    best = min(hits, key=lambda r: r["w"] * r["h"])
+    return best["widget"], best["monitor"]
+
+
+def collect_rects(screens):
+    rects = []
+    for widget in ("clock", "panel"):
+        for idx in screens:
+            r = widget_visible_rect(widget, idx)
+            if r:
+                rects.append({"widget": widget, "monitor": idx, **r})
+    return rects
+
+
 def main():
     if os.environ.get("EWW_CTX_BG") != "1":
         # eww kills widget commands whose runtime exceeds its timeout (default
@@ -68,9 +138,22 @@ def main():
     ap.add_argument("--monitor", type=int, default=0)
     args = ap.parse_args()
 
+    # Ownership forwarding (see choose_widget): the click may have been
+    # delivered by the OTHER widget's transparent canvas overlapping this
+    # one -- redirect the menu to whichever widget is visibly under the
+    # cursor so its Move/Resize rectangle matches what the user clicked.
+    widget, monitor = args.widget, args.monitor
+    try:
+        screens = list_monitor_indices()
+        if screens:
+            widget, monitor = choose_widget(
+                args.widget, args.monitor, cursor_position(), collect_rects(screens))
+    except Exception:
+        widget, monitor = args.widget, args.monitor
+
     out = run(
         ["python3", os.path.join(CONFIG_DIR, "scripts", "move", "menu_pos.py"),
-         "--widget", args.widget, "--monitor", str(args.monitor)],
+         "--widget", widget, "--monitor", str(monitor)],
         capture=True,
     )
     try:
@@ -105,8 +188,8 @@ def main():
             "eww", "--config", EWW_CONFIG_DIR, "open",
             "--id", "ctx_menu",
             "--screen", str(pos["screen"]),
-            "--arg", "widget=%s" % args.widget,
-            "--arg", "monitor=%d" % args.monitor,
+            "--arg", "widget=%s" % widget,
+            "--arg", "monitor=%d" % monitor,
             "--arg", "pos_x=%d" % pos["x"],
             "--arg", "pos_y=%d" % pos["y"],
             "ctx_menu",

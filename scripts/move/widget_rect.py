@@ -19,7 +19,10 @@ The clock widget is positioned with a "top left" anchor: its offsets are the
 computed top-left corner (conky-style alignment + pixel offsets, resolved
 per-monitor from config.yaml). The panel geometry (offsets/anchor/size) comes
 from scripts/workarea.py --per-monitor via .layout.json, with the width/height
-multiplied by the panel scale.
+multiplied by the panel scale. BOTH widgets scale their axes independently:
+width uses `scale_x` / `panel_scale_x`, height uses `scale_y` /
+`panel_scale_y` (each axis falls back to the shared `scale` when missing,
+see scripts/core/config.py::resolve_axis_scales).
 
 Usage:
   ./widget_rect.py --widget clock --monitor 0
@@ -27,14 +30,19 @@ Usage:
 
 Output (stdout, JSON):
   {
-    "x": eww x offset (workarea-local on Wayland, monitor-local on X11),
-    "y": eww y offset,
+    "x": visible top-left x (workarea-local on Wayland, monitor-local on X11),
+    "y": visible top-left y,
     "abs_x": absolute screen top-left x,
     "abs_y": absolute screen top-left y,
-    "width": widget width (scaled),
-    "height": widget height (scaled),
-    "natural_w": natural (scale 1.0) width,
-    "natural_h": natural (scale 1.0) height,
+    "width": widget width (scale_x applied),
+    "height": widget height (scale_y applied),
+    "win_x"/"win_y"/"win_w"/"win_h": the eww window (canvas) geometry —
+        max(natural, visible) per axis, positioned so the canvas always fits
+        the monitor,
+    "translate_x"/"translate_y": transform :translate values (device px)
+        placing the scaled content exactly on the visible rectangle,
+    "natural_w": natural (scale = 1.0) width,
+    "natural_h": natural (scale = 1.0) height,
     "anchor": window anchor ("top left" for the clock; panel anchor on X11)
   }
 """
@@ -164,10 +172,13 @@ def align_pos(size, frame_size, alignment):
 
 
 def clock_rect(monitor, compositor, workarea, monitor_index):
-    scale = float(config_value("scale", monitor_index) or 1.0)
+    # Independent axis scales: width follows scale_x, height follows scale_y
+    # (each falls back to the shared `scale` when missing).
+    scale_x = float(config_value("scale_x", monitor_index) or 1.0)
+    scale_y = float(config_value("scale_y", monitor_index) or 1.0)
     natural_w, natural_h = clock_natural_size(monitor_index)
-    w = natural_w * scale
-    h = natural_h * scale
+    w = natural_w * scale_x
+    h = natural_h * scale_y
     alignment = config_value("alignment") or "middle_middle"
     pos_x = int(float(config_value("position_x", monitor_index) or 0))
     pos_y = int(float(config_value("position_y", monitor_index) or 0))
@@ -182,17 +193,40 @@ def clock_rect(monitor, compositor, workarea, monitor_index):
         frame_x, frame_y, frame_w, frame_h = mx, my, mw, mh
 
     h_align, v_align = split_anchor(alignment)
-    top_left_x = align_pos(w, frame_w, h_align) + pos_x
-    top_left_y = align_pos(h, frame_h, v_align) + pos_y
+    vis_w = int(round(w))
+    vis_h = int(round(h))
+    top_left_x = int(round(align_pos(vis_w, frame_w, h_align) + pos_x))
+    top_left_y = int(round(align_pos(vis_h, frame_h, v_align) + pos_y))
+
+    # --- render canvas (the GTK window) vs the visible content ---------------
+    # The transform only scales the DRAWING inside a fixed-size transparent
+    # canvas, and its :translate values are applied AFTER the scale (device
+    # pixels — measured empirically). Per axis:
+    #   canvas    = max(natural, visible)   (>100% grows the canvas: no clip)
+    #   canvas_tl = clamp(visible_tl, 0, frame - canvas)
+    #   translate = visible_tl - canvas_tl  (0 when visible >= natural)
+    # so the scaled content lands exactly on the visible rectangle while the
+    # canvas itself always fits the monitor — an overflowing managed window
+    # would be relocated by the X11 WM, dragging the widget off its spot.
+    win_w = max(int(natural_w), vis_w)
+    win_h = max(int(natural_h), vis_h)
+    win_x = min(max(top_left_x, 0), max(0, frame_w - win_w))
+    win_y = min(max(top_left_y, 0), max(0, frame_h - win_h))
     return {
         "x": top_left_x,
         "y": top_left_y,
         "left": top_left_x,
         "top": top_left_y,
-        "abs_x": frame_x + top_left_x,
-        "abs_y": frame_y + top_left_y,
-        "width": int(round(w)),
-        "height": int(round(h)),
+        "abs_x": int(frame_x) + top_left_x,
+        "abs_y": int(frame_y) + top_left_y,
+        "width": vis_w,
+        "height": vis_h,
+        "win_x": win_x,
+        "win_y": win_y,
+        "win_w": win_w,
+        "win_h": win_h,
+        "translate_x": top_left_x - win_x,
+        "translate_y": top_left_y - win_y,
         "natural_w": int(natural_w),
         "natural_h": int(natural_h),
         "frame_w": int(frame_w),
@@ -223,9 +257,11 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
     if p is None:
         sys.exit("ERROR: monitor %d not in .layout.json" % monitor_index)
 
-    scale = float(config_value("panel_scale", monitor_index) or 1.0)
-    w = PANEL_WIDTH * scale
-    h = p["height"] * scale
+    scale_x = float(config_value("panel_scale_x", monitor_index) or 1.0)
+    scale_y = float(config_value("panel_scale_y", monitor_index) or 1.0)
+    natural_h = int(round(p["height"]))
+    w = PANEL_WIDTH * scale_x
+    h = natural_h * scale_y
     off_x = p["x"]
     off_y = p["y"]
     anchor = p["anchor"]
@@ -241,24 +277,55 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
 
     h_align = "right" if "right" in anchor else "left"
     v_align = "top" if "top" in anchor else "bottom"
-    abs_x = frame_x + off_x + align_pos(w, frame_w, h_align)
-    abs_y = frame_y + off_y + align_pos(h, frame_h, v_align)
-
-    # eww offsets: for the panel keep workarea.py's values as-is (they are the
-    # margins/gaps; the anchor is unchanged).
-    if compositor == "wayland":
-        left = frame_w - w - off_x
+    vis_w = int(round(w))
+    vis_h = int(round(h))
+    # Visible top-left from the eww margins. Compositor-specific sign quirks
+    # preserved: an X11 right-anchor margin ADDS to frame_w - width while the
+    # Wayland one subtracts; left/bottom anchors measure inward.
+    if h_align == "left":
+        top_left_x = int(round(off_x))
+    elif compositor == "wayland":
+        top_left_x = int(round(frame_w - vis_w - off_x))
     else:
-        left = frame_w - w + off_x
+        top_left_x = int(round(frame_w - vis_w + off_x))
+    if v_align == "bottom":
+        top_left_y = int(round(frame_h - vis_h + off_y))
+    else:
+        top_left_y = int(round(off_y))
+    abs_x = frame_x + top_left_x
+    abs_y = frame_y + top_left_y
+
+    # --- render canvas: the same rule as for the clock -----------------------
+    # The transform scales only the drawing inside a fixed-size canvas, and
+    # its :translate values are device pixels applied AFTER the scale. Per
+    # axis: canvas = max(natural, visible), canvas_tl =
+    # clamp(visible_tl, 0, frame - canvas), translate = visible_tl -
+    # canvas_tl. This keeps the scaled content exactly on the visible
+    # rectangle while the oversized transparent canvas never leaves the
+    # monitor (an overflowing managed X11 window gets relocated by the WM,
+    # which previously dragged a moved panel back / clipped >100% panels).
+    nat_w = PANEL_WIDTH
+    win_w = max(nat_w, vis_w)
+    win_h = max(natural_h, vis_h)
+    win_x = min(max(top_left_x, 0), max(0, frame_w - win_w))
+    win_y = min(max(top_left_y, 0), max(0, frame_h - win_h))
     return {
         "x": off_x,
         "y": off_y,
-        "left": int(round(left)),
-        "top": int(round(off_y)),
-        "abs_x": int(round(abs_x)),
-        "abs_y": int(round(abs_y)),
-        "width": int(round(w)),
-        "height": int(round(h)),
+        "left": top_left_x,
+        "top": top_left_y,
+        "abs_x": abs_x,
+        "abs_y": abs_y,
+        "width": vis_w,
+        "height": vis_h,
+        "win_x": win_x,
+        "win_y": win_y,
+        "win_w": win_w,
+        "win_h": win_h,
+        "translate_x": top_left_x - win_x,
+        "translate_y": top_left_y - win_y,
+        "natural_w": nat_w,
+        "natural_h": natural_h,
         "frame_w": int(frame_w),
         "frame_h": int(frame_h),
         "frame_ox": 0 if compositor == "wayland" else frame_x - mx,

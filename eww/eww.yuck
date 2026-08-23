@@ -14,11 +14,14 @@
 ;; ===========================================================================
 
 ;; --- Context menu state (see scripts/move/move.py) -------------------------------
+;; move_pct = width %, move_pct_h = height % of the Move/Resize rectangle
+;; (they differ after a non-proportional width-only / height-only resize).
 (defvar move_x 0)
 (defvar move_y 0)
 (defvar move_w 100)
 (defvar move_h 100)
 (defvar move_pct 100)
+(defvar move_pct_h 100)
 
 ;; --- Hover submenu state (see scripts/widgets/submenu.py) ------------------------
 ;; The whole picker is prebuilt by submenu.py into this variable (a static
@@ -76,9 +79,20 @@
 ;; Image path helpers
 ;; ===========================================================================
 
-(defwidget widget_clock_weather [main_w main_h main_scale_perc screen]
+(defwidget widget_clock_weather [main_w main_h main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen]
   (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget clock --monitor ${screen}"
-    (transform :scale-x "${main_scale_perc}%" :scale-y "${main_scale_perc}%"
+    ;; Independent axis scales: width follows main_scale_perc_x, height
+    ;; follows main_scale_perc_y (equal unless the Move/Resize dialog was
+    ;; used to resize a single axis). The canvas window is max(natural,
+    ;; visible) per axis; below 100% the :translate values (DEVICE pixels,
+    ;; applied after scaling) shift the drawing so it lands exactly on the
+    ;; visible rectangle while the oversized transparent canvas stays fully
+    ;; on-screen (an overflowing managed X11 window would be relocated by
+    ;; the WM). Above 100% both translates are 0 and the enlarged canvas
+    ;; prevents clipping.
+    (transform :scale-x "${main_scale_perc_x}%" :scale-y "${main_scale_perc_y}%"
+               :translate-x {main_translate_x}
+               :translate-y {main_translate_y}
       (box :class "main-container" :orientation "h" :space-evenly false
 
     ;; ------------------------------------------------------------------
@@ -207,9 +221,9 @@
 ;; System monitor panel
 ;; ===========================================================================
 
-(defwidget widget_panel [ph panel_scale_perc panel_translate_x panel_translate_y screen]
+(defwidget widget_panel [ph panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y screen]
   (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget panel --monitor ${screen}"
-    (transform :scale-x "${panel_scale_perc}%" :scale-y "${panel_scale_perc}%"
+    (transform :scale-x "${panel_scale_perc_x}%" :scale-y "${panel_scale_perc_y}%"
                :translate-x {panel_translate_x}
                :translate-y {panel_translate_y}
       (box :class "panel-container" :orientation "v" :space-evenly true
@@ -323,44 +337,47 @@
 ;; the geometry via --arg at hover time. Clicking an entry writes it through
 ;; menu_toggle.py; ESC / outside clicks close everything via close_popup.py.
 (defwindow main_window
-  [main_x main_y main_w main_h main_scale_perc screen]
+  [main_win_x main_win_y main_win_w main_win_h main_w main_h
+   main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen]
   :monitor {screen}
-  :geometry (geometry :x {main_x}
-                      :y {main_y}
-                      :width {main_w}
-                      :height {main_h}
+  :geometry (geometry :x {main_win_x}
+                      :y {main_win_y}
+                      :width {main_win_w}
+                      :height {main_win_h}
                       :anchor "top left")
   :stacking "bottom"
   :windowtype "normal"
   :wm-ignore true
-  (widget_clock_weather :main_w main_w :main_h main_h :main_scale_perc main_scale_perc :screen screen))
+  (widget_clock_weather :main_w main_w :main_h main_h
+                        :main_scale_perc_x main_scale_perc_x
+                        :main_scale_perc_y main_scale_perc_y
+                        :main_translate_x main_translate_x
+                        :main_translate_y main_translate_y
+                        :screen screen))
 
 ;; panel_window is parametrized so start.sh can open one instance per monitor
 ;; with `eww open --id panel_<N> --screen <N> --arg "screen=<N>" ... panel_window`.
-;; `screen` is both the monitor selector and the :monitor value; px/py/pw/ph are
-;; the panel geometry (px/py the effective offsets, pw/ph the NATURAL size:
-;; 250 x panel height) and panchor its anchor, computed per monitor by
-;; scripts/core/workarea.py --per-monitor. The panel's default position/height come
-;; from the global panel.gap; the per-monitor position_x/position_y offsets
-;; (config.yaml -> panel.window.per_monitor) are already folded into px/py
-;; here. The content is scaled with the transform
-;; widget (panel_scale_perc = round(scale * 100)); the transform's cairo origin
-;; is the top-left, so the scaled content is shifted by panel_translate_x/y
-;; (= size*(1/scale-1), 0 when the panel is top-anchored) to keep the panel
-;; hugging its anchored edge (right, and bottom when bottom-anchored). ph (the
-;; unscaled height) is also passed for the chart selector (panel.files[ph]).
+;; `screen` is both the monitor selector and the :monitor value; ph (the
+;; NATURAL height) feeds the chart selector (panel.files[ph]); pwin_x/y/w/h
+;; is the CANVAS geometry computed by scripts/move/widget_rect.py (same rule
+;; as for the clock: max(natural, visible) per axis, positioned so it always
+;; fits the monitor, "top left" anchor with frame coords on both
+;; compositors); the translates (device px, applied after scaling) place the
+;; scaled content exactly on the visible rectangle.
 (defwindow panel_window
-  [screen px py pw ph panchor panel_scale_perc panel_translate_x panel_translate_y]
+  [screen pw ph pwin_x pwin_y pwin_w pwin_h panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y]
   :monitor {screen}
-  :geometry (geometry :x {px}
-                      :y {py}
-                      :width {pw}
-                      :height {ph}
-                      :anchor {panchor})
+  :geometry (geometry :x {pwin_x}
+                      :y {pwin_y}
+                      :width {pwin_w}
+                      :height {pwin_h}
+                      :anchor "top left")
   :stacking "bottom"
   :windowtype "normal"
   :wm-ignore true
-  (widget_panel :ph ph :panel_scale_perc panel_scale_perc
+  (widget_panel :ph ph
+                :panel_scale_perc_x panel_scale_perc_x
+                :panel_scale_perc_y panel_scale_perc_y
                 :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
                 :screen screen))
 
@@ -374,30 +391,38 @@
 ;; definitions when the compositor is x11; the Wayland ones above use "bottom"
 ;; (Layer::Bottom).
 (defwindow main_window_x11
-  [main_x main_y main_w main_h main_scale_perc screen]
+  [main_win_x main_win_y main_win_w main_win_h main_w main_h
+   main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen]
   :monitor {screen}
-  :geometry (geometry :x {main_x}
-                      :y {main_y}
-                      :width {main_w}
-                      :height {main_h}
+  :geometry (geometry :x {main_win_x}
+                      :y {main_win_y}
+                      :width {main_win_w}
+                      :height {main_win_h}
                       :anchor "top left")
   :stacking "background"
   :windowtype "utility"
   :wm-ignore false
-  (widget_clock_weather :main_w main_w :main_h main_h :main_scale_perc main_scale_perc :screen screen))
+  (widget_clock_weather :main_w main_w :main_h main_h
+                        :main_scale_perc_x main_scale_perc_x
+                        :main_scale_perc_y main_scale_perc_y
+                        :main_translate_x main_translate_x
+                        :main_translate_y main_translate_y
+                        :screen screen))
 
 (defwindow panel_window_x11
-  [screen px py pw ph panchor panel_scale_perc panel_translate_x panel_translate_y]
+  [screen pw ph pwin_x pwin_y pwin_w pwin_h panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y]
   :monitor {screen}
-  :geometry (geometry :x {px}
-                      :y {py}
-                      :width {pw}
-                      :height {ph}
-                      :anchor {panchor})
+  :geometry (geometry :x {pwin_x}
+                      :y {pwin_y}
+                      :width {pwin_w}
+                      :height {pwin_h}
+                      :anchor "top left")
   :stacking "background"
   :windowtype "utility"
   :wm-ignore false
-  (widget_panel :ph ph :panel_scale_perc panel_scale_perc
+  (widget_panel :ph ph
+                :panel_scale_perc_x panel_scale_perc_x
+                :panel_scale_perc_y panel_scale_perc_y
                 :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
                 :screen screen))
 

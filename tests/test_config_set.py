@@ -70,6 +70,37 @@ def test_clock_scale_per_monitor(local_file, monkeypatch):
     assert isinstance(pm[0]["scale"], float)
 
 
+def test_axis_scales_per_monitor(local_file, monkeypatch):
+    # Independent width/height scales written by the Move/Resize Save.
+    run(["--widget", "clock", "--monitor", "0", "--key", "scale_x", "--value", "1.2"],
+        monkeypatch)
+    config_set.main()
+    run(["--widget", "clock", "--monitor", "0", "--key", "scale_y", "--value", "0.8"],
+        monkeypatch)
+    config_set.main()
+    run(["--widget", "panel", "--monitor", "1", "--key", "scale_x", "--value", "0.9"],
+        monkeypatch)
+    config_set.main()
+    run(["--widget", "panel", "--monitor", "1", "--key", "scale_y", "--value", "1.4"],
+        monkeypatch)
+    config_set.main()
+    clock_pm = read(local_file)["weather"]["window"]["per_monitor"][0]
+    panel_pm = read(local_file)["panel"]["window"]["per_monitor"][1]
+    assert clock_pm["scale_x"] == 1.2
+    assert clock_pm["scale_y"] == 0.8
+    assert isinstance(clock_pm["scale_x"], float)
+    assert panel_pm["scale_x"] == 0.9
+    assert panel_pm["scale_y"] == 1.4
+
+
+def test_invalid_axis_scale(local_file, monkeypatch):
+    run(["--widget", "clock", "--monitor", "0", "--key", "scale_y", "--value", "wide"],
+        monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must be a number" in str(exc.value)
+
+
 def test_panel_position_per_monitor(local_file, monkeypatch):
     run(
         ["--widget", "panel", "--monitor", "1", "--key", "position_x", "--value", "30"],

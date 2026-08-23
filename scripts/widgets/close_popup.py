@@ -93,19 +93,34 @@ def open_popup_names():
     Output lines look like `dismiss_overlay_1: dismiss_overlay`; this works
     identically on X11 and Wayland, unlike xdotool-based queries.
     """
+    act = active_tracked()
+    if act is None:
+        return None
+    return [name for _, name in act]
+
+
+def active_tracked():
+    """(instance_id, template_name) of tracked windows still open.
+
+    Parses `eww active-windows` lines (`<id>: <template>`); returns None
+    when the query itself fails (unknown state -> caller keeps retrying).
+    """
     try:
         out = subprocess.run(
             ["eww", "--config", EWW_CONFIG_DIR, "active-windows"],
             capture_output=True, text=True, timeout=5,
         ).stdout
     except Exception:
-        return None  # unknown state -> caller keeps retrying
-    open_names = []
+        return None
+    pairs = []
     for line in out.splitlines():
         if ":" not in line:
             continue
-        open_names.append(line.split(":", 1)[1].strip())
-    return [n for n in open_names if n in TRACKED]
+        wid, _, name = line.partition(":")
+        name = name.strip()
+        if name in TRACKED:
+            pairs.append((wid.strip(), name))
+    return pairs
 
 
 def destroy_leftovers(ids):
@@ -152,9 +167,18 @@ def close_popups_verified(session_data=None):
 
     for _ in range(10):
         close_all(names)
-        open_names = open_popup_names()
-        if open_names is not None and not open_names:
+        act = active_tracked()
+        if act is None:
+            # Unknown state (query failed) -> keep retrying.
+            time.sleep(0.25)
+            continue
+        if not act:
             break
+        # ORPHAN RECOVERY: close by INSTANCE id too. The per-monitor overlay
+        # ids normally come from the session file, but that file is already
+        # gone when a Move/Resize session was ended without popup cleanup
+        # (older bug) or crashed -- `active-windows` still knows them.
+        close_all([wid for wid, _ in act])
         time.sleep(0.25)
 
     # X11 janitor: unmap strays (Wayland has no equivalent; the retries above

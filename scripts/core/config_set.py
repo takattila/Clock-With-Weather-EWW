@@ -20,12 +20,14 @@ Usage:
   ./config_set.py --widget panel --key gap_right --value 0
 
 --widget is `clock` (weather window) or `panel`; it is REQUIRED only for the
-widget-scoped keys below. The position_x / position_y / scale keys are written
-into per_monitor[N] ONLY and REQUIRE --monitor (there are no global
-position/scale keys). For the panel they are per-monitor OFFSETS added to the
-global panel.gap baseline (scripts/workarea.py); the gap keys
-(gap_top / gap_right / gap_bottom / gap_left) remain global and are written
-into panel.gap.
+widget-scoped keys below. The position_x / position_y / scale / scale_x /
+scale_y keys are written into per_monitor[N] ONLY and REQUIRE --monitor
+(there are no global position/scale keys). scale_x / scale_y are the
+independent width/height scales written by the Move/Resize Save (each axis
+falls back to the shared `scale` when missing). For the panel they are
+per-monitor OFFSETS added to the global panel.gap baseline
+(scripts/workarea.py); the gap keys (gap_top / gap_right / gap_bottom /
+gap_left) remain global and are written into panel.gap.
 
 GLOBAL keys need neither --widget nor --monitor (passing --monitor is an
 error):
@@ -83,7 +85,7 @@ def set_path(data, path, value):
 
 def coerce_value(key, raw):
     """Positions and gap sizes become int, scale float, panel bool, rest str."""
-    if key == "scale":
+    if key in ("scale", "scale_x", "scale_y"):
         try:
             return float(raw)
         except (TypeError, ValueError):
@@ -154,7 +156,7 @@ def resolve_target(args):
             sys.exit("ERROR: panel gaps are global (no --monitor)")
         return ["panel", "gap", args.key[4:]], "panel.gap.%s" % args.key[4:]
 
-    if args.key in ("position_x", "position_y", "scale"):
+    if args.key in ("position_x", "position_y", "scale", "scale_x", "scale_y"):
         if args.monitor is None:
             sys.exit("ERROR: %s is stored per monitor; --monitor is required" % args.key)
         section = (

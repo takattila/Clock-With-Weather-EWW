@@ -6,15 +6,17 @@ this GTK3 window covers the target monitor, draws the dashed rectangle (the
 former generated/move_rect.svg) and lets the mouse act on it:
 
   * drag inside     -> move the rectangle (updates move_x/move_y)
-  * drag a corner/edge -> resize it keeping the opposite corner/edge fixed,
-    aspect ratio preserved (scale 0.3..1.5, like the +/- panel buttons)
+  * drag a corner   -> resize keeping the opposite corner fixed, aspect
+    ratio preserved (scale 0.3..1.5 on BOTH axes, like the +/- panel row)
+  * drag an edge    -> resize a SINGLE axis (left/right = width only,
+    top/bottom = height only; the aspect ratio is NOT preserved)
   * click outside   -> cancel the session (move_ctl.py --action cancel)
 
-The move_x/move_y/move_w/move_h/move_pct eww defvars stay the single shared
-state with the keyboard daemon and the control panel (scripts/move_panel.py):
-while not dragging, this window re-syncs from them every 250 ms, so the arrow
-keys and the +/- buttons keep working and stay in sync with the drawn
-rectangle.
+The move_x/move_y/move_w/move_h/move_pct/move_pct_h eww defvars stay the
+single shared state with the keyboard daemon and the control panel
+(scripts/move_panel.py): while not dragging, this window re-syncs from them
+every 250 ms, so the arrow keys and the +/- buttons keep working and stay in
+sync with the drawn rectangle.
 
   * X11     - undecorated keep_above toplevel at the monitor geometry. The
               control panel is override-redirect, so it still stacks above and
@@ -157,7 +159,8 @@ class MoveRect:
         self.off_x = 0.0          # press offset inside the rect (move mode)
         self.off_y = 0.0
         self.anchor = None        # fixed corner/edge point (frame coords)
-        self.s0 = 1.0             # scale at press
+        self.s0x = 1.0            # width scale at press
+        self.s0y = 1.0            # height scale at press
         self.d0 = 1.0             # pointer distance to the anchor at press
         self.last_flush = 0.0
         self.flush_id = 0
@@ -321,7 +324,10 @@ class MoveRect:
             self.off_x = (event.x - self.ox) - self.x
             self.off_y = (event.y - self.oy) - self.y
         else:
-            self.s0 = self.w / self.base_w
+            # Per-axis scales at press: edge drags scale only one of them
+            # (see _resize_to), corners keep the aspect ratio.
+            self.s0x = self.w / self.base_w
+            self.s0y = self.h / self.base_h
             self.anchor = self._anchor_for(zone)
             self.d0 = max(self._distance((event.x - self.ox), (event.y - self.oy),
                                          self.anchor, zone), 1.0)
@@ -378,9 +384,15 @@ class MoveRect:
         pfx = px - self.ox
         pfy = py - self.oy
         d = self._distance(pfx, pfy, self.anchor, self.drag)
-        s = clamp(self.s0 * d / self.d0, MIN_SCALE, MAX_SCALE)
-        w = int(round(self.base_w * s))
-        h = int(round(self.base_h * s))
+        f = d / self.d0
+        # Edge drags resize a SINGLE axis: left/right touch only the width,
+        # top/bottom only the height; corners scale both (aspect preserved).
+        horizontal_only = self.drag in ("left", "right")
+        vertical_only = self.drag in ("top", "bottom")
+        sx = self.s0x if vertical_only else clamp(self.s0x * f, MIN_SCALE, MAX_SCALE)
+        sy = self.s0y if horizontal_only else clamp(self.s0y * f, MIN_SCALE, MAX_SCALE)
+        w = int(round(self.base_w * sx))
+        h = int(round(self.base_h * sy))
         self.x, self.y, self.w, self.h = self._recompute(w, h)
 
     def _recompute(self, w, h):
@@ -424,12 +436,14 @@ class MoveRect:
         self.flush_id = 0
         self.last_flush = time.monotonic()
         pct = int(round((self.w / self.base_w) * 100))
+        pct_h = int(round((self.h / self.base_h) * 100))
         eww("update",
             "move_x=%d" % self.x,
             "move_y=%d" % self.y,
             "move_w=%d" % self.w,
             "move_h=%d" % self.h,
-            "move_pct=%d" % pct)
+            "move_pct=%d" % pct,
+            "move_pct_h=%d" % pct_h)
         return False
 
     # ---- periodic session watch + sync -------------------------------------

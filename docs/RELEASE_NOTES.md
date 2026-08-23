@@ -1,117 +1,136 @@
-# Clock-With-Weather-EWW — v2.2.0
+# Clock-With-Weather-EWW — v2.3.0
 
 **A beautiful, fully customizable clock & weather widget with a live system
 monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
 layer-shell) and also works on **X11**. Powered by the
 [OpenWeatherMap](https://openweathermap.org) API.
 
-**v2.2.0 turns the right-click menu into a quick-settings panel**: hover the
-hour format, theme, °C/°F, panel visibility or panel side rows to pick their
-value from an inline submenu (the active one highlighted), and hard-reset the
-configuration — all from the context menu, all written to the git-ignored
-`config.local.yaml` and applied live. The Move / Resize dialog gained a
-hand-typed resize percentage, and a new `hard-reset.sh` restores the factory
-defaults with one command.
+**v2.3.0 lets you resize width and height independently**: the Move / Resize
+dialog gained Width and Height rows (each with − / editable % / +), edge
+drags resize a single axis and Shift+arrows do it from the keyboard — while
+the classic proportional resize (+/-, corner drag) stays exactly as it was.
+Both widgets support it, and each monitor remembers its own width/height
+scales.
 
 ---
 
-## What changed in v2.2.0
+## What changed in v2.3.0
 
-### New: context-menu quick settings with hover submenus
+### New: independent width / height resize
 
-The right-click menu now has **ten items**; hovering any selectable row opens
-a small submenu with its possible values (the active one highlighted):
+The Move / Resize control panel now has THREE resize rows:
 
-| Item | Submenu values |
-|---|---|
-| Move / Resize | unchanged GTK move / resize session |
-| Reset | unchanged per-widget factory geometry |
-| AM/PM | `24h` / `12h` (`system.hour_format`) |
-| Theme | every theme under `assets/themes/appearance/`, two columns |
-| Units | `°C` / `°F` (`weather.units`; picking one re-fetches the weather instantly instead of waiting for the next 10-minute poll) |
-| Panel | shown / hidden (`panel.enabled`, applied via relayout) |
-| Side | right / left (`panel.window.alignment`) |
-| Hard reset | deletes `config.local.yaml` → every setting returns to the committed defaults |
-| About | unchanged |
+| Row | Buttons | Typed % action | Effect |
+|---|---|---|---|
+| *(unlabeled)* | − / + | `set_scale` | proportional zoom, aspect ratio preserved (as before) |
+| **W** | − / + | `set_scale_x` | **width only** |
+| **H** | − / + | `set_scale_y` | **height only** |
 
-All selections run through `scripts/widgets/submenu.py` +
-`scripts/widgets/menu_toggle.py`, which write with the existing single-writer
-`scripts/core/config_set.py` into the git-ignored local override layer; the
-file watcher applies every change immediately — the repository stays clean.
+- Every percentage is an editable field (30–150%, same clamp as before):
+  type a value and press Enter or leave the field; invalid input snaps back.
+  While you type, the keyboard daemon still steps aside (no accidental
+  Enter = Save).
+- The anchored edge stays fixed: the panel grows/shrinks leftward from its
+  right gap on W changes; the clock realigns to its anchor per axis.
+- New keyboard shortcuts (evdev daemon): **Shift+Up/Down** = height ±,
+  **Shift+Right/Left** = width ±. Plain arrows still move, +/- still zoom
+  proportionally.
+- Mouse resizing on the overlay rectangle: **corner drag keeps the aspect
+  ratio**, **edge drags resize a single axis** (left/right = width,
+  top/bottom = height).
 
-### New: hand-typed resize percentage
+Both the clock and the system panel support everything above; each monitor
+stores its own values.
 
-In the Move / Resize control panel the `%` value between − and + is now an
-editable field: type e.g. `80` and press Enter (or leave the field) to resize
-exactly, clamped to 30–150% like the buttons. While you are typing, the
-keyboard daemon steps aside (no accidental Enter = Save), and uncommitted
-drafts snap back when you click elsewhere.
+### New config keys: `scale_x` / `scale_y`
 
-### New: `scripts/bin/hard-reset.sh`
+A Save that changed the axes independently writes `scale_x` (= width scale)
+and `scale_y` (= height scale) into the per_monitor entry of
+`weather.window` / `panel.window`, e.g.:
 
-One command factory reset:
-
-```bash
-bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/hard-reset.sh
+```yaml
+panel:
+  window:
+    per_monitor:
+      0: { position_x: 0, position_y: 0, scale_x: 1.00, scale_y: 0.80 }
 ```
 
-Deletes the git-ignored `config.local.yaml` (**by design without backup** —
-the committed `config.yaml` is never touched), removes stale session state,
-regenerates the theme and relayouts the running widget. Also available as the
-context menu's "Hard reset" item.
-
-### Fixed
-
-- **The right-click menu sometimes failed to re-open** after using
-  Move / Resize and dismissing it (ESC or outside click): one of the new
-  per-monitor dismiss layers could survive a `close` that was silently
-  dropped while the daemon was busy regenerating the theme — leaving an
-  invisible full-screen layer above the widgets that swallowed every
-  further click. Popups are now closed **verbatim-verified**: close_popup
-  checks the actual X state and retries until nothing is mapped (and force-
-  unmaps anything that refuses to die).
-
-### Fixed
-
-- **KDE / Wayland: after opening the repository from the About window, an
-  invisible full-screen overlay layer stayed above every other window**,
-  making the browser and all other applications unclickable. The dismiss
-  layers are now closed the moment the repository is opened. Popup closing
-  in general is also **verified** through `eww active-windows` (works on
-  Wayland too): a `close` silently dropped while the daemon regenerates the
-  theme is retried instead of leaving a ghost layer behind.
-
-### Fixed
-
-- **Move / Resize Save refuses degenerate states**: if a save fires while
-  the overlay rectangle still carries pre-session defaults (100x100 at the
-  origin) or would place the widget completely off-screen, it is REFUSED
-  instead of writing e.g. scale=30% + top-left corner positions into
-  `config.local.yaml`.
+Each axis falls back to the shared `scale` when missing, so existing configs
+keep working unchanged — no migration needed. The classic `scale` key is
+still written (mirroring the width axis) for older external tooling.
 
 ### Changed
 
-- `scripts/core/config_set.py`: new global keys (`hour_format`, `appearance`,
-  `units`, `panel_enabled`, `panel_alignment`) writable without
-  `--widget`/`--monitor`; `--widget` is now optional (still required for the
-  per-widget position/scale/gap keys).
-- `scripts/widgets/menu_toggle.py`: optional `--value` sets an exact value
-  instead of flipping/cycling (used by the hover submenus; the old flip
-  behavior stays available from the CLI).
-- The context menu window grew to fit ten items plus a picker pane
-  (470x550 px): hovering a selectable row shows its options right next to it,
-  with the active value highlighted. Items are visually grouped into
-  Actions / Settings / System sections separated by thin lines.
-- The menu's transparent dismiss layer now covers **every connected monitor**:
-  clicking on another screen also closes the popups (previously only the
-  menu's own monitor was covered).
+- **Single-instance process management + orphan cleanup.** Repeated widget
+  restarts used to accumulate orphaned background helpers (measured: 4x
+  config watcher, 4x monitor watcher and 2x keyboard daemon pairs after one
+  day — ~95 MB of wasted RAM): `stop.sh` killed only the newest instance via
+  its pidfile, and the input daemon had no stop path at all. A shared,
+  ancestor-protected pattern sweep (`scripts/bin/process_sweep.sh`) now runs
+  on start, stop and lazy daemon spawn, so exactly one instance of each
+  helper stays alive (verified with a double-start test). Total related RSS
+  dropped from ~272 MB to ~95 MB; the GUI daemon itself idles at ~55 MB and
+  0% CPU.
+- `scripts/move/move_ctl.py`: new actions `zoom_in_x` / `zoom_out_x`,
+  `zoom_in_y` / `zoom_out_y`, `set_scale_x` / `set_scale_y`; Reset clears
+  position and writes all three scale keys to 1.0; Save persists per-axis
+  scales.
+- `scripts/move/widget_rect.py`: reports the natural (100%) size for BOTH
+  widgets and computes the rectangle with independent axis scales.
+- `scripts/move/move_panel.py`: the resize entries share one refactored
+  `PctField` implementation; the panel is slightly taller to fit the new rows.
+- `eww.yuck` + `start.sh`: windows are scaled with separate X/Y percentages
+  (`main_scale_perc_x/y`, `panel_scale_perc_x/y`); the panel's anchored-edge
+  translate uses its own axis.
+- The Move/Resize session publishes a second percentage variable
+  (`move_pct_h`) so both fields always show live values.
+
+### Fixed
+
+- **Moving the panel and pressing Save silently did nothing.** The off-screen
+  safety check validated the panel's saved POSITION OFFSETS as if they were
+  absolute screen coordinates — every drag AWAY from the anchored edge
+  produces a negative offset and was therefore refused invisibly (stderr is
+  discarded by design). The check now validates the dragged rectangle itself,
+  Save/Cancel run synchronously with inline error feedback in the control
+  panel, and `move_ctl.py` appends every action + refusal to
+  `logs/move_ctl.log` for future diagnosis.
+- **Right-clicking a widget partially covered by the other one opened the
+  wrong menu** (e.g. clicking the clock where it slid under the panel's
+  transparent bottom strip opened the panel's Move/Resize rectangle). The
+  context-menu opener now checks which widget is VISIBLE under the cursor and
+  forwards accordingly, so the rectangle always matches the widget you aimed
+  at.
+- **Right-click stopped working after using Move / Resize until restart.**
+  The invisible per-monitor dismiss layers are intentionally kept open for
+  the whole move/resize session (click-outside-to-cancel), but ending the
+  session with Save / Cancel / Reset — or Enter / ESC on the keyboard — only
+  cleared the session file: an invisible full-screen layer stayed above the
+  widget and swallowed every further click. The session teardown now closes
+  the popup stack itself, and popup closing additionally discovers orphaned
+  overlays by instance id from `eww active-windows`, so leftovers can be
+  cleaned even when their session file is already gone.
+- **Resizing above 100% no longer clips the widget, and shrunken widgets can
+  finally be parked at the screen edges.** The eww window is a fixed-size
+  transparent canvas whose drawing is scaled visually; the canvas itself used
+  to stay at the natural (100%) size — so an enlarged widget was cut off at
+  its old bounds, and a shrunken one dragged to e.g. the bottom-right corner
+  made the oversized invisible canvas overflow the monitor, which the window
+  manager then relocated (dragging the visible widget away from where the
+  resize rectangle showed it). The canvas now grows above 100%, and below
+  100% it is positioned to always fit while a transform translate places the
+  scaled content exactly on the saved rectangle — for both widgets.
+- Removed duplicated GTK handler definitions in `scripts/move/move_panel.py`
+  (`on_pct_button_press` / `on_pct_focus_in` existed twice since v2.2.0;
+  Python silently kept the second copy).
 
 ### Upgrade from v2.x
 
-1. Pull / check out `v2.2.0`.
+1. Pull / check out `v2.3.0`.
 2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
 3. Nothing else to do — your existing `config.local.yaml` keeps working; the
-   new menu items write into it as usual.
+   new axis scales appear there automatically after the first non-proportional
+   Save.
 
 ---
 
@@ -144,6 +163,10 @@ context menu's "Hard reset" item.
   show/hide or side flip to pick the value from an inline submenu, plus a
   factory "Hard reset"; everything applied live through the git-clean local
   override layer.
+- **Independent width / height resize** — resize proportionally, or stretch
+  only the width / only the height via dedicated dialog rows (with hand-typed
+  exact percentages), Shift+arrows or single-axis edge drags; every monitor
+  remembers its own scales.
 - **Git-clean by design** — machine-local settings live in the git-ignored
   `config.local.yaml`; the committed `config.yaml` only changes when *you*
   change a default.
@@ -154,7 +177,7 @@ context menu's "Hard reset" item.
 - **12 / 24-hour clock** — switch the hour format any time (config, setup
   wizard or right-click menu).
 - **Per-widget scaling** — scale the clock and the panel independently, with
-  ± steppers *and* a hand-typed exact percentage in the Move / Resize dialog.
+  ± steppers *and* hand-typed exact percentages in the Move / Resize dialog.
 - **Taskbar-aware panel** — the panel aligns perfectly to your taskbar with
   per-side gaps (`panel.gap`), and supports **per-monitor positions** via the
   right-click Move / Resize / Reset context menu.
@@ -202,7 +225,8 @@ what you want to change):
   custom inline appearance map (fonts, colors, icon set + tint, transparency,
   background).
 - `weather` — city settings (via a named weather theme or inline), window
-  alignment, and **per-monitor** `position_x` / `position_y` / `scale`.
+  alignment, and **per-monitor** `position_x` / `position_y` / `scale`
+  (+ optional independent `scale_x` / `scale_y`).
 - `system` — hour format (`24`/`12`) and background corner radius.
 - `panel` — enable/disable the system panel, alignment, per-monitor offsets,
   and the taskbar `gap` baseline.
@@ -231,8 +255,7 @@ from the right-click menu's Theme submenu.
   — dependencies, version-change risks, `config.yaml` reference, project
   structure, EWW/CSS customization and testing.
 - **[PLAN](https://github.com/takattila/Clock-With-Weather-EWW/blob/master/docs/PLAN.md)**
-  — the executed plan behind the quick-settings context menu, the typed
-  resize percentage and the hard reset.
+  — the executed plan behind the independent width/height resize.
 
 ## Compatibility
 
@@ -258,6 +281,7 @@ from the right-click menu's Theme submenu.
 ---
 
 > Looking for older release notes? They are preserved on their release pages:
+> [v2.2.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.2.0),
 > [v2.1.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.1.0),
 > [v2.0.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.0.0),
 > [v1.0.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v1.0.0).

@@ -8,32 +8,47 @@ move_w/move_h) through `eww update` and returns. The whole script is fast
 
 Actions:
   left/right/up/down  move the rectangle by STEP px (clamped to the frame)
-  zoom_in/zoom_out    scale by SCALE_STEP (clamped 0.3..1.5), keeping the
-                      widget's anchored corner / right gap fixed
-  set_scale           scale to an EXACT percentage given via --value
-                      (30..150; out-of-range values are clamped), same
-                      anchoring rules as zoom_in/zoom_out -- used by the
-                      hand-typed resize field of the GTK control panel
+  zoom_in/zoom_out    PROPORTIONAL scale by SCALE_STEP (clamped 0.3..1.5),
+                      keeping the widget's anchored corner / right gap fixed
+  set_scale           scale BOTH axes to an EXACT percentage given via
+                      --value (30..150; out-of-range values are clamped),
+                      same anchoring rules as zoom_in/zoom_out -- used by
+                      the hand-typed resize field of the GTK control panel
+  zoom_in_x/zoom_out_x  scale ONLY THE WIDTH (aspect ratio NOT preserved);
+                      the anchored horizontal edge stays fixed (panel: right
+                      gap, clock: alignment), height/vertical position are
+                      untouched
+  zoom_in_y/zoom_out_y  scale ONLY THE HEIGHT; anchored vertical edge stays
+                      fixed (clock: vertical alignment), width/horizontal
+                      position are untouched
+  set_scale_x / set_scale_y   exact percentage for ONE axis via --value,
+                      same rules as the matching zoom_*_x / zoom_*_y --
+                      used by the W / H fields of the GTK control panel
   reset               write the defaults to config.yaml via scripts/
                       config_set.py and close, like save but with the default
-                      values (both widgets: position 0/0, scale 1.0)
+                      values (both widgets: position 0/0, scale/scale_x/
+                      scale_y 1.0)
   save                write the position to config.yaml via scripts/
                       config_set.py, then close. Both widgets store
                       position_x/position_y per monitor: for the clock they are
                       the offset from the alignment base, for the panel the
                       offset from the global panel.gap base (the dragged
-                      rectangle minus workarea.py --base-rect). The resize
-                      scale is saved for both. position/scale are always
-                      written into per_monitor[N] (there are no global
-                      position/scale keys anymore; only the panel gaps stay
-                      global).
+                      rectangle minus workarea.py --base-rect). The resize is
+                      saved per axis: scale_x = dragged_width/base_width and
+                      scale_y = dragged_height/base_height (plus a `scale`
+                      mirror of scale_x for backward-compatible readers).
+                      position/scales are always written into per_monitor[N]
+                      (there are no global position/scale keys anymore; only
+                      the panel gaps stay global).
   cancel              close without saving
 
-The resize percentage shown in the panel (move_pct) is updated together with
-move_w/move_h so the label always reflects the current scale. The invisible
-keyboard daemon (scripts/input_daemon.py) maps the arrow keys / +/- / ENTER /
-ESC to the same actions while the session file exists; save/cancel end the
-session (scripts/session.py clears the file) and the daemon goes back to idle.
+The resize percentages shown in the panel (move_pct = width, move_pct_h =
+height) are updated together with move_w/move_h so the labels always
+reflect the current scales. The invisible keyboard daemon
+(scripts/input_daemon.py) maps the arrow keys / +/- / Shift+arrows (axis
+resize) / ENTER / ESC to the same actions while the session file exists;
+save/cancel end the session (scripts/session.py clears the file) and the
+daemon goes back to idle.
 
 Usage:
   ./move_ctl.py --widget clock --monitor 0 --action save
@@ -62,15 +77,42 @@ SCALE_STEP = 0.05
 MIN_SCALE = 0.3
 MAX_SCALE = 1.5
 
+# Action groups of the resize family (see the module docstring).
+PROPORTIONAL_ACTIONS = ("zoom_in", "zoom_out", "set_scale")
+WIDTH_ACTIONS = ("zoom_in_x", "zoom_out_x", "set_scale_x")
+HEIGHT_ACTIONS = ("zoom_in_y", "zoom_out_y", "set_scale_y")
+
+# Every action is spawned DETACHED with stderr discarded (eww button
+# timeouts), so failures would be invisible. This log is the permanent
+# trace: one line per action plus the computed save/resize numbers and any
+# refusal/exception.
+LOG_FILE = os.path.join(CONFIG_DIR, "logs", "move_ctl.log")
+
+
+def log(msg):
+    try:
+        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+        from datetime import datetime
+
+        stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOG_FILE, "a", encoding="utf-8") as fh:
+            fh.write("%s %s\n" % (stamp, msg))
+    except Exception:
+        pass
+
 
 def run(cmd, capture=False, input_data=None):
     try:
         if capture:
-            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True,
-                                           input=input_data).strip()
-        subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                input=input_data, text=True, timeout=15,
+            ).stdout.strip()
+        subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=15)
         return ""
-    except Exception:
+    except Exception as exc:
+        log("run failed: %s -> %r" % (" ".join(map(str, cmd[:4])), exc))
         return ""
 
 
@@ -117,6 +159,7 @@ def widget_rect(widget, monitor):
     try:
         return json.loads(out)
     except Exception:
+        log("widget_rect FAILED for %s/%s: %r" % (widget, monitor, out))
         sys.exit("ERROR: widget_rect.py failed:\n%s" % out)
 
 
@@ -130,7 +173,11 @@ def save_value(widget, monitor, key, value):
     # global position/scale keys anymore); only the panel gaps stay global.
     if not key.startswith("gap_"):
         cmd += ["--monitor", str(monitor)]
-    run(cmd)
+    out = run(cmd, capture=True)
+    if out:
+        log("wrote %s[%d].%s=%s (%s)" % (widget, monitor, key, value, out))
+    else:
+        log("wrote %s[%d].%s=%s" % (widget, monitor, key, value))
 
 
 def base_rect(monitor, w, h):
@@ -145,6 +192,7 @@ def base_rect(monitor, w, h):
     """
     monitors = run(["python3", os.path.join(SCRIPTS_DIR, "core", "monitors.py")], capture=True)
     if not monitors:
+        log("base_rect FAILED: monitors.py produced no output")
         sys.exit("ERROR: monitors.py failed")
     out = run(
         [
@@ -160,6 +208,7 @@ def base_rect(monitor, w, h):
             raise ValueError(out)
         return data
     except Exception:
+        log("base_rect FAILED: %r" % out)
         sys.exit("ERROR: workarea.py --base-rect failed:\n%s" % out)
 
 
@@ -176,27 +225,42 @@ def is_degenerate_rect(x, y, w, h):
 
 
 def finish():
-    # The rectangle window (scripts/move_rect.py) and the control panel
-    # (scripts/move_panel.py) both watch the session file and quit by
-    # themselves when it disappears, so only the keyboard-daemon session needs
-    # to be ended here.
+    # Close every popup window that is still mapped BEFORE ending the
+    # keyboard-daemon session. The per-monitor dismiss overlays are
+    # deliberately left OPEN for the whole Move/Resize session (they are the
+    # click-outside-to-cancel surface), so a session ended HERE -- Save /
+    # Cancel / Reset button, Enter / ESC on the keyboard -- must clean them
+    # up itself. Skipping this left an invisible full-monitor layer above
+    # the widget that swallowed every further right-click until restart
+    # (measured). close_popup reads generated/input_session.json for the
+    # per-monitor overlay ids, hence the ordering.
+    try:
+        sys.path.insert(0, os.path.join(SCRIPTS_DIR, "widgets"))
+        import close_popup
+
+        close_popup.close_popups_verified(close_popup.read_session_data())
+    except Exception:
+        pass
     session.clear_session()
 
 
 def base_sizes(widget, monitor, rect):
-    """(base_w, base_h, current_scale, right_gap, h_align, v_align)"""
-    scale = float(config("scale" if widget == "clock" else "panel_scale", monitor) or 1.0)
+    """(base_w, base_h, right_gap, h_align, v_align)
+
+    The natural (scale = 1.0) sizes come from widget_rect.py, which reports
+    them for BOTH widgets (the panel's natural height is the gap-derived
+    layout height), so the per-axis scales are simply w/base_w and h/base_h.
+    """
     alignment = config("alignment") or "middle_middle"
     h_align, v_align = split_anchor(alignment)
     if widget == "clock":
-        # The clock's natural width is dynamic (ends at the city name), so the
-        # resize base comes from widget_rect.py, not a fixed constant.
+        # The clock's natural width is dynamic (ends at the city name).
         base_w = rect.get("natural_w") or 745
         base_h = rect.get("natural_h") or CLOCK_H
     else:
-        base_w = PANEL_WIDTH
-        base_h = int(round(rect["height"] / scale)) if scale else rect["height"]
-    return base_w, base_h, scale, rect.get("right_gap"), h_align, v_align
+        base_w = rect.get("natural_w") or PANEL_WIDTH
+        base_h = rect.get("natural_h") or int(round(rect["height"]))
+    return base_w, base_h, rect.get("right_gap"), h_align, v_align
 
 
 def main():
@@ -204,10 +268,13 @@ def main():
     ap.add_argument("--widget", required=True, choices=["clock", "panel"])
     ap.add_argument("--monitor", type=int, default=0)
     ap.add_argument("--action", required=True,
-                    choices=["left", "right", "up", "down", "zoom_in", "zoom_out",
-                             "set_scale", "reset", "save", "cancel"])
+                    choices=["left", "right", "up", "down",
+                             "zoom_in", "zoom_out", "set_scale",
+                             "zoom_in_x", "zoom_out_x", "set_scale_x",
+                             "zoom_in_y", "zoom_out_y", "set_scale_y",
+                             "reset", "save", "cancel"])
     ap.add_argument("--value", type=float, default=None,
-                    help="percentage for --action set_scale")
+                    help="percentage for --action set_scale/set_scale_x/set_scale_y")
     args = ap.parse_args()
 
     if args.action == "cancel":
@@ -224,6 +291,8 @@ def main():
     y = int(round(fval("move_y")))
     w = int(round(fval("move_w", 100)))
     h = int(round(fval("move_h", 100)))
+    log("action=%s widget=%s monitor=%d value=%s rect=(%d,%d %dx%d)"
+        % (args.action, args.widget, args.monitor, args.value, x, y, w, h))
 
     if args.action == "reset":
         # Restore the factory defaults immediately (like save, but with the
@@ -236,6 +305,8 @@ def main():
         save_value(args.widget, args.monitor, "position_x", 0)
         save_value(args.widget, args.monitor, "position_y", 0)
         save_value(args.widget, args.monitor, "scale", "1.00")
+        save_value(args.widget, args.monitor, "scale_x", "1.00")
+        save_value(args.widget, args.monitor, "scale_y", "1.00")
         finish()
         return
 
@@ -250,46 +321,65 @@ def main():
         eww("update", "move_x=%d" % x, "move_y=%d" % y)
         return
 
-    if args.action in ("zoom_in", "zoom_out", "set_scale"):
-        base_w, base_h, scale, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
+    if args.action in PROPORTIONAL_ACTIONS + WIDTH_ACTIONS + HEIGHT_ACTIONS:
+        base_w, base_h, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
         # Start from the CURRENT session size (move_w/move_h), not the saved
         # config scale: clicking zoom_out repeatedly must keep stepping down
         # instead of recomputing from the untouched config value each time.
-        current = (w / base_w) if base_w else scale
-        if args.action == "set_scale":
+        cur_x = (w / base_w) if base_w else 1.0
+        cur_y = (h / base_h) if base_h else 1.0
+        proportional = args.action in PROPORTIONAL_ACTIONS
+        touch_w = proportional or args.action in WIDTH_ACTIONS
+        touch_h = proportional or args.action in HEIGHT_ACTIONS
+        if args.action.startswith("set_scale"):
             if args.value is None:
-                sys.exit("ERROR: --action set_scale requires --value <percent>")
-            scale = clamp(args.value / 100.0, MIN_SCALE, MAX_SCALE)
+                sys.exit("ERROR: --action %s requires --value <percent>" % args.action)
+            target = clamp(args.value / 100.0, MIN_SCALE, MAX_SCALE)
         else:
-            delta = SCALE_STEP if args.action == "zoom_in" else -SCALE_STEP
-            scale = clamp(current + delta, MIN_SCALE, MAX_SCALE)
-        w = int(round(base_w * scale))
-        h = int(round(base_h * scale))
-        if right_gap is not None:
-            x = frame_w - right_gap - w
-        else:
-            pos_x = float(config("position_x", args.monitor) or 0)
-            pos_y = float(config("position_y", args.monitor) or 0)
-            x = int(align_pos(w, frame_w, h_align) + pos_x)
+            delta = SCALE_STEP if args.action.startswith("zoom_in") else -SCALE_STEP
+            ref = cur_x if (proportional or touch_w) else cur_y
+            target = clamp(ref + delta, MIN_SCALE, MAX_SCALE)
+        new_scale_x = target if touch_w else cur_x
+        new_scale_y = target if touch_h else cur_y
+        w = int(round(base_w * new_scale_x)) if base_w else w
+        h = int(round(base_h * new_scale_y)) if base_h else h
+        # Only the touched axis is re-anchored; the other stays exactly where
+        # the previous step put it (so W and H steps compose freely).
+        pos_x = float(config("position_x", args.monitor) or 0)
+        pos_y = float(config("position_y", args.monitor) or 0)
+        if touch_w:
+            if right_gap is not None:
+                x = frame_w - right_gap - w
+            else:
+                x = int(align_pos(w, frame_w, h_align) + pos_x)
+        if touch_h and right_gap is None:
+            # Clock: realign vertically to the anchor. The panel keeps its y:
+            # its baseline is the top edge / gap-derived position, same as the
+            # proportional path always did.
             y = int(align_pos(h, frame_h, v_align) + pos_y)
         eww("update", "move_x=%d" % x, "move_y=%d" % y, "move_w=%d" % w, "move_h=%d" % h,
-            "move_pct=%d" % int(round(scale * 100)))
+            "move_pct=%d" % int(round(new_scale_x * 100)),
+            "move_pct_h=%d" % int(round(new_scale_y * 100)))
         return
 
     if args.action == "save":
         # SAFETY: never persist a degenerate/unreachable rect (see helpers).
         if is_degenerate_rect(x, y, w, h):
+            log("save REFUSED: degenerate rect at origin")
             sys.exit("ERROR: refusing to save default-sized rect at origin "
                      "(nothing was resized/dragged this session)")
-        base_w, base_h, scale, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
-        if base_w:
-            scale = clamp(w / base_w, MIN_SCALE, MAX_SCALE)
+        base_w, base_h, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
+        # Per-axis scales: the dragged rectangle may be non-proportional.
+        scale_x = clamp(w / base_w, MIN_SCALE, MAX_SCALE) if base_w else 1.0
+        scale_y = clamp(h / base_h, MIN_SCALE, MAX_SCALE) if base_h else 1.0
         margin = 40  # the saved widget must keep at least this much on-screen
 
         def refuse_outside(px, py, pw, ph):
             """Refuse (exit) when the saved widget would be fully off-screen."""
             if px + pw < margin or px > frame_w - margin or \
                py + ph < margin or py > frame_h - margin:
+                log("save REFUSED off-screen: pos=(%d,%d) %dx%d frame=%dx%d"
+                    % (px, py, pw, ph, frame_w, frame_h))
                 sys.exit("ERROR: refusing to save off-screen position "
                          "(%d,%d %dx%d on %dx%d frame)" % (px, py, pw, ph, frame_w, frame_h))
 
@@ -301,21 +391,45 @@ def main():
             base = base_rect(args.monitor, w, h)
             new_x = int(round(x - base["base_left"]))
             new_y = int(round(y - base["base_top"]))
-            refuse_outside(new_x, new_y, w, h)
+            log("save panel: dragged=(%d,%d) base=(%s,%s) -> offsets=(%d,%d) scales=%.2f/%.2f"
+                % (x, y, base["base_left"], base["base_top"], new_x, new_y, scale_x, scale_y))
+            # new_x/new_y are OFFSETS relative to the gap baseline and may
+            # legitimately be NEGATIVE (dragging away from the anchored edge
+            # measured bug: offsets like -880 were validated as absolute
+            # coordinates and refused). The rendered widget lands exactly on
+            # the dragged rectangle (baseline + offsets), so THAT is what the
+            # on-screen check must see.
+            refuse_outside(x, y, w, h)
             save_value(args.widget, args.monitor, "position_x", new_x)
             save_value(args.widget, args.monitor, "position_y", new_y)
         else:
             new_x = int(round(x - align_pos(w, frame_w, h_align)))
             new_y = int(round(y - align_pos(h, frame_h, v_align)))
-            vw = int(round(base_w * scale))
-            vh = int(round(base_h * scale))
+            vw = int(round(base_w * scale_x))
+            vh = int(round(base_h * scale_y))
+            log("save clock: dragged=(%d,%d) align=(%s,%s) -> offsets=(%d,%d) scales=%.2f/%.2f"
+                % (x, y, h_align, v_align, new_x, new_y, scale_x, scale_y))
             refuse_outside(new_x, new_y, vw, vh)
             save_value(args.widget, args.monitor, "position_x", new_x)
             save_value(args.widget, args.monitor, "position_y", new_y)
-        save_value(args.widget, args.monitor, "scale", "%.2f" % scale)
+        save_value(args.widget, args.monitor, "scale_x", "%.2f" % scale_x)
+        save_value(args.widget, args.monitor, "scale_y", "%.2f" % scale_y)
+        # Backward-compatible mirror: readers that only know the shared
+        # `scale` keep seeing the width axis (the pre-v2.3.0 behavior).
+        save_value(args.widget, args.monitor, "scale", "%.2f" % scale_x)
         finish()
         return
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit as exc:
+        if str(exc) and str(exc) != "None":
+            log("exit: %s" % exc)
+        raise
+    except Exception:
+        import traceback
+
+        log("EXCEPTION:\n%s" % traceback.format_exc())
+        raise

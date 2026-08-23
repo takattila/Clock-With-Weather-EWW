@@ -124,7 +124,10 @@ git-ignored `config.local.yaml` and applied live.
   click away.
 - **Per-widget scaling** — scale the clock and the panel independently; each
   shrinks as a single object, so the relative distances between its parts never
-  change. The Move / Resize dialog accepts a hand-typed exact percentage too.
+  change. The Move / Resize dialog accepts a hand-typed exact percentage too —
+  and dedicated **Width / Height rows**: stretch only one axis when the aspect
+  ratio is not wanted (buttons, typed percentages, Shift+arrows or single-axis
+  edge drags), per monitor.
 - **Taskbar-aware panel** — the panel aligns perfectly to your taskbar with
   per-side gaps (`panel.gap`).
 - **Desktop integration** — automatic menu icons and optional desktop shortcuts.
@@ -172,6 +175,10 @@ weather:
       0: { position_x: -40, position_y: 20, scale: 0.85 }
 ```
 
+`scale_x` / `scale_y` may replace `scale` when the width and the height need
+different sizes (the Move/Resize dialog writes them automatically after a
+width-only or height-only resize; each axis falls back to `scale`).
+
 The setup wizard writes its choices there too; edit `config.yaml` only when a
 default should change for every machine. The right-click menu toggles and the
 `scripts/bin/hard-reset.sh` factory reset write / delete this file for you.
@@ -207,8 +214,8 @@ Clock-With-Weather-EWW/
 - **[WIKI — Technical documentation](docs/WIKI.md)** — dependencies, configuration
   (`config.yaml`), project structure, EWW/CSS customization, testing and more.
 - **[PLAN — feature plan](docs/PLAN.md)** — the executed plan behind the
-  quick-settings context menu, the hand-typed resize percentage and the hard
-  reset (the previous plan for the `config.local.yaml` override layer is
+  independent width/height resize (the previous plans for the
+  `config.local.yaml` override layer and the quick-settings context menu are
   preserved in git history).
 - **Screenshots** — [view all](#screenshots).
 
