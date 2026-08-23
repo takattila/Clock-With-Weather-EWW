@@ -670,6 +670,13 @@ is never clipped, below 100% a transform translate shifts the scaled content
 onto the saved rectangle while the canvas itself stays fully on-screen (an
 overflowing managed window would be relocated by the WM).
 
+Transform-order caveat: the eww build this project targets applies
+`cr.scale()` BEFORE `cr.translate()` inside its transform widget, so cairo
+composes S·R·T and the effective on-screen offset is `scale × translate`.
+`widget_rect.py` therefore emits `translate = (visible_tl − canvas_tl) / scale`
+per axis. Newer eww versions reversed the order to translate-after-scale; if
+the binary is upgraded past this build, drop that division again.
+
 ### Resize / reposition workflow
 
 1. Modify `eww.scss`.

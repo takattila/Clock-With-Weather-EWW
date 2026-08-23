@@ -137,8 +137,9 @@ layout_windows() {
     #     stays natural-sized but is positioned so it always fits the
     #     monitor — an overflowing managed X11 window would be relocated by
     #     the WM, dragging the widget away from its saved spot — while the
-    #     transform :translate values (device pixels) place the scaled
-    #     content exactly on the visible rectangle.
+    #     transform :translate values (desired device-pixel offset divided by
+    #     the axis scale: this eww build applies :scale before :translate)
+    #     place the scaled content exactly on the visible rectangle.
     # The natural width is dynamic (hugs the content, ends after the city
     # name). Width and height scale INDEPENDENTLY (scale_x / scale_y, each
     # falling back to `scale`).
@@ -177,9 +178,10 @@ layout_windows() {
       panel_scale_perc_y="$(python3 -c "print(int(round($panel_scale_y * 100)))")"
       # Same canvas rule as the clock, computed by widget_rect.py (panel):
       # pwin_* is max(natural, visible) positioned so it always fits the
-      # monitor; the translates (device px) put the scaled content exactly
-      # on the visible rectangle. Geometry uses a "top left" anchor with
-      # these absolute frame coords on both compositors.
+      # monitor; the translates (desired device px offset divided by the
+      # axis scale — see the clock comment above) put the scaled content
+      # exactly on the visible rectangle. Geometry uses a "top left" anchor
+      # with these absolute frame coords on both compositors.
       local panel_geom pwin_x pwin_y
       panel_geom="$(python3 "$DIR/scripts/move/widget_rect.py" --widget panel --monitor "$idx")" || {
         echo "ERROR: widget_rect.py (panel, monitor $idx) failed"; return 1

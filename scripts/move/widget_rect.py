@@ -39,8 +39,11 @@ Output (stdout, JSON):
     "win_x"/"win_y"/"win_w"/"win_h": the eww window (canvas) geometry —
         max(natural, visible) per axis, positioned so the canvas always fits
         the monitor,
-    "translate_x"/"translate_y": transform :translate values (device px)
-        placing the scaled content exactly on the visible rectangle,
+    "translate_x"/"translate_y": transform :translate values placing the
+        scaled content exactly on the visible rectangle. This eww build applies
+        :scale BEFORE :translate inside cairo, so the emitted value is the
+        desired device-pixel offset DIVIDED by the axis scale (see the
+        canvas/transform notes in clock_rect/panel_rect below).
     "natural_w": natural (scale = 1.0) width,
     "natural_h": natural (scale = 1.0) height,
     "anchor": window anchor ("top left" for the clock; panel anchor on X11)
@@ -243,14 +246,21 @@ def clock_rect(monitor, compositor, workarea, monitor_index):
 
     # --- render canvas (the GTK window) vs the visible content ---------------
     # The transform only scales the DRAWING inside a fixed-size transparent
-    # canvas, and its :translate values are applied AFTER the scale (device
-    # pixels — measured empirically). Per axis:
+    # canvas. This eww build calls cr.scale() BEFORE cr.translate()
+    # (crates/eww/src/widgets/transform.rs @ d87c2fdb), so cairo composes the
+    # matrix as S·R·T and the effective on-screen offset is scale × translate.
+    # To land the content at `delta = visible_tl - canvas_tl` device pixels we
+    # therefore emit translate = delta / scale per axis (guarded against a
+    # degenerate 0 scale). Per axis:
     #   canvas    = max(natural, visible)   (>100% grows the canvas: no clip)
     #   canvas_tl = clamp(visible_tl, 0, frame - canvas)
-    #   translate = visible_tl - canvas_tl  (0 when visible >= natural)
+    #   delta     = visible_tl - canvas_tl  (0 when visible >= natural)
     # so the scaled content lands exactly on the visible rectangle while the
     # canvas itself always fits the monitor — an overflowing managed window
     # would be relocated by the X11 WM, dragging the widget off its spot.
+    # NOTE: newer eww versions reordered the transform to apply :translate
+    # after :scale; if the binary is ever upgraded past this build, drop the
+    # division below again.
     win_w = max(int(natural_w), vis_w)
     win_h = max(int(natural_h), vis_h)
     win_x = min(max(top_left_x, 0), max(0, frame_w - win_w))
@@ -268,8 +278,8 @@ def clock_rect(monitor, compositor, workarea, monitor_index):
         "win_y": win_y,
         "win_w": win_w,
         "win_h": win_h,
-        "translate_x": top_left_x - win_x,
-        "translate_y": top_left_y - win_y,
+        "translate_x": int(round((top_left_x - win_x) / max(scale_x, 0.05))),
+        "translate_y": int(round((top_left_y - win_y) / max(scale_y, 0.05))),
         "natural_w": int(natural_w),
         "natural_h": int(natural_h),
         "frame_w": int(frame_w),
@@ -340,13 +350,14 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
 
     # --- render canvas: the same rule as for the clock -----------------------
     # The transform scales only the drawing inside a fixed-size canvas, and
-    # its :translate values are device pixels applied AFTER the scale. Per
-    # axis: canvas = max(natural, visible), canvas_tl =
-    # clamp(visible_tl, 0, frame - canvas), translate = visible_tl -
-    # canvas_tl. This keeps the scaled content exactly on the visible
-    # rectangle while the oversized transparent canvas never leaves the
-    # monitor (an overflowing managed X11 window gets relocated by the WM,
-    # which previously dragged a moved panel back / clipped >100% panels).
+    # this eww build applies :scale BEFORE :translate (S·R·T matrix), so the
+    # on-screen offset is scale × translate and we emit
+    # (visible_tl - canvas_tl) / scale per axis. Per axis: canvas =
+    # max(natural, visible), canvas_tl = clamp(visible_tl, 0, frame - canvas).
+    # This keeps the scaled content exactly on the visible rectangle while the
+    # oversized transparent canvas never leaves the monitor (an overflowing
+    # managed X11 window gets relocated by the WM, which previously dragged a
+    # moved panel back / clipped >100% panels).
     nat_w = PANEL_WIDTH
     win_w = max(nat_w, vis_w)
     win_h = max(natural_h, vis_h)
@@ -365,8 +376,8 @@ def panel_rect(monitor, compositor, workarea, monitor_index):
         "win_y": win_y,
         "win_w": win_w,
         "win_h": win_h,
-        "translate_x": top_left_x - win_x,
-        "translate_y": top_left_y - win_y,
+        "translate_x": int(round((top_left_x - win_x) / max(scale_x, 0.05))),
+        "translate_y": int(round((top_left_y - win_y) / max(scale_y, 0.05))),
         "natural_w": nat_w,
         "natural_h": natural_h,
         "frame_w": int(frame_w),

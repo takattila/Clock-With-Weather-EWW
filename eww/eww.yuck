@@ -84,8 +84,10 @@
     ;; Independent axis scales: width follows main_scale_perc_x, height
     ;; follows main_scale_perc_y (equal unless the Move/Resize dialog was
     ;; used to resize a single axis). The canvas window is max(natural,
-    ;; visible) per axis; below 100% the :translate values (DEVICE pixels,
-    ;; applied after scaling) shift the drawing so it lands exactly on the
+    ;; visible) per axis; below 100% the :translate values (pre-divided by
+    ;; the axis scale: this eww build applies scale BEFORE translate, so
+    ;; scale × translate must equal the desired device-pixel offset) shift
+    ;; the drawing so it lands exactly on the
     ;; visible rectangle while the oversized transparent canvas stays fully
     ;; on-screen (an overflowing managed X11 window would be relocated by
     ;; the WM). Above 100% both translates are 0 and the enlarged canvas
@@ -362,8 +364,9 @@
 ;; is the CANVAS geometry computed by scripts/move/widget_rect.py (same rule
 ;; as for the clock: max(natural, visible) per axis, positioned so it always
 ;; fits the monitor, "top left" anchor with frame coords on both
-;; compositors); the translates (device px, applied after scaling) place the
-;; scaled content exactly on the visible rectangle.
+;; compositors); the translates (desired device px offset divided by the
+;; axis scale — see widget_clock_weather) place the scaled content exactly on
+;; the visible rectangle.
 (defwindow panel_window
   [screen pw ph pwin_x pwin_y pwin_w pwin_h panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y]
   :monitor {screen}

@@ -149,12 +149,24 @@ requests natural pixels. Fix (both widgets), per axis:
 
 `widget_rect.py` publishes the new render keys (`win_*`, `translate_*`,
 everything int-rounded); `start.sh` passes them and computes the panel's
-edge-hug translates as plain natural−visible differences gated at 0 (an
-X11 pixel probe showed eww applies transform :translate AFTER scaling, in
-device pixels — the old `nat*(1/scale-1)` formulas were slightly off).
+edge-hug translates as plain natural−visible differences gated at 0.
 Verified numerically for corner/center/overscale/mixed-axis cases
 (canvas always fits, content always lands on the visible rectangle);
 live check after restart.
+
+CORRECTION (KDE/Wayland, eww build reporting 0.5.0 / commit d87c2fdb):
+the earlier claim that ":translate is applied AFTER scaling, in device
+pixels" is wrong for this binary — its transform widget calls `cr.scale()`
+BEFORE `cr.translate()` (crates/eww/src/widgets/transform.rs), so cairo
+composes S·R·T and the effective on-screen offset is `scale × translate`.
+At scale < 100% that undershoots toward the top-left and leaves an empty
+gap at the right/bottom screen edges (e.g. 56% scale parked bottom-right
+rendered at 0.56·245 = 137 px instead of 245 px). Fix: `widget_rect.py`
+now emits `translate = (visible_tl − canvas_tl) / scale` per axis
+(guarded against a degenerate 0 scale) for both widgets; newer eww builds
+reversed the order — drop the division when upgrading. Verified by portal
+screenshot pixel probes (content left edge lands exactly on visible_tl)
+and synthetic corner/clamp/overscale cases.
 
 ## Follow-up fix: dead right-click after Move/Resize
 
