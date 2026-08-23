@@ -423,8 +423,83 @@ C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
 C_R=$(echo -en "\e[1;31m") # COLOR: RED
 C_U=$(echo -en "\e[1;4m")  # UNDERLINED
 
-echo -ne '\e]11;#000000\e\\' # set default foreground to black
-echo -ne '\e]10;#ffffff\e\\' # set default background to #abcdef
+# --- Terminal colors ---------------------------------------------------------
+# Save the terminal's current default fg/bg colors (OSC 10/11 query) before
+# switching to the setup palette, and restore the saved colors when this script
+# exits (normally, on Ctrl+C or on SIGTERM). When sourced from install.sh, it
+# has already saved the original colors; in that case they are kept here and
+# only the setup palette is re-applied.
+TERMINAL_ORIG_FG=""
+TERMINAL_ORIG_BG=""
+
+function terminalQueryColor() {
+    local osc=$1
+    local out=""
+    local ch=""
+    local escSeen=false
+
+    { stty -F /dev/tty flushi; } &> /dev/null
+    { printf '\e]%s;?\e\\' "${osc}" > /dev/tty; } 2> /dev/null || return 1
+
+    while IFS= read -r -n 1 -s -t 1 ch < /dev/tty; do
+        if [[ "${escSeen}" = "true" ]]; then
+            if [[ "${ch}" = "\\" ]]; then
+                out="${out%?}" # drop the trailing ESC (ST terminator)
+                break
+            fi
+            escSeen=false
+        fi
+        if [[ "${ch}" = $'\e' ]]; then
+            escSeen=true
+        elif [[ "${ch}" = $'\a' ]]; then
+            break # BEL terminator
+        fi
+        out+="${ch}"
+    done
+
+    out="${out#*;}"
+
+    if ! [[ "${out}" =~ ^(#|rgb:) ]]; then
+        return 1
+    fi
+
+    printf '%s' "${out}"
+}
+
+function terminalSetSetupColors() {
+    # White default foreground (OSC 10) on black default background (OSC 11).
+    { printf '\e]10;#ffffff\e\\\e]11;#000000\e\\' > /dev/tty; } 2> /dev/null
+    return 0
+}
+
+function terminalRestoreColors() {
+    [[ "${TERMINAL_COLORS_RESTORED:-}" = "true" ]] && return 0
+    TERMINAL_COLORS_RESTORED="true"
+
+    if [[ -n "${TERMINAL_ORIG_FG}" && -n "${TERMINAL_ORIG_BG}" ]]; then
+        {
+            printf '\e]10;%s\e\\\e]11;%s\e\\' \
+                "${TERMINAL_ORIG_FG}" "${TERMINAL_ORIG_BG}" > /dev/tty
+        } 2> /dev/null
+    else
+        # Query unsupported: fall back to the terminal's built-in defaults.
+        { printf '\e]110\e\\\e]111\e\\' > /dev/tty; } 2> /dev/null
+    fi
+
+    return 0
+}
+
+if [[ -z "${TERMINAL_COLORS_SAVED:-}" ]]; then
+    TERMINAL_COLORS_SAVED="true"
+    TERMINAL_ORIG_FG="$(terminalQueryColor 10 || true)"
+    TERMINAL_ORIG_BG="$(terminalQueryColor 11 || true)"
+    trap terminalRestoreColors EXIT
+    trap 'terminalRestoreColors; exit 130' INT
+    trap 'terminalRestoreColors; exit 143' TERM
+    terminalSetSetupColors
+else
+    terminalSetSetupColors
+fi
 
 function helperReplace() {
     local string=$1
