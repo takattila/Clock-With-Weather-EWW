@@ -391,8 +391,8 @@ DEFAULT_HOUR_FORMAT="$(          [[ -n "${ARG_HOUR_FORMAT}" ]]       && echo "${
 DEFAULT_ALIGNMENT_NUMBER="$(     [[ -n "${ARG_ALIGNMENT_NUMBER}" ]]  && echo "${ARG_ALIGNMENT_NUMBER}"  || helperAlignmentNumber "$(helperConfigGet alignment)" )"
 DEFAULT_POSITION_X="$(           [[ -n "${ARG_POSITION_X}" ]]        && echo "${ARG_POSITION_X}"        || helperConfigGet position_x 0 )"
 DEFAULT_POSITION_Y="$(           [[ -n "${ARG_POSITION_Y}" ]]        && echo "${ARG_POSITION_Y}"        || helperConfigGet position_y 0 )"
-DEFAULT_START_PANEL="$(          [[ -n "${ARG_START_PANEL}" ]]       && echo "${ARG_START_PANEL}"       || { [[ "$(helperConfigGet panel_enabled)" = "false" ]] && echo "2" || echo "1" ; } )"
-DEFAULT_CREATE_DESKTOP_ICONS="$( [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]] && echo "${ARG_CREATE_DESKTOP_ICONS}" || echo "1" )"
+DEFAULT_START_PANEL="$(          [[ -n "${ARG_START_PANEL}" ]]       && echo "${ARG_START_PANEL}"       || echo "1" )"
+DEFAULT_CREATE_DESKTOP_ICONS="$( [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]] && echo "${ARG_CREATE_DESKTOP_ICONS}" || echo "2" )"
 
 DESKTOP_LAUNCHER='
 [Desktop Entry]
@@ -461,7 +461,7 @@ function helperPrompt() {
 
     # Mark the default answer (taken on plain Enter).
     if [[ -n "${defaultAnswer}" && "${defaultAnswer}" != "EMPTY_ANSWER_NOT_ALLOWED" ]]; then
-        promptText+="${C_Y} [default: ${defaultAnswer}]${C_D}"
+        promptText+="${C_Y} [default: ${defaultAnswer}]${C_D} "
     fi
 
     read -p "${promptText}" answer
