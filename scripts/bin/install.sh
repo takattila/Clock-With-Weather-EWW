@@ -462,7 +462,7 @@ function installFont() {
     local font="NotoSans-Regular.ttf"
 
     mkdir -p /home/"$(whoami)"/.local/share/fonts
-    cp "${EWW_DIR}"/fonts/"${font}" /home/"$(whoami)"/.local/share/fonts
+    cp "${EWW_DIR}"/assets/fonts/"${font}" /home/"$(whoami)"/.local/share/fonts
 
     echo -e "- The ${C_Y}'${font}'${C_D} font installed."
 }
