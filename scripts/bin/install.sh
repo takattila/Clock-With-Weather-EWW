@@ -429,29 +429,33 @@ function installEww() {
 
 function installWidgetFromGitHub() {
     local repo_dir="${REPO_DIR}"
-    local delete_repo_dir
+    local backup_file="${BASE_DIR}/${REPO}-config.local.yaml.bak"
+
+    # Default behaviour: remove any existing widget directory before cloning.
+    # The git-ignored config.local.yaml is backed up first and restored into
+    # the freshly cloned directory afterwards.
+    rm -f "${backup_file}"
 
     if [[ "$(helperCheckDir "${repo_dir}")" = "0" ]]; then
         echo
-        echo "- The ${C_Y}'${repo_dir}'${C_D} already exists."
-        delete_repo_dir="$(
-            helperPrompt "  Do you want to delete it? ${C_Y}[y or n]${C_D}: " "y" "y n"
-        )"
+        echo -n "- Deleting the existing ${C_Y}'${repo_dir}'${C_D} ... "
+        killall eww &> /dev/null
 
-        if [[ "${delete_repo_dir}" = "y" ]]; then
-            killall eww &> /dev/null
-            rm -rf "${repo_dir}"
-            helperCloneAndCheckout
-
-            return
+        if [[ -f "${repo_dir}/config.local.yaml" ]]; then
+            cp "${repo_dir}/config.local.yaml" "${backup_file}"
         fi
 
-        helperCheckout
-
-        return
+        rm -rf "${repo_dir}"
+        echo "done."
     fi
 
     helperCloneAndCheckout
+
+    if [[ -f "${backup_file}" ]]; then
+        cp "${backup_file}" "${repo_dir}/config.local.yaml"
+        rm -f "${backup_file}"
+        echo "- The ${C_Y}'config.local.yaml'${C_D} backup restored."
+    fi
 }
 
 function installFont() {
