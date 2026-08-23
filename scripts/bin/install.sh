@@ -196,7 +196,7 @@ function helperPrompt() {
 
     # Mark the default answer (taken on plain Enter).
     if [[ -n "${defaultAnswer}" && "${defaultAnswer}" != "EMPTY_ANSWER_NOT_ALLOWED" ]]; then
-        promptText+="${C_Y} [default: ${defaultAnswer}]${C_D}"
+        promptText+="${C_Y} [default: ${defaultAnswer}]${C_D} "
     fi
 
     read -p "${promptText}" answer

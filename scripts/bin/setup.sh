@@ -429,8 +429,8 @@ C_U=$(echo -en "\e[1;4m")  # UNDERLINED
 # exits (normally, on Ctrl+C or on SIGTERM). When sourced from install.sh, it
 # has already saved the original colors; in that case they are kept here and
 # only the setup palette is re-applied.
-TERMINAL_ORIG_FG=""
-TERMINAL_ORIG_BG=""
+: "${TERMINAL_ORIG_FG:=}"
+: "${TERMINAL_ORIG_BG:=}"
 
 function terminalQueryColor() {
     local osc=$1
