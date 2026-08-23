@@ -30,20 +30,83 @@ DAEMON_PIDFILE = os.path.join(CONFIG_DIR, "run", "input_daemon.pid")
 DAEMON_SCRIPT = os.path.join(SCRIPTS_DIR, "move", "input_daemon.py")
 
 
+DAEMON_MATCH = "scripts/move/input_daemon.py"
+
+
+def _own_chain_pids():
+    """PIDs of this process's ancestor chain (for pgrep self-exclusion)."""
+    pids = set()
+    pid = os.getpid()
+    while pid and pid > 1 and pid not in pids:
+        pids.add(pid)
+        try:
+            with open("/proc/%d/stat" % pid) as fh:
+                pid = int(fh.read().split(") ", 1)[1].split()[0])
+        except Exception:
+            break
+    return pids
+
+
+def stray_daemon_pids():
+    """Running input_daemon PIDs that are NOT on our own ancestor chain."""
+    try:
+        out = subprocess.run(
+            ["pgrep", "-f", DAEMON_MATCH], capture_output=True, text=True
+        ).stdout
+    except Exception:
+        return []
+    own = _own_chain_pids()
+    return [int(p) for p in out.split() if p.isdigit() and int(p) not in own]
+
+
 def daemon_alive():
+    # Fast path: the pidfile written by the last spawn points at a live
+    # process. Fallback: a running instance WITHOUT a valid pidfile entry
+    # still counts (pidfiles get overwritten by later spawns, which is how
+    # duplicate daemons used to accumulate unnoticed).
     try:
         with open(DAEMON_PIDFILE) as fh:
             pid = int(fh.read().strip())
         os.kill(pid, 0)
         return True
     except Exception:
-        return False
+        pass
+    return bool(stray_daemon_pids())
+
+
+def sweep_stray_daemons():
+    """TERM (then KILL) input_daemon instances not covered by the pidfile."""
+    import time
+
+    strays = stray_daemon_pids()
+    for pid in strays:
+        try:
+            os.kill(pid, 15)
+        except Exception:
+            pass
+    deadline = time.time() + 1.5
+    while time.time() < deadline:
+        strays = [p for p in strays if os.path.exists("/proc/%d" % p)]
+        if not strays:
+            break
+        time.sleep(0.1)
+    for pid in strays:
+        try:
+            os.kill(pid, 9)
+        except Exception:
+            pass
 
 
 def start_daemon():
-    """Start the input daemon via passwordless sudo if it is not running."""
+    """Start the input daemon via passwordless sudo if it is not running.
+
+    Any leftover daemon instance is swept first: spawning without sweeping
+    accumulated duplicates whenever the pidfile had been overwritten by a
+    later start while an older daemon kept running.
+    """
     if daemon_alive():
         return
+    sweep_stray_daemons()
     env = {
         key: val for key, val in os.environ.items()
         if key in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE") and val

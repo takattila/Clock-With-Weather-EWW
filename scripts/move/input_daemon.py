@@ -20,6 +20,10 @@ Actions (only while that file exists):
     Arrow keys         -> move_ctl.py --action left/right/up/down
     Shift+3 / numpad + -> move_ctl.py --action zoom_in   (Hungarian layout)
     Minus / numpad -   -> move_ctl.py --action zoom_out
+    Shift+Up/Down      -> move_ctl.py --action zoom_in_y / zoom_out_y
+                          (height only; aspect ratio NOT preserved)
+    Shift+Right/Left   -> move_ctl.py --action zoom_in_x / zoom_out_x
+                          (width only)
     Enter              -> move_ctl.py --action save
     ESC                -> move_ctl.py --action cancel
 
@@ -169,7 +173,15 @@ def handle_key(code, shift, session):
     widget = str(session.get("widget", "clock"))
     monitor = str(session.get("monitor", 0))
     action = None
-    if code == KEY_LEFT:
+    if shift and code == KEY_UP:
+        action = "zoom_in_y"      # height only
+    elif shift and code == KEY_DOWN:
+        action = "zoom_out_y"
+    elif shift and code == KEY_RIGHT:
+        action = "zoom_in_x"      # width only
+    elif shift and code == KEY_LEFT:
+        action = "zoom_out_x"
+    elif code == KEY_LEFT:
         action = "left"
     elif code == KEY_RIGHT:
         action = "right"

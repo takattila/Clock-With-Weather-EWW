@@ -15,14 +15,25 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # scripts/widgets/ -> scripts/ -> repo (widget) root
 CONFIG_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
 sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "core"))
+sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "move"))
 
-import session
+import session  # noqa: E402
+import widget_rect as wr  # noqa: E402
+import menu_pos  # noqa: E402
+
+# The monitor enumeration (xrandr) is the slowest piece of the right-click
+# path (~250 ms on this machine). It only changes on hotplug, which
+# monitor_watch.py handles separately, so a short-TTL cache file keeps
+# consecutive clicks instant while staying self-healing.
+MONITORS_CACHE = os.path.join(CONFIG_DIR, "generated", "monitors-cache.json")
+MONITORS_TTL = 30.0
 
 
 def run(cmd, capture=False):
@@ -35,17 +46,143 @@ def run(cmd, capture=False):
         return ""
 
 
-def list_monitor_indices():
-    """Connected monitor indices from scripts/core/monitors.py ([] on failure)."""
+def get_monitors_cached():
+    """monitors JSON from the TTL cache, refreshing it on expiry."""
+    now = time.time()
+    try:
+        with open(MONITORS_CACHE) as fh:
+            cached = json.load(fh)
+        if now - float(cached.get("ts", 0)) < MONITORS_TTL \
+                and cached.get("data", {}).get("monitors"):
+            return cached["data"]
+    except Exception:
+        pass
     out = run(
         ["python3", os.path.join(CONFIG_DIR, "scripts", "core", "monitors.py")],
         capture=True,
     )
+    data = json.loads(out)
     try:
-        data = json.loads(out)
-        return sorted(int(m["index"]) for m in data.get("monitors", []))
+        os.makedirs(os.path.dirname(MONITORS_CACHE), exist_ok=True)
+        with open(MONITORS_CACHE, "w") as fh:
+            json.dump({"ts": now, "data": data}, fh)
     except Exception:
-        return []
+        pass
+    return data
+
+
+def resolve_cursor(data):
+    """Compositor-appropriate global cursor (px, py), or None.
+
+    X11 trusts xdotool. On Wayland xdotool only tracks the pointer over
+    XWayland surfaces -- above our native layer-shell widgets it returns a
+    stale position, which once redirected EVERY panel right-click to the
+    clock. KDE exposes the real global pointer through the KWin scripting
+    API (workarea.kde_cursor); compositors without such an API yield None,
+    in which case ownership forwarding must stay off (keep the claimed
+    widget) instead of acting on garbage coordinates.
+    """
+    if data.get("compositor", "x11") == "wayland":
+        try:
+            import workarea as _wa
+
+            return _wa.kde_cursor()
+        except Exception:
+            return None
+    return cursor_position()
+
+
+def collect_rects_data(screens, data, workarea):
+    """Visible rectangles for BOTH widgets on every screen, in-process.
+
+    Replaces the previous 4x widget_rect.py subprocess storm (~2.3 s): the
+    module-level functions share one monitors fetch / PIL import.
+    """
+    rects = []
+    compositor = data.get("compositor", "x11")
+    mons = {int(m["index"]): m for m in data.get("monitors", [])}
+    for wgt in ("clock", "panel"):
+        for idx in screens:
+            m = mons.get(idx)
+            if m is None:
+                continue
+            r = wr.clock_rect(m, compositor, workarea, idx) if wgt == "clock" \
+                else wr.panel_rect(m, compositor, workarea, idx)
+            rects.append({"widget": wgt, "monitor": idx,
+                          "x": int(r["abs_x"]), "y": int(r["abs_y"]),
+                          "w": int(r["width"]), "h": int(r["height"])})
+    return rects
+
+
+def cursor_position():
+    """Global cursor (px, py) via xdotool, or None (unavailable / Wayland)."""
+    out = run(["xdotool", "getmouselocation"], capture=True)
+    m = {}
+    for part in out.split():
+        if ":" in part:
+            k, v = part.split(":", 1)
+            m[k] = v
+    try:
+        return int(m["x"]), int(m["y"])
+    except (KeyError, ValueError):
+        return None
+
+
+def choose_widget(claimed_widget, claimed_monitor, cursor, rects):
+    """(widget, monitor) whose VISIBLE area actually sits under the cursor.
+
+    The scaled content is drawn inside a larger transparent canvas window,
+    so the X server may deliver a right-click aimed at one widget to the
+    OTHER one's canvas overlapping it (measured: clicks on the clock's
+    visible part that fell into the panel's transparent bottom strip opened
+    the panel menu). If the claimed widget's visible rect does not contain
+    the cursor but exactly one other candidate rect does, that other
+    wins. Ambiguity keeps the claimed widget; unknown cursor / rects keep
+    it too (behaviour identical to pre-forwarding).
+    """
+    if not cursor:
+        return claimed_widget, claimed_monitor
+
+    def contains(r):
+        return bool(r) and r["x"] <= cursor[0] < r["x"] + r["w"] \
+            and r["y"] <= cursor[1] < r["y"] + r["h"]
+
+    claimed_rect = next((r for r in rects if r["widget"] == claimed_widget
+                         and r["monitor"] == claimed_monitor), None)
+    others = [r for r in rects
+              if (r["widget"], r["monitor"]) != (claimed_widget, claimed_monitor)]
+    if contains(claimed_rect) or not any(contains(r) for r in others):
+        return claimed_widget, claimed_monitor
+    hits = [r for r in others if contains(r)]
+    # Deterministic pick: the SMALLEST containing rect (most specific hit).
+    best = min(hits, key=lambda r: r["w"] * r["h"])
+    return best["widget"], best["monitor"]
+
+
+def widget_visible_rect(widget, monitor):
+    """Absolute visible rectangle {x,y,w,h} or None (subprocess fallback)."""
+    out = run(
+        ["python3", os.path.join(CONFIG_DIR, "scripts", "move", "widget_rect.py"),
+         "--widget", widget, "--monitor", str(monitor)],
+        capture=True,
+    )
+    try:
+        r = json.loads(out)
+        return {"x": int(r["abs_x"]), "y": int(r["abs_y"]),
+                "w": int(r["width"]), "h": int(r["height"])}
+    except Exception:
+        return None
+
+
+def collect_rects(screens):
+    """Legacy subprocess variant, kept as the fast path's fallback."""
+    rects = []
+    for widget in ("clock", "panel"):
+        for idx in screens:
+            r = widget_visible_rect(widget, idx)
+            if r:
+                rects.append({"widget": widget, "monitor": idx, **r})
+    return rects
 
 
 def main():
@@ -68,21 +205,47 @@ def main():
     ap.add_argument("--monitor", type=int, default=0)
     args = ap.parse_args()
 
-    out = run(
-        ["python3", os.path.join(CONFIG_DIR, "scripts", "move", "menu_pos.py"),
-         "--widget", args.widget, "--monitor", str(args.monitor)],
-        capture=True,
-    )
+    # FAST PATH (single process): one cached monitors fetch + one workarea
+    # read feed BOTH the ownership resolution and the menu placement. The
+    # previous flow spawned 6 helper processes (~3.5 s); this one stays
+    # in-process (~0.1 s warm / ~0.5 s cold). Any failure falls back to the
+    # old subprocess pipeline for the claimed widget.
+    widget, monitor = args.widget, args.monitor
+    screens = []
+    pos = None
     try:
-        pos = json.loads(out)
+        data = get_monitors_cached()
+        workarea = wr.get_workarea()
+        screens = sorted(int(m["index"]) for m in data.get("monitors", []))
+        rects = collect_rects_data(screens, data, workarea)
+        cursor = resolve_cursor(data)
+        widget, monitor = choose_widget(
+            args.widget, args.monitor, cursor, rects)
+        pos = menu_pos.menu_position(widget, monitor, data, workarea,
+                                     cursor=cursor)
     except Exception:
-        sys.exit("ERROR: menu_pos.py failed:\n%s" % out)
+        widget, monitor = args.widget, args.monitor
+        pos = None
+
+    if pos is None:
+        out = run(
+            ["python3", os.path.join(CONFIG_DIR, "scripts", "move", "menu_pos.py"),
+             "--widget", widget, "--monitor", str(monitor)],
+            capture=True,
+        )
+        try:
+            pos = json.loads(out)
+        except Exception:
+            sys.exit("ERROR: menu_pos.py failed:\n%s" % out)
+        if not screens:
+            screens = [int(pos["screen"])]
 
     # Open the transparent dismiss layers FIRST (so the menu stacks above
     # them): one per connected monitor, so clicking anywhere on ANY screen —
     # not just the menu's own one — closes the popups. Then the context menu.
     # A leftover submenu from an earlier session is closed as well.
-    screens = list_monitor_indices() or [int(pos["screen"])]
+    if not screens:
+        screens = [int(pos["screen"])]
     run(["eww", "--config", EWW_CONFIG_DIR, "close", "dismiss_overlay"])
     for idx in screens:
         run(["eww", "--config", EWW_CONFIG_DIR, "close",
@@ -105,8 +268,8 @@ def main():
             "eww", "--config", EWW_CONFIG_DIR, "open",
             "--id", "ctx_menu",
             "--screen", str(pos["screen"]),
-            "--arg", "widget=%s" % args.widget,
-            "--arg", "monitor=%d" % args.monitor,
+            "--arg", "widget=%s" % widget,
+            "--arg", "monitor=%d" % monitor,
             "--arg", "pos_x=%d" % pos["x"],
             "--arg", "pos_y=%d" % pos["y"],
             "ctx_menu",

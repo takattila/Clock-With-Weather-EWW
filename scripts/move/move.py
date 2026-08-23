@@ -3,16 +3,17 @@
 
 Opens the full-monitor transparent rectangle overlay (scripts/move_rect.py)
 with the rectangle pre-set to the widget's current position/size, plus the
-draggable GTK control panel (scripts/move_panel.py) with buttons (arrows, +/-
-zoom, Save, Cancel).
+draggable GTK control panel (scripts/move_panel.py) with buttons (arrows,
+proportional +/- zoom, per-axis Width / Height rows, Save, Cancel).
 
 Unlike the old arrow-key version this script does NOT run an interactive loop:
 it sets the overlay values, starts the rectangle window + control panel and
 returns immediately, so eww's command timeout (200ms) cannot kill it. The
-buttons are handled by scripts/move_ctl.py; the arrow keys / +/- / ENTER / ESC
-by the invisible evdev daemon (scripts/input_daemon.py); dragging/resizing the
-rectangle with the mouse directly (scripts/move_rect.py); clicking anywhere
-outside the rectangle cancels the session.
+buttons are handled by scripts/move_ctl.py; the arrow keys / +/- /
+Shift+arrows (single-axis resize) / ENTER / ESC by the invisible evdev daemon
+(scripts/input_daemon.py); dragging/resizing the rectangle with the mouse
+directly (scripts/move_rect.py); clicking anywhere outside the rectangle
+cancels the session.
 
 The overlay values are written BEFORE opening the windows so the rectangle
 renders at the widget's size right away (previously the overlay appeared with
@@ -41,11 +42,7 @@ sys.path.insert(0, os.path.join(SCRIPTS_DIR, "core"))
 import session
 
 MC_W = 200
-MC_H = 250
-
-# Natural (scale = 1.0) panel width. The clock's natural width is dynamic
-# (ends at the city name) and comes from widget_rect.py ("natural_w").
-PANEL_WIDTH = 250
+MC_H = 320
 
 
 def run(cmd, capture=False):
@@ -117,15 +114,14 @@ def main():
     session.set_session({"mode": "move", "widget": args.widget, "monitor": args.monitor})
 
     # Set the overlay values BEFORE opening the windows so the rectangle has the
-    # correct size/position on the first frame.
-    if args.widget == "clock":
-        base_w = rect["natural_w"]
-        base_h = rect["natural_h"]
-    else:
-        base_w = PANEL_WIDTH
-        scale = w / base_w if base_w else 1.0
-        base_h = int(round(h / scale)) if scale else h
+    # correct size/position on the first frame. widget_rect.py reports the
+    # NATURAL (scale = 1.0) sizes for BOTH widgets ("natural_w"/"natural_h"),
+    # so the percentages are simply w/base and h/base — they may differ after
+    # a non-proportional (width-only / height-only) resize.
+    base_w = rect["natural_w"]
+    base_h = rect["natural_h"]
     pct = int(round(w / base_w * 100)) if base_w else 100
+    pct_h = int(round(h / base_h * 100)) if base_h else 100
     eww(
         "update",
         "move_x=%d" % int(round(rect["left"])),
@@ -133,11 +129,13 @@ def main():
         "move_w=%d" % w,
         "move_h=%d" % h,
         "move_pct=%d" % pct,
+        "move_pct_h=%d" % pct_h,
     )
 
     # Rectangle overlay first, so the control panel stacks above it. base_w/
-    # base_h are the NATURAL (scale 1.0) sizes, used by the mouse resize to
-    # keep the aspect ratio; ox/oy is the frame's top-left inside the monitor
+    # base_h (the NATURAL sizes) go to the rectangle window: the mouse resize
+    # scales from them (corner drag keeps the aspect ratio, edge drags scale
+    # a single axis); ox/oy is the frame's top-left inside the monitor
     # (workarea vs monitor on Wayland, 0/0 on X11).
     subprocess.Popen(
         [

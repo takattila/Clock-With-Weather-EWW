@@ -20,6 +20,9 @@ import time
 DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MONITORS = os.path.join(DIR, "scripts", "core", "monitors.py")
 START = os.path.join(DIR, "scripts", "bin", "start.sh")
+# ctx.py caches the monitor enumeration for fast right-clicks; a hotplug
+# must invalidate it so the next click sees the new topology.
+MONITORS_CACHE = os.path.join(DIR, "generated", "monitors-cache.json")
 
 POLL_INTERVAL = 5
 SETTLE = 0.8
@@ -38,6 +41,10 @@ def signature():
 
 
 def relayout():
+    try:
+        os.remove(MONITORS_CACHE)
+    except OSError:
+        pass
     try:
         subprocess.run([START, "--relayout"], timeout=120)
     except Exception:

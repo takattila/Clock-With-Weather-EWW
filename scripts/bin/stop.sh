@@ -2,6 +2,13 @@
 # Stop the eww widget.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." >/dev/null 2>&1 && pwd )"
 
+# Pattern-based leftover killer shared with start.sh (single-instance
+# guarantee + orphan cleanup; see the file header for the safety model).
+if [ -f "$DIR/scripts/bin/process_sweep.sh" ]; then
+  # shellcheck source=process_sweep.sh
+  . "$DIR/scripts/bin/process_sweep.sh"
+fi
+
 # Stop the config watcher (PID file written by scripts/bin/start.sh)
 stop_watcher() {
   if [ -f "$DIR/run/watch.pid" ]; then
@@ -80,6 +87,15 @@ main() {
   stop_monitor_watch
   stop_helpers
   stop_eww
+  # Pattern-based sweep AFTER the pidfile kills: the pidfile approach only
+  # reaches the NEWEST instance -- older generations whose pidfile entry was
+  # overwritten by a later start kept running for hours (measured: 4x
+  # watch.py + monitor_watch.py and 2x input_daemon accumulated over a day
+  # of restarts, ~95 MB RSS). Also stops the input daemon, which stop.sh
+  # never handled before (it is started lazily via sudo from session.py).
+  sweep_kill "${DIR}/scripts/core/watch\.py"
+  sweep_kill "${DIR}/scripts/core/monitor_watch\.py"
+  sweep_kill "${DIR}/scripts/move/input_daemon\.py"
   echo "Clock + weather widget and system monitor panel stopped (eww)."
 }
 

@@ -1,196 +1,278 @@
-# Context Menu Actions, Editable Resize % & Hard Reset Plan
+# Independent Width / Height Resize Plan
 
-> **Status: DONE & verified** (2026-08-22, live on this machine):
-> full pytest suite passes, `shellcheck` clean on the new bash script.
-> This replaces the v2.1.0 local-override record — see git history for that
+> **Status: DONE & verified** (2026-08-23):
+> full pytest suite passes (160 tests), every touched Python file
+> `py_compile`s clean and `bash -n` passes on `start.sh`.
+> This replaces the v2.2.0 context-menu record — see git history for that
 > document.
 >
-> Target release: **v2.2.0** (branch `feature/context-menu-items`).
-
-## Phase 2: hover submenus for every selectable item (same release)
-
-Follow-up within v2.2.0: the five selectable quick-settings rows
-(AM/PM switch, Theme, Units, Panel, Side) become **hover-only parents** —
-pointing at a row shows a picker pane with the possible values, the active
-one highlighted; picking an entry writes it through `menu_toggle.py --value`
-→ `config_set.py`. Clicking a parent row does nothing.
-
-- **The picker renders INSIDE the ctx_menu window**: a 250px pane to the
-  right of the item rows (window widened to 470x550), vertically aligned
-  with the hovered row.
-- Items are GROUPED with thin separators: actions (Move / Resize / Reset)
-  | quick settings (AM/PM / Theme / Units / Panel / Side) | system
-  (Hard reset / About). The picker's vertical offset accounts for the
-  two separators (`submenu.py` ROWS map). No extra window exists at all — this removes an
-  entire class of problems measured with a standalone popup window on
-  X11 (invisible override-redirect copies stacking up and eating pointer
-  input) and makes Wayland behave exactly like X11.
-- **New `scripts/widgets/submenu.py`**: builds the option list per key
-  (Theme = every directory under `assets/themes/appearance/`, split across
-  two balanced columns), bakes values + active-state class + click handler
-  into ONE static yuck definition pushed into the `sub_yuck` eww variable,
-  rendered via `(literal ...)`, shown with `sub_show=true` /
-  `sub_top=<calibrated row offset>`.
-- Measured eww 0.6.0 constraints that shaped this design: handlers on
-  widgets created inside `(for ...)` loops never fire; defwindow geometry
-  cannot see global defvars; literal-rendered eventboxes deliver clicks but
-  not hover events. All three are avoided by construction.
-- Dismissal stays with close_popup.py / ctx.py (option click, outside click
-  on the per-monitor dismiss layers, ESC, re-opening the menu), which also
-  hides the pane. The pane lives exactly as long as its parent menu.
-
-
-## Phase 3: robustness fixes (same release)
-
-Live testing surfaced three reliability gaps, all fixed:
-  * a dismissed per-monitor dismiss layer occasionally SURVIVED its close
-    (the IPC close was dropped while the daemon regenerated) — an invisible
-    full-screen layer then blocked every right-click on that monitor.
-    close_popup.py now VERIFIES via `eww active-windows` that no popup
-    window is still listed, retrying ~2s (compositor-independent, works on
-    Wayland/KDE too) and force-unmapping X11 survivors;
-  * About -> "Open repository": the dismiss layers stayed mapped ABOVE the
-    browser on KDE/Wayland (the overlay level sits over every normal
-    window), making everything unclickable; about_win.py now closes them
-    right before xdg-open.
-  * a Save firing on a never-initialized overlay rect (eww defaults:
-    100x100 at the origin) wrote scale=MIN + top-left positions for users;
-    move_ctl.py now refuses degenerate rects and any save that would place
-    the widget completely off its monitor.
+> Target release: **v2.3.0**.
 
 ## Goal
 
-Turn the right-click context menu into a real quick-settings panel and make
-the Move / Resize percentage editable by hand:
+Until now every resize path shared ONE scale factor per widget and monitor
+(`weather.window.per_monitor[N].scale` / `panel.window.per_monitor[N].scale`),
+so the aspect ratio was always preserved. This release adds **axis-independent
+resizing** for BOTH widgets (clock + system panel):
 
-1. **New context menu toggles** (all writing git-ignored
-   `config.local.yaml`, applied live by the watcher):
-   - `AM/PM switch` — `system.hour_format` `"24"` ↔ `"12"`
-   - `Theme` — cycle through every theme under
-     `assets/themes/appearance/`
-   - `Units` — `weather.units` `metric` ↔ `imperial` (°C ↔ °F) with an
-     immediate weather refresh (the defpoll alone would take up to 10 min)
-   - `Panel shown/hidden` — `panel.enabled`
-   - `Side right/left` — `panel.window.alignment`
-   - `Hard reset` — factory-reset the local configuration
-2. **Editable resize percentage** in the GTK Move / Resize control panel:
-   the `%` label becomes a text entry (30–150 %, same clamp as +/-).
-3. **`scripts/bin/hard-reset.sh`**: deletes `config.local.yaml` (no backup,
-   by design) + stale session state, regenerates the theme and relayouts,
-   so everything falls back to the committed `config.yaml` defaults.
+1. **Width only** — increase/decrease the width without touching the height.
+2. **Height only** — increase/decrease the height without touching the width.
+
+while keeping every existing proportional behavior intact (+/- buttons,
+corner drag, hand-typed percentage).
 
 ## Design decisions
 
-- **Single writer stays single**: `scripts/core/config_set.py` learns the
-  new *global* keys (`hour_format`, `appearance`, `units`, `panel_enabled`,
-  `panel_alignment`). No script ever writes YAML directly.
-- **One orchestrator for all toggles**: new `scripts/widgets/menu_toggle.py`
-  reads the merged view (`config_io.load_merged`), computes the next value
-  per key semantics and delegates the write to `config_set.py`. The context
-  menu buttons call it like they call `move_ctl.py`.
-- **Dynamic labels** come from the existing `config` defpoll (5 s): the
-  buttons show the current state (`Theme: light ▸`, `Units: °C ▸`, ...).
-  Because a custom inline appearance map makes `config.appearance` an
-  OBJECT, `config.py` additionally exposes a plain string
-  `appearance_name` (`custom` | theme name).
-- **Keyboard safety while typing**: the evdev daemon sees every physical
-  key globally; without care, Enter typed in the % entry would SAVE the
-  session and `-`/`+` would zoom. The session file therefore gets a
-  `"typing": true` flag while the entry has focus, during which the daemon
-  ignores all keys.
-- **Hard reset deletes without backup** (user decision); the committed
-  `config.yaml` is never touched, so nothing can get lost that matters.
+- **Two scale factors per monitor**: Move/Resize Save writes `scale_x`
+  (= dragged_width / natural_width) and `scale_y` (= dragged_height /
+  natural_height) into the per_monitor entry, plus a `scale` mirror of
+  `scale_x` so older readers keep working. Readers resolve each axis as
+  `scale_x -> scale -> 1.0` (`config.py::resolve_axis_scales`), so existing
+  configs that only carry `scale` scale both axes uniformly — no migration
+  needed.
+- **Single shared session state gains one variable**: `move_pct_h` (height %)
+  next to `move_pct` (width %). The GTK control panel polls both; they differ
+  after any single-axis operation.
+- **Anchoring rules per touched axis** (the other axis keeps its previous
+  position so W and H steps compose freely):
+  - width change: panel keeps its right gap fixed (`x = frame_w - right_gap -
+    w`, grows/shrinks leftward); clock realigns horizontally to its anchor +
+    position_x;
+  - height change: clock realigns vertically to its anchor + position_y;
+    panel keeps y (top/gap-derived baseline — same as the proportional path
+    always did).
+- **Mouse semantics on the overlay rectangle**: corner drags stay aspect-
+  preserving; EDGE drags become single-axis (left/right = width, top/bottom =
+  height) — matching common resizer UX.
+- **Keyboard**: Shift+Arrow = single-axis zoom in the evdev daemon
+  (Shift+Up/Down height ±, Shift+Right/Left width ±); plain arrows still move,
+  +/- stays proportional. The daemon already tracked the shift state.
+- **UI stays one dialog**: the Resize section of `move_panel.py` grows to
+  three rows — unlabeled proportional row (kept from v2.2.0), "W" row,
+  "H" row — each with − / editable-% / + . The entry plumbing (typing flag,
+  X11 keyboard grab, poll-overwrite guard, duplicated in the old code twice)
+  is factored into one `PctField` class used three times.
 
 ## Implementation steps
 
-### 1. `scripts/core/config_set.py` — global keys
+### 1. Config layer — two independent scales
 
-- `--widget` becomes OPTIONAL (widget-scoped keys still require it;
-  `gap_*` still requires `--widget panel`).
-- New branch handled before the widget keys; none of these accept
-  `--monitor`:
-  | key | allowed values | stored path | type |
-  |---|---|---|---|
-  | `hour_format` | `12` \| `24` | `system.hour_format` | str |
-  | `appearance` | existing dir under `assets/themes/appearance/` | `appearance` | str |
-  | `units` | `metric` \| `imperial` | `weather.units` | str |
-  | `panel_enabled` | `true` \| `false` | `panel.enabled` | bool |
-  | `panel_alignment` | `right` \| `left` | `panel.window.alignment` | str |
+- `scripts/core/config.py`: new merged keys `scale_x` / `scale_y` (clock) and
+  `panel_scale_x` / `panel_scale_y` (panel), resolved per monitor through
+  `resolve_axis_scales(entry, fallback_x, fallback_y)` with the chain above;
+  legacy `scale` / `panel_scale` keys unchanged.
+- `scripts/core/config_set.py`: accepts `scale_x` / `scale_y` as widget-scoped
+  per-monitor float keys (same validation/coercion as `scale`).
+- `config.yaml`: documents the optional keys under both per_monitor sections.
 
-### 2. `scripts/widgets/menu_toggle.py` (new)
+### 2. Geometry source — `scripts/move/widget_rect.py`
 
-- `--key {hour_format|appearance|units|panel_enabled|panel_alignment}`.
-- Flip/cycle logic:
-  - `hour_format`: swap `24`/`12`
-  - `units`: swap `metric`/`imperial`; afterwards refresh the weather
-    immediately by re-running `weather.py` with the same arguments as the
-    defpoll (with the NEW units) and `eww update weather_info=<json>`
-  - `panel_enabled` / `panel_alignment`: write only — the watcher's
-    automatic `start.sh --relayout` applies both
-  - `appearance`: next directory alphabetically (wrap-around); unknown or
-    custom-map current values start the cycle at the first theme
-- Prints what it wrote (same style as `config_set.py`).
+- Reports `natural_w` / `natural_h` for BOTH widgets (the panel's natural
+  size is `PANEL_WIDTH` x gap-derived layout height; previously only the
+  clock reported them and move_ctl reverse-engineered the panel base from the
+  single scale).
+- `clock_rect()` / `panel_rect()` compute width with the x-axis scale and
+  height with the y-axis scale.
 
-### 3. `scripts/bin/hard-reset.sh` (new)
+### 3. Actions — `scripts/move/move_ctl.py`
 
-1. `rm -f config.local.yaml` and stale `generated/input_session.json`
-2. best-effort `theme.py` regeneration + `start.sh --relayout`
-   (harmless if the eww daemon is not running; the running watcher would
-   also pick up the deletion on its own)
+- New actions: `zoom_in_x` / `zoom_out_x`, `zoom_in_y` / `zoom_out_y`,
+  `set_scale_x` / `set_scale_y` (exact % via --value). The existing
+  `zoom_in` / `zoom_out` / `set_scale` stay proportional (both axes).
+- Current per-axis scales come from the live session rectangle
+  (`move_w/base_w`, `move_h/base_h`) so repeated steps compose; clamp stays
+  0.3..1.5 per axis.
+- Only the touched dimension is recomputed and re-anchored (rules above);
+  every resize action writes move_w/move_h + move_pct/move_pct_h together.
+- `save`: writes `scale_x`, `scale_y` AND `scale` (= scale_x mirror);
+  off-screen/degenerate guards unchanged (they already validate w/h
+  separately).
+- `reset`: clears position and writes `scale` / `scale_x` / `scale_y` = 1.00.
 
-### 4. Context menu UI (`eww/eww.yuck`, `eww/eww.scss`)
+### 4. Session plumbing — move.py / move_rect.py / input_daemon.py
 
-- Final item order: Move, Resize, Reset, AM/PM switch, Theme, Units,
-  Panel shown/hidden, Side right/left, Hard reset, About.
-- Toggle onclicks follow the Reset pattern
-  (`close_popup.py && <script>`); slower ones (units refresh) are
-  backgrounded with `nohup ... &`.
-- Window geometry: 4 -> 10 items means `190px` -> ~430px height and
-  `180px` -> 220px width.
+- `move.py`: seeds `move_pct_h` next to `move_pct` from the rect vs natural
+  sizes; control-panel height constant MC_H 250 -> 320.
+- `move_rect.py`: per-axis press state (`s0x`/`s0y`); `_resize_to` scales a
+  single axis on edge drags and both on corners; `flush()` also publishes
+  `move_pct_h`.
+- `input_daemon.py`: Shift+arrow mapping (checked before the plain-arrow
+  moves).
 
-### 5. Editable resize %
+### 5. Control panel UI — `scripts/move/move_panel.py`
 
-- `scripts/move/move_ctl.py`: new action `set_scale --value <percent>`
-  clamped to `MIN_SCALE..MAX_SCALE`, reusing the zoom_in/out positioning
-  logic (anchored corner / panel right-gap kept fixed).
-- `scripts/move/move_panel.py`:
-  - `%` Gtk.Label -> Gtk.Entry (centered, ~4 chars)
-  - apply on Enter (`activate`) AND on focus-out; invalid input reverts
-    to the current value
-  - the 250 ms `move_pct` poll never overwrites the entry mid-edit
-    (`pct_editing` flag on focus-in/out)
-  - focus plumbing: window accepts focus again; on X11 the override-
-    redirect toplevel takes X input focus on entry click
-  - writes/removes the session `"typing"` flag around edits
-- `scripts/move/input_daemon.py`: in `move` mode ignore ALL keys while
-  `session["typing"]` is set (ESC included — click outside the entry
-  first, then ESC cancels as usual).
+- Three-row Resize section built by a small `pct_row()` helper; each row's
+  editable entry is a `PctField(varname, action)` instance handling its own
+  typing flag, X11 grab, select-all-on-click, Enter/focus-out apply and poll
+  refresh.
+- Removes the accidentally duplicated `on_pct_button_press` /
+  `on_pct_focus_in` definitions (present twice since v2.2.0).
+- `.axis-label` CSS class for the W/H row labels.
 
-### 6. Tests
+### 6. Render path — eww.yuck + start.sh
 
-- `tests/test_config_set.py`: global-key coverage (string/bool coercion,
-  value validation, `--monitor` rejection, missing `--widget` rejection,
-  base-file untouched).
-- `tests/test_menu_toggle.py` (new): flip logic for every key, theme
-  cycle incl. wrap-around and custom-map fallback, units weather-refresh
-  call, eww/config_set invocations mocked via monkeypatch.
+- `eww.yuck`: `(defvar move_pct_h 100)`; `widget_clock_weather` /
+  `widget_panel` and all four defwindows take separate
+  `*_scale_perc_x` / `*_scale_perc_y` arguments feeding
+  `transform :scale-x` / `:scale-y`.
+- `start.sh`: reads `scale_x` / `scale_y` (+ panel variants), opens the
+  windows with the split percentages; `panel_translate_x = 250*(1/scale_x-1)`
+  and bottom-anchor `panel_translate_y = ph*(1/scale_y-1)` use their own axis.
 
-### 7. Documentation
+### 7. Tests
 
-- `docs/RELEASE_NOTES.md`: rewritten for v2.2.0.
-- `README.md`: context-menu feature bullets.
-- `docs/WIKI.md`: menu description, new writable keys, resize entry.
+- `tests/test_config.py`: axis defaults (1.0), inheritance from the shared
+  per-monitor `scale`, and independent overrides via config.local.yaml.
+- `tests/test_config_set.py`: scale_x/scale_y writes for clock + panel
+  (float coercion, per-monitor paths) and invalid-value rejection.
+
+## Follow-up fix: canvas geometry (clipping + edge placement)
+
+Live testing of the feature surfaced two rendering bugs with one shared root
+cause: the eww window (a fixed transparent canvas) stayed at the NATURAL
+size while the transform only scaled the drawing inside it.
+
+  * above 100% the enlarged drawing was clipped at the canvas bounds;
+  * below 100% a widget parked near a screen edge made the oversized
+    invisible canvas overflow the monitor — the X11 WM then relocated the
+    managed window, so the visible widget landed away from where the
+    Move/Resize rectangle showed it (measured: target (1692,880), actual
+    (1291,833) = exactly the overflow).
+
+A probe window proved GTK propagates child minimum sizes to the toplevel,
+so shrinking the canvas below 100% is impossible while any inner element
+requests natural pixels. Fix (both widgets), per axis:
+
+    canvas     = max(natural, visible)          # >100%: no clipping
+    canvas_tl  = clamp(visible_tl, 0, frame - canvas)
+    translate  = visible_tl - canvas_tl          # 0 when visible >= natural
+
+`widget_rect.py` publishes the new render keys (`win_*`, `translate_*`,
+everything int-rounded); `start.sh` passes them and computes the panel's
+edge-hug translates as plain natural−visible differences gated at 0.
+Verified numerically for corner/center/overscale/mixed-axis cases
+(canvas always fits, content always lands on the visible rectangle);
+live check after restart.
+
+CORRECTION (KDE/Wayland, eww build reporting 0.5.0 / commit d87c2fdb):
+the earlier claim that ":translate is applied AFTER scaling, in device
+pixels" is wrong for this binary — its transform widget calls `cr.scale()`
+BEFORE `cr.translate()` (crates/eww/src/widgets/transform.rs), so cairo
+composes S·R·T and the effective on-screen offset is `scale × translate`.
+At scale < 100% that undershoots toward the top-left and leaves an empty
+gap at the right/bottom screen edges (e.g. 56% scale parked bottom-right
+rendered at 0.56·245 = 137 px instead of 245 px). Fix: `widget_rect.py`
+now emits `translate = (visible_tl − canvas_tl) / scale` per axis
+(guarded against a degenerate 0 scale) for both widgets; newer eww builds
+reversed the order — drop the division when upgrading. Verified by portal
+screenshot pixel probes (content left edge lands exactly on visible_tl)
+and synthetic corner/clamp/overscale cases.
+
+SECOND CORRECTION (Cinnamon/X11, newer eww build 48f5aa8b): builds after
+the v0.6.0 tag already use the fixed translate-after-scale order, so the
+unconditional division OVERSHOOTS there by 1/scale — content pushed past
+the screen's right edge, only "21:" of the clock stayed visible when the
+widget was parked under a shrunken panel. The required behavior is a
+property of the BINARY, not of the compositor (and note: the v0.6.0 tag's
+binary mislabels itself "eww 0.5.0" — only the embedded hash is reliable).
+`widget_rect.py` therefore detects the order at runtime from the
+`eww --version` hash (`_divide_translate_by_scale`, per-process cache):
+d87c2fdb → divide; any other identified 40-hex hash → plain delta;
+unparseable probe → divide only on Wayland. The per-monitor config key
+`translate_divide_scale: auto|yes|no` overrides detection. install.sh pins
+its source build to `EWW_REPO_REF=v0.6.0` so fresh installs are
+deterministic while both existing machines keep working unchanged.
+
+## Follow-up fix: dead right-click after Move/Resize
+
+The per-monitor dismiss overlays are intentionally left open during a
+Move/Resize session (click-outside-to-cancel surface), but sessions ended
+via Save / Cancel / Reset / Enter / ESC only cleared the session file —
+the invisible layers stayed mapped above the widget and swallowed every
+further right-click until restart. Fixes:
+  * `move_ctl.finish()` now runs the verified popup cleanup BEFORE removing
+    the session file (close_popup needs it for the per-monitor overlay ids);
+  * close_popup additionally closes tracked windows BY INSTANCE id from
+    `eww active-windows`, so already-orphaned overlays (session file gone,
+    e.g. after a crash or an older save) are recovered too.
+Tests: finish ordering/crash-safety + orphan-id closing (5 new cases).
+
+## Follow-up fix: panel Save refused drags + wrong-menu on overlap
+
+Two live-tested issues, both root-caused with instrumentation:
+
+  * **Panel move + Save did nothing.** The off-screen guard compared the
+    saved POSITION OFFSETS against the frame — offsets are relative to the
+    gap baseline and are legitimately negative when dragging away from the
+    anchored edge, so every such drag was refused (silently: stderr is
+    DEVNULL by design). The guard now validates the dragged rectangle (the
+    rendered result), Save/Cancel run synchronously in the control panel
+    with an inline error label, and `move_ctl.py` logs every action,
+    computed numbers and refusals to `logs/move_ctl.log`. Verified E2E:
+    drag to (800,200) -> offsets (-880,170) persisted, relayout reopened
+    the canvas clamped to y=35 with translate_y=165 and a pixel probe put
+    the content exactly at y=200.
+  * **Right-click under an overlapping canvas opened the other widget's
+    menu/rectangle** (panel's transparent strip over the clock). ctx.py now
+    resolves ownership from the VISIBLE rectangles (`choose_widget`): the
+    claimed widget wins when its rect contains the cursor; otherwise the
+    smallest containing rect takes over, so the menu and its Move/Resize
+    rectangle always match the widget under the pointer.
+
+## Follow-up: single-instance process management
+
+Repeated restarts accumulated orphaned helpers (measured after one day:
+4x watch.py, 4x monitor_watch.py, 2x input_daemon pairs ≈ 95 MB wasted
+RSS): stop.sh killed watchers only through their pidfile (which later
+starts overwrite), and the input daemon had no stop path at all. New
+shared `scripts/bin/process_sweep.sh` — ancestor-protected pattern sweep
+with TERM→KILL escalation — is now used by start.sh (pre-spawn sweep per
+helper), stop.sh (post-pidfile sweep incl. the input daemon) and
+session.start_daemon (stray sweep + pattern-aware liveness fallback). A
+double-start test keeps exactly one instance of each helper; total related
+RSS dropped from ~272 MB to ~95 MB while the GUI daemon idles at ~55 MB /
+0% CPU.
+
+## Follow-up fix: instant context menu
+
+Ownership forwarding had made right-clicks take ~3.5 s: 6 helper
+processes, each re-running the slow monitor enumeration (xrandr ≈250 ms),
+config/YAML parsing and PIL font loading. ctx.py now computes ownership
+AND placement in ONE process on top of shared data
+(`menu_pos.menu_position()` extracted for reuse; widget_rect gained
+in-process merged-config + font/natural-size caches), plus a 30 s TTL
+monitor cache invalidated by monitor_watch on hotplug. Measured pipeline:
+~280 ms cold / ~2 ms warm (legacy subprocess path kept as fallback).
+Tests: menu_position placement/clamping/monitor-pick (4 new cases).
+
+Follow-up: on KDE/Wayland the same pipeline trusted xdotool, whose pointer
+is stale above native layer-shell widgets — every panel right-click could
+be forwarded to the clock. `ctx.resolve_cursor()` now picks the
+compositor-correct source (xdotool on X11, KWin scripting via
+workarea.kde_cursor on Wayland) and forwarding stays OFF when no reliable
+cursor exists (4 new cases).
+
+Follow-up: KDE/Wayland stack fell back to X11-compat mode when started
+without WAYLAND_DISPLAY in its environment (SSH / some terminals) — KWin
+ignores client-requested X11 positions, so shrunken widgets refused to sit
+at screen edges even though Save persisted correct values. Shared
+`scripts/core/detect.py` now detects the session via env, XDG_SESSION_TYPE,
+running Wayland-compositor process names and gnome-shell's own environ
+(monitors.py + workarea.py both use it — a mismatch would mix window
+backends), and start.sh imports each missing session variable individually
+instead of early-returning when only DISPLAY is present. Diagnosed live on
+the affected KDE box: locally `compositor=wayland`, geometry math exact,
+Save wrote offsets — only the XWayland placement was wrong.
 
 ## Verification (executed)
 
-1. `pytest tests/` — **133 passed** (existing + new global-key / toggle tests).
-2. `shellcheck scripts/bin/hard-reset.sh` — clean.
-3. Live smoke test on this machine: `menu_toggle.py --key hour_format /
-   panel_alignment / panel_enabled` flipped the values and the merged readers
-   reported them within a second (`config.local.yaml` restored afterwards);
-   the new yuck labels were verified with an isolated eww daemon — zero
-   expression errors once the `config` defpoll is populated (the transient
-   empty-var errors right after daemon start match the existing
-   `config.hour_format == "12"` visibility pattern of the main widget).
-4. Hard reset path reviewed step-by-step (theme regen + relayout are the same
-   best-effort calls the watcher performs; safe when the widget is stopped).
+1. `pytest tests/` — **160 passed** (existing suite + the new axis-scale
+   tests).
+2. `python3 -m py_compile` clean on every touched script; `bash -n scripts/
+   bin/start.sh` clean.
+3. CLI smoke checks: `config.py --key scale_x` / `--key panel_scale_y`
+   resolve (1.0 defaults); `move_ctl.py --help` lists the six new actions.
+4. Live GUI smoke test (Move/Resize session with the new rows, Shift+arrows
+   and edge drags) needs a running desktop session — perform after deploying
+   this branch; the geometry math is covered end-to-end by the unit tests and
+   mirrors the verified v2.2.0 pipeline.

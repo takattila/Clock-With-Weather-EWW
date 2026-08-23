@@ -115,6 +115,52 @@ def test_per_monitor_fallback(cfg, monkeypatch):
     assert merged["panel_position_y"] == 0
 
 
+# ------------------------------------------------------------- axis scales
+
+def test_no_monitor_axis_scales_default_to_one(cfg, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["config.py"])
+    merged = cfg.load_config()
+    assert merged["scale_x"] == 1.0
+    assert merged["scale_y"] == 1.0
+    assert merged["panel_scale_x"] == 1.0
+    assert merged["panel_scale_y"] == 1.0
+
+
+def test_axis_scales_inherit_shared_scale(cfg, monkeypatch):
+    # No scale_x/scale_y keys anywhere: both axes fall back to the per-monitor
+    # shared `scale` (backward compatibility with pre-axis configs).
+    monkeypatch.setattr(sys, "argv", ["config.py", "--monitor", "1"])
+    merged = cfg.load_config()
+    assert merged["scale_x"] == 0.90
+    assert merged["scale_y"] == 0.90
+    assert merged["panel_scale_x"] == 0.70
+    assert merged["panel_scale_y"] == 0.70
+
+
+def test_axis_scale_independent_override(cfg, write_local_config, monkeypatch):
+    # Width-only / height-only Move/Resize saves write just one axis key; the
+    # other axis and the shared `scale` stay untouched.
+    write_local_config(
+        "weather:\n"
+        "  window:\n"
+        "    per_monitor:\n"
+        "      0:\n"
+        "        scale_x: 1.20\n"
+        "panel:\n"
+        "  window:\n"
+        "    per_monitor:\n"
+        "      0:\n"
+        "        scale_y: 0.50\n"
+    )
+    monkeypatch.setattr(sys, "argv", ["config.py", "--monitor", "0"])
+    merged = cfg.load_config()
+    assert merged["scale"] == 0.80          # shared key untouched by the merge
+    assert merged["scale_x"] == 1.20        # explicit axis wins
+    assert merged["scale_y"] == 0.80        # ...the other inherits `scale`
+    assert merged["panel_scale_x"] == 1.00
+    assert merged["panel_scale_y"] == 0.50
+
+
 def test_no_monitor_returns_defaults(cfg, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["config.py"])
     merged = cfg.load_config()

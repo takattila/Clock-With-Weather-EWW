@@ -91,6 +91,14 @@ weather:
     #   per_monitor:
     #     0: { position_x: 0, position_y: 0, scale: 0.90 }
     #     1: { position_x: -40, position_y: 20, scale: 0.8 }
+    #
+    # INDEPENDENT WIDTH/HEIGHT SCALES (optional): the Move/Resize dialog can
+    # also resize width and height separately ("W"/"H" rows, Shift+arrow
+    # keys, edge-drag). Those saves write `scale_x` / `scale_y` here; each
+    # axis falls back to the shared `scale` when missing, so entries without
+    # them keep scaling both axes uniformly:
+    #   per_monitor:
+    #     0: { position_x: 0, position_y: 0, scale_x: 1.00, scale_y: 0.80 }
     per_monitor:
       0:
         position_x: 0
@@ -137,6 +145,10 @@ panel:
     #   per_monitor:
     #     0: { position_x: 0, position_y: 0, scale: 1.0 }
     #     1: { position_x: -40, position_y: 20, scale: 0.7 }
+    #
+    # INDEPENDENT WIDTH/HEIGHT SCALES (optional): same as for the weather
+    # window above — Move/Resize saves that changed only one axis write
+    # `scale_x` / `scale_y`; each axis falls back to `scale` when missing.
     per_monitor:
       0:
         position_x: 0

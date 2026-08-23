@@ -30,25 +30,33 @@ Usage:
                            hour_format |
                            city | language_code | lang | units | api_url |
                            alignment | position_x | position_y | scale |
+                           scale_x | scale_y |
                            panel_enabled | panel_alignment | panel_scale |
+                           panel_scale_x | panel_scale_y |
                            panel_position_x | panel_position_y)
   ./config.py --key NAME --monitor N
-                          resolve position_x/position_y/scale for the weather
-                          and panel_position_x/panel_position_y/panel_scale for
-                          the panel (per_monitor overrides win over globals)
+                          resolve position_x/position_y/scale(_x/_y) for the
+                          weather and panel_position_x/panel_position_y/
+                          panel_scale(_x/_y) for the panel (per_monitor
+                          overrides win over globals)
 
 Keys that are resolved from the selected weather theme: city, language_code,
 lang, units, api_url.
 
-position_x / position_y / scale / panel_scale live ONLY in
-weather.window.per_monitor / panel.window.per_monitor (see the comments in
-config.yaml): the right-click Move/Resize -> Save always writes per-monitor
-entries. The panel also stores per-monitor position_x/position_y offsets
-(exposed as panel_position_x / panel_position_y) added to the global
-panel.gap baseline. Without --monitor those keys return the default
-(0/0/1.0); with --monitor the per_monitor[N] entry is returned (or the
-default when the monitor has no entry). The monitor index matches
+position_x / position_y / scale (+ scale_x/scale_y) / panel_scale (+ ..._x/y)
+live ONLY in weather.window.per_monitor / panel.window.per_monitor (see the
+comments in config.yaml): the right-click Move/Resize -> Save always writes
+per-monitor entries. The panel also stores per-monitor position_x/position_y
+offsets (exposed as panel_position_x / panel_position_y) added to the global
+panel.gap baseline. Without --monitor those keys return the default (0/0/
+1.0); with --monitor the per_monitor[N] entry is returned (or the default
+when the monitor has no entry). The monitor index matches
 `eww open --screen N`.
+
+The AXIS scales (scale_x / scale_y, panel_scale_x / panel_scale_y) come from
+the independent width/height resize: each axis falls back through
+`scale_x -> scale -> parent value` (and the same chain for y), so configs
+that only carry the classic shared `scale` keep working unchanged.
 """
 
 import json
@@ -62,6 +70,28 @@ from config_io import load_merged
 # scripts/core/ -> scripts/ -> repo (widget) root
 CONFIG_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 API_KEY_ENV = "OPENWEATHER_API_KEY"
+
+
+def resolve_axis_scales(section, fallback_x, fallback_y):
+    """(scale_x, scale_y) from a per_monitor entry / window section.
+
+    Precedence PER AXIS: the explicit `scale_x` / `scale_y` key wins, then
+    the shared `scale`, then the caller's fallback (the parent-level
+    resolution). This is what makes non-proportional Move/Resize saves
+    backward compatible: entries that only carry `scale` scale both axes
+    with it.
+    """
+    def axis(explicit, shared, fallback):
+        raw = explicit if explicit is not None else shared
+        try:
+            return float(raw) if raw is not None else float(fallback)
+        except (TypeError, ValueError):
+            return float(fallback)
+
+    return (
+        axis(section.get("scale_x"), section.get("scale"), fallback_x),
+        axis(section.get("scale_y"), section.get("scale"), fallback_y),
+    )
 
 
 def resolve_api_key():
@@ -109,6 +139,8 @@ def load_config():
 
     weather_scale = float(weather_window.get("scale", 1.0) or 1.0)
     panel_scale = float(panel_window.get("scale", 1.0) or 1.0)
+    weather_scale_x, weather_scale_y = resolve_axis_scales(weather_window, weather_scale, weather_scale)
+    panel_scale_x, panel_scale_y = resolve_axis_scales(panel_window, panel_scale, panel_scale)
     weather_pm = weather_window.get("per_monitor") or {}
     panel_pm = panel_window.get("per_monitor") or {}
 
@@ -130,10 +162,14 @@ def load_config():
         "position_x": int(weather_window.get("position_x", 0)),
         "position_y": int(weather_window.get("position_y", 0)),
         "scale": weather_scale,
+        "scale_x": weather_scale_x,
+        "scale_y": weather_scale_y,
         "weather_per_monitor": weather_pm,
         "panel_enabled": str(panel.get("enabled", True)).lower(),
         "panel_alignment": str(panel_window.get("alignment", "right")).lower(),
         "panel_scale": panel_scale,
+        "panel_scale_x": panel_scale_x,
+        "panel_scale_y": panel_scale_y,
         "panel_position_x": int(panel_window.get("position_x", 0)),
         "panel_position_y": int(panel_window.get("position_y", 0)),
         "panel_per_monitor": panel_pm,
@@ -150,9 +186,15 @@ def load_config():
             merged["position_x"] = int(wpm.get("position_x", merged["position_x"]))
             merged["position_y"] = int(wpm.get("position_y", merged["position_y"]))
             merged["scale"] = float(wpm.get("scale", merged["scale"]))
+            merged["scale_x"], merged["scale_y"] = resolve_axis_scales(
+                wpm, merged["scale_x"], merged["scale_y"]
+            )
         ppm = panel_pm.get(monitor)
         if isinstance(ppm, dict):
             merged["panel_scale"] = float(ppm.get("scale", merged["panel_scale"]))
+            merged["panel_scale_x"], merged["panel_scale_y"] = resolve_axis_scales(
+                ppm, merged["panel_scale_x"], merged["panel_scale_y"]
+            )
             merged["panel_position_x"] = int(ppm.get("position_x", merged["panel_position_x"]))
             merged["panel_position_y"] = int(ppm.get("position_y", merged["panel_position_y"]))
 

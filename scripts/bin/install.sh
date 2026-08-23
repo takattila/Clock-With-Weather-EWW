@@ -8,6 +8,12 @@ REPO_BRANCH="${REPO_BRANCH:-master}"
 # ----------------------------------------------------------------------------
 
 EWW_REPO="elkowar/eww"
+# Pinned eww release built when no distro package provides eww. Override by
+# exporting EWW_REPO_REF before running the installer. NOTE: the v0.6.0 tag
+# build reports itself as "eww 0.5.0 d87c2fdb..." (stale Cargo version string)
+# and applies transform :scale before :translate; the widget scripts detect
+# the actual behavior from the embedded git hash, so any identified build works.
+EWW_REPO_REF="${EWW_REPO_REF:-v0.6.0}"
 BASE_DIR="${HOME}/.eww"
 REPO_DIR="${BASE_DIR}/${REPO}"
 EWW_DIR="${REPO_DIR}"
@@ -316,8 +322,8 @@ function helperBuildEwwFromSource() {
 
     rm -rf "${EWW_BUILD_DIR}"
 
-    echo -n "  == Cloning: ${C_Y}https://github.com/${EWW_REPO}${C_D} ... "
-    git clone --depth 1 https://github.com/"${EWW_REPO}".git "${EWW_BUILD_DIR}" &> /dev/null
+    echo -n "  == Cloning: ${C_Y}https://github.com/${EWW_REPO}${C_D} (ref: ${C_Y}${EWW_REPO_REF}${C_D}) ... "
+    git clone --depth 1 --branch "${EWW_REPO_REF}" https://github.com/"${EWW_REPO}".git "${EWW_BUILD_DIR}" &> /dev/null
     echo "done."
 
     echo "  == Running ${C_Y}cargo build --release${C_D} (this can take a while, typically 5-10 minutes on this machine) ... "
@@ -496,6 +502,30 @@ function installEwwDependencies() {
     fi
 }
 
+function verifyEwwVersion() {
+    local ver=""
+    if command -v eww &> /dev/null; then
+        ver="$(eww --version 2> /dev/null)"
+    fi
+
+    echo -n "- Installed eww: ${C_Y}${ver:-NOT FOUND}${C_D}"
+
+    if [[ -z "${ver}" ]]; then
+        echo
+        echo "  ${C_R}[ WARNING ]${C_D} eww is not runnable; the widget will not start."
+        return
+    fi
+
+    if [[ "${ver}" =~ [0-9a-f]{40} ]]; then
+        # Identified build: the widget scripts read the embedded hash and pick
+        # the matching transform behavior automatically.
+        echo ""
+    else
+        echo ""
+        echo "  ${C_Y}NOTE:${C_D} unrecognized eww build (no git hash); the widget assumes the modern transform order."
+    fi
+}
+
 function installEww() {
     echo
     echo "- Installing: ${C_Y}eww${C_D} ... "
@@ -506,6 +536,7 @@ function installEww() {
 
         if [[ "$(helperExistsProgram eww)" = "0" ]]; then
             echo "done."
+            verifyEwwVersion
             return
         fi
 
@@ -514,6 +545,8 @@ function installEww() {
     else
         helperBuildEwwFromSource
     fi
+
+    verifyEwwVersion
 }
 
 function installWidgetFromGitHub() {
