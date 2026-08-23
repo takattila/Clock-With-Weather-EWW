@@ -79,34 +79,319 @@ ALIGNMENTS_ARRAY=(
     "middle_middle"
 )
 
+# ----------------------------------------------------------------------------
+# Minimal YAML helpers (pure bash, no python/pyyaml). The config files are
+# two-space-indented mappings of scalars; that is everything the wizard needs
+# to read the defaults and to save EVERY machine-local setting into the
+# git-ignored config.local.yaml.
+# ----------------------------------------------------------------------------
+
+# helperYamlLeaves <file>
+# Prints every scalar leaf of a simple YAML mapping as "<dotted.path>|<value>"
+# (surrounding quotes stripped). Comments, blank lines and sub-maps are skipped.
+function helperYamlLeaves() {
+    local file=$1
+    local line rest key value path indent depth i
+    local -a stack=()
+
+    [[ -f "${file}" ]] || return 0
+
+    while IFS= read -r line || [[ -n "${line}" ]] ; do
+        rest="${line#"${line%%[! ]*}"}"
+        [[ -z "${rest}" || "${rest:0:1}" = "#" ]] && continue
+        indent=$(( ${#line} - ${#rest} ))
+        [[ "${rest}" =~ ^([^:]+):[[:space:]]*(.*)$ ]] || continue
+        key="${BASH_REMATCH[1]}"
+        key="${key%%*[[:space:]]}"
+        value="${BASH_REMATCH[2]}"
+
+        depth=$(( indent / 2 ))
+        stack=("${stack[@]:0:depth}")
+        stack[depth]="${key}"
+
+        [[ -z "${value//[[:space:]]/}" ]] && continue
+        value="${value%%' #'*}"
+        value="${value%"${value##*[![:space:]]}"}"
+        if [[ ${#value} -ge 2 && "${value:0:1}" = "'" && "${value: -1}" = "'" ]] ; then
+            value="${value:1:$(( ${#value} - 2 ))}"
+        elif [[ ${#value} -ge 2 && "${value:0:1}" = '"' && "${value: -1}" = '"' ]] ; then
+            value="${value:1:$(( ${#value} - 2 ))}"
+        fi
+
+        path="${stack[0]}"
+        for (( i = 1 ; i < ${#stack[@]} ; i++ )) ; do
+            path+=".${stack[${i}]}"
+        done
+        printf '%s|%s\n' "${path}" "${value}"
+    done < "${file}"
+}
+
+# helperYamlGet <file> <dotted.key> [<default>]
+function helperYamlGet() {
+    local file=$1
+    local key=$2
+    local default="${3-}"
+    local entry
+
+    while IFS= read -r entry ; do
+        if [[ "${entry%%|*}" = "${key}" ]] ; then
+            printf '%s\n' "${entry#*|}"
+            return 0
+        fi
+    done < <(helperYamlLeaves "${file}")
+
+    printf '%s\n' "${default}"
+    return 1
+}
+
+# helperYamlEmitChain <matched-depth> <parent-indent> <quoted-value>
+# Prints the missing "<segment>:" chain (the final line carries the value);
+# used by helperYamlSet. Reads `segments` from the caller scope.
+function helperYamlEmitChain() {
+    local fromDepth=$1
+    local parentIndent=$2
+    local quoted=$3
+
+    local indent="${parentIndent}"
+    if (( fromDepth < 0 )) ; then
+        indent=$(( indent - 2 ))
+    fi
+
+    local first=$(( fromDepth < 0 ? 0 : fromDepth ))
+    local last=$(( ${#segments[@]} - 1 ))
+    local d
+    for (( d = first ; d <= last ; d++ )) ; do
+        indent=$(( indent + 2 ))
+        if (( d == last )) ; then
+            printf '%*s%s: %s\n' "${indent}" '' "${segments[${d}]}" "${quoted}"
+        else
+            printf '%*s%s:\n' "${indent}" '' "${segments[${d}]}"
+        fi
+    done
+}
+
+# helperYamlSet <file> <dotted.key> <value>
+# Creates or updates a single leaf key; every other line of the file is kept
+# verbatim (comments included). Missing sections are appended.
+function helperYamlSet() {
+    local file=$1
+    local key=$2
+    local value=$3
+
+    local -a segments=()
+    local oldIFS="${IFS}"
+    IFS='.'
+    read -r -a segments <<< "${key}"
+    IFS="${oldIFS}"
+
+    local quoted="${value}"
+    if ! [[ "${value}" =~ ^[A-Za-z0-9_./+:-]+$ ]] ; then
+        quoted="'${value//\'/\'\\\'\'}'"
+    fi
+
+    [[ -f "${file}" ]] || : > "${file}"
+
+    local -a lines=()
+    mapfile -t lines < "${file}"
+
+    local line rest k v indent depth i j match
+    local -a stack=()
+    local bestDepth=-1
+    local bestLine=-1
+    local bestIndent=0
+    local bestScalar=false
+
+    for i in "${!lines[@]}" ; do
+        line="${lines[${i}]}"
+        rest="${line#"${line%%[! ]*}"}"
+        [[ -z "${rest}" || "${rest:0:1}" = "#" ]] && continue
+        indent=$(( ${#line} - ${#rest} ))
+        [[ "${rest}" =~ ^([^:]+):[[:space:]]*(.*)$ ]] || continue
+        k="${BASH_REMATCH[1]}"
+        k="${k%%*[[:space:]]}"
+        v="${BASH_REMATCH[2]}"
+
+        depth=$(( indent / 2 ))
+        stack=("${stack[@]:0:depth}")
+        stack[depth]="${k}"
+
+        match=0
+        for j in "${!segments[@]}" ; do
+            [[ -z "${stack[${j}]-}" ]] && break
+            [[ "${stack[${j}]}" = "${segments[${j}]}" ]] || break
+            match=$(( j + 1 ))
+        done
+
+        if (( match > bestDepth )) ; then
+            bestDepth="${match}"
+            bestLine="${i}"
+            bestIndent="${indent}"
+            bestScalar=false
+            [[ -n "${v//[[:space:]]/}" ]] && bestScalar=true
+        fi
+    done
+
+    local replaceMode=false
+    if (( bestDepth == ${#segments[@]} )) && [[ "${bestScalar}" = true ]] ; then
+        replaceMode=true
+    fi
+
+    local insertAt=${#lines[@]}
+    if [[ "${replaceMode}" = false && ${bestLine} -ge 0 ]] ; then
+        for (( i = bestLine + 1 ; i < ${#lines[@]} ; i++ )) ; do
+            line="${lines[${i}]}"
+            rest="${line#"${line%%[! ]*}"}"
+            [[ -z "${rest}" || "${rest:0:1}" = "#" ]] && continue
+            indent=$(( ${#line} - ${#rest} ))
+            if (( indent <= bestIndent )) ; then
+                insertAt="${i}"
+                break
+            fi
+        done
+    fi
+
+    # No matching ancestor at all (bestDepth 0): the whole chain is appended
+    # at the end of the file, starting at column 0.
+    if [[ "${replaceMode}" = false && ${bestDepth} -eq 0 ]] ; then
+        bestLine=-1
+        bestIndent=-2
+        insertAt=${#lines[@]}
+    fi
+
+    local tmpFile="${file}.$$"
+    local emitted=false
+    {
+        for i in "${!lines[@]}" ; do
+            if [[ "${replaceMode}" = true && "${i}" = "${bestLine}" ]] ; then
+                printf '%*s%s: %s\n' "${bestIndent}" '' \
+                    "${segments[${#segments[@]}-1]}" "${quoted}"
+                continue
+            fi
+            if [[ "${replaceMode}" = false && "${i}" = "${insertAt}" ]] ; then
+                helperYamlEmitChain "${bestDepth}" "${bestIndent}" "${quoted}"
+                emitted=true
+            fi
+            printf '%s\n' "${lines[${i}]}"
+        done
+        if [[ "${replaceMode}" = false && "${emitted}" = false ]] ; then
+            helperYamlEmitChain "${bestDepth}" "${bestIndent}" "${quoted}"
+        fi
+    } > "${tmpFile}" && mv -f "${tmpFile}" "${file}"
+}
+
+# helperConfigGet <key> [<monitor>]
+# Resolves a setting the same way the runtime does (scripts/core/config.py):
+# config.local.yaml wins over config.yaml; the weather keys fall back to the
+# selected theme (assets/themes/weather/<name>/weather.yaml); positions are
+# per-monitor only.
+function helperConfigGet() {
+    local key=$1
+    local monitor="${2:-}"
+    local value=""
+
+    case "${key}" in
+        city|language_code|lang|units|api_url)
+            local basePath="weather.${key}"
+            value="$(helperYamlGet "${LOCAL_CONFIG_FILE}" "${basePath}")"
+            [[ -z "${value}" ]] && value="$(helperYamlGet "${DIR}/config.yaml" "${basePath}")"
+
+            # Theme baseline: assets/themes/weather/<name>/weather.yaml
+            local name themeValue
+            name="$(helperYamlGet "${LOCAL_CONFIG_FILE}" "weather.name")"
+            [[ -z "${name}" ]] && name="$(helperYamlGet "${DIR}/config.yaml" "weather.name")"
+            if [[ -n "${name}" ]] ; then
+                themeValue="$(helperYamlGet "${DIR}/assets/themes/weather/${name}/weather.yaml" "weather.${key}")"
+                value="${value:-${themeValue}}"
+            fi
+            printf '%s\n' "${value}"
+            return 0
+            ;;
+        position_x|position_y)
+            local m="${monitor:-0}"
+            local perMonitorPath="weather.window.per_monitor.${m}.${key}"
+            value="$(helperYamlGet "${LOCAL_CONFIG_FILE}" "${perMonitorPath}")"
+            [[ -z "${value}" ]] && value="$(helperYamlGet "${DIR}/config.yaml" "${perMonitorPath}")"
+            [[ -z "${value}" ]] && value="0"
+            printf '%s\n' "${value}"
+            return 0
+            ;;
+        hour_format)
+            local path="system.hour_format"
+            local default="24"
+            ;;
+        alignment)
+            local path="weather.window.alignment"
+            local default="middle_middle"
+            ;;
+        panel_enabled)
+            local path="panel.enabled"
+            local default="true"
+            ;;
+        *)
+            local path="${key}"
+            local default=""
+            ;;
+    esac
+
+    value="$(helperYamlGet "${LOCAL_CONFIG_FILE}" "${path}")"
+    [[ -z "${value}" ]] && value="$(helperYamlGet "${DIR}/config.yaml" "${path}")"
+    [[ -z "${value}" ]] && value="${default}"
+
+    printf '%s\n' "${value}"
+}
+
+# helperThemeNumber <theme-name> -> 1-based index (same order as setupListThemes)
+function helperThemeNumber() {
+    local name="${1:-light}"
+    local i=0 t
+
+    for t in $(ls -A "${DIR}/assets/themes/appearance") ; do
+        i=$(( i + 1 ))
+        if [[ "${t}" = "${name}" ]] ; then
+            printf '%s\n' "${i}"
+            return 0
+        fi
+    done
+
+    i=0
+    for t in $(ls -A "${DIR}/assets/themes/appearance") ; do
+        i=$(( i + 1 ))
+        if [[ "${t}" = "light" ]] ; then
+            printf '%s\n' "${i}"
+            return 0
+        fi
+    done
+
+    printf '1\n'
+}
+
+# helperAlignmentNumber <alignment-name> -> 1-based index (default: 9)
+function helperAlignmentNumber() {
+    local name="${1:-middle_middle}"
+    local i=0 a
+
+    for a in "${ALIGNMENTS_ARRAY[@]}" ; do
+        i=$(( i + 1 ))
+        if [[ "${a}" = "${name}" ]] ; then
+            printf '%s\n' "${i}"
+            return 0
+        fi
+    done
+
+    printf '9\n'
+}
+
 DEFAULT_OPENWEATHER_API_KEY="$(  [[ -n "${ARG_API_KEY}" ]]           && echo "${ARG_API_KEY}"           || echo "${OPENWEATHER_API_KEY}" )"
-DEFAULT_CITY="$(                 [[ -n "${ARG_CITY}" ]]              && echo "${ARG_CITY}"              || python3 "${DIR}/scripts/core/config.py" --key city )"
-DEFAULT_LANGUAGE_CODE="$(        [[ -n "${ARG_LANGUAGE_CODE}" ]]     && echo "${ARG_LANGUAGE_CODE}"     || python3 "${DIR}/scripts/core/config.py" --key language_code )"
-DEFAULT_LANG="$(                 [[ -n "${ARG_LANG}" ]]              && echo "${ARG_LANG}"              || python3 "${DIR}/scripts/core/config.py" --key lang )"
-DEFAULT_UNITS_NUMBER="$(         [[ -n "${ARG_UNITS_NUMBER}" ]]      && echo "${ARG_UNITS_NUMBER}"      || python3 -c 'import sys; print(2 if sys.argv[1] == "imperial" else 1)' "$(python3 "${DIR}/scripts/core/config.py" --key units)" )"
-DEFAULT_THEME_NUMBER="$(         [[ -n "${ARG_THEME_NUMBER}" ]]      && echo "${ARG_THEME_NUMBER}"      || python3 -c '
-import os, sys
-names = sorted(os.listdir(os.path.join(sys.argv[1], "assets", "themes", "appearance")))
-try:
-    print(names.index(sys.argv[2]) + 1)
-except ValueError:
-    try:
-        print(names.index("light") + 1)
-    except ValueError:
-        print(1)
-' "$DIR" "$(python3 "${DIR}/scripts/core/config.py" --key appearance)" )"
-DEFAULT_HOUR_FORMAT="$(          [[ -n "${ARG_HOUR_FORMAT}" ]]       && echo "${ARG_HOUR_FORMAT}"       || python3 "${DIR}/scripts/core/config.py" --key hour_format )"
-DEFAULT_ALIGNMENT_NUMBER="$(     [[ -n "${ARG_ALIGNMENT_NUMBER}" ]]  && echo "${ARG_ALIGNMENT_NUMBER}"  || python3 -c '
-import sys
-a = ["top_left", "top_right", "top_middle", "bottom_left", "bottom_right", "bottom_middle", "middle_left", "middle_right", "middle_middle"]
-try:
-    print(a.index(sys.argv[1]) + 1)
-except ValueError:
-    print(9)
-' "$(python3 "${DIR}/scripts/core/config.py" --key alignment)" )"
-DEFAULT_POSITION_X="$(           [[ -n "${ARG_POSITION_X}" ]]        && echo "${ARG_POSITION_X}"        || python3 "${DIR}/scripts/core/config.py" --key position_x --monitor 0 )"
-DEFAULT_POSITION_Y="$(           [[ -n "${ARG_POSITION_Y}" ]]        && echo "${ARG_POSITION_Y}"        || python3 "${DIR}/scripts/core/config.py" --key position_y --monitor 0 )"
-DEFAULT_START_PANEL="$(          [[ -n "${ARG_START_PANEL}" ]]       && echo "${ARG_START_PANEL}"       || python3 -c 'import sys; print(1 if sys.argv[1] == "true" else 2)' "$(python3 "${DIR}/scripts/core/config.py" --key panel_enabled)" )"
+DEFAULT_CITY="$(                 [[ -n "${ARG_CITY}" ]]              && echo "${ARG_CITY}"              || helperConfigGet city )"
+DEFAULT_LANGUAGE_CODE="$(        [[ -n "${ARG_LANGUAGE_CODE}" ]]     && echo "${ARG_LANGUAGE_CODE}"     || helperConfigGet language_code )"
+DEFAULT_LANG="$(                 [[ -n "${ARG_LANG}" ]]              && echo "${ARG_LANG}"              || helperConfigGet lang )"
+DEFAULT_UNITS_NUMBER="$(         [[ -n "${ARG_UNITS_NUMBER}" ]]      && echo "${ARG_UNITS_NUMBER}"      || { [[ "$(helperConfigGet units)" = "imperial" ]] && echo "2" || echo "1" ; } )"
+DEFAULT_THEME_NUMBER="$(         [[ -n "${ARG_THEME_NUMBER}" ]]      && echo "${ARG_THEME_NUMBER}"      || helperThemeNumber "$(helperConfigGet appearance)" )"
+DEFAULT_HOUR_FORMAT="$(          [[ -n "${ARG_HOUR_FORMAT}" ]]       && echo "${ARG_HOUR_FORMAT}"       || helperConfigGet hour_format )"
+DEFAULT_ALIGNMENT_NUMBER="$(     [[ -n "${ARG_ALIGNMENT_NUMBER}" ]]  && echo "${ARG_ALIGNMENT_NUMBER}"  || helperAlignmentNumber "$(helperConfigGet alignment)" )"
+DEFAULT_POSITION_X="$(           [[ -n "${ARG_POSITION_X}" ]]        && echo "${ARG_POSITION_X}"        || helperConfigGet position_x 0 )"
+DEFAULT_POSITION_Y="$(           [[ -n "${ARG_POSITION_Y}" ]]        && echo "${ARG_POSITION_Y}"        || helperConfigGet position_y 0 )"
+DEFAULT_START_PANEL="$(          [[ -n "${ARG_START_PANEL}" ]]       && echo "${ARG_START_PANEL}"       || { [[ "$(helperConfigGet panel_enabled)" = "false" ]] && echo "2" || echo "1" ; } )"
 DEFAULT_CREATE_DESKTOP_ICONS="$( [[ -n "${ARG_CREATE_DESKTOP_ICONS}" ]] && echo "${ARG_CREATE_DESKTOP_ICONS}" || echo "1" )"
 
 DESKTOP_LAUNCHER='
@@ -237,13 +522,13 @@ function setupWeatherDetails() {
     local lang
     local unitsNumber
     local units
-    local weatherFile="${DIR}/assets/themes/weather/default/weather.yaml"
 
     echo
     city="$(
         helperPrompt "- Please enter your ${C_Y}city${C_D} name ${C_Y}[e.g.: budapest, wien or london]${C_D}: " "${DEFAULT_CITY}" "NO_VALIDATE"
     )"
-    city="$(python3 -c 'import sys; s = sys.argv[1].strip(); print((s[:1].upper() + s[1:].lower()) if s else s)' "${city}")"
+    city="${city,,}"   # lowercase
+    city="${city^}"    # capitalize the first letter
     DEFAULT_CITY="${city}"
 
     echo
@@ -277,10 +562,15 @@ function setupWeatherDetails() {
     [[ "${unitsNumber}" = "2" ]] && units="imperial" || units="metric"
     DEFAULT_UNITS_NUMBER="${unitsNumber}"
 
-    sed -i "s/^  city: .*/  city: ${city}/" "${weatherFile}"
-    sed -i "s/^  language_code: .*/  language_code: ${country}/" "${weatherFile}"
-    sed -i "s/^  lang: .*/  lang: ${lang}/" "${weatherFile}"
-    sed -i "s/^  units: .*/  units: ${units}/" "${weatherFile}"
+    # Machine-local values go into the git-ignored config.local.yaml (deep
+    # merged over the committed config, local keys win), so running setup
+    # never produces changes in git. The city is NEVER written into the
+    # committed theme files (assets/themes/weather/*/weather.yaml).
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "weather.city" "${city}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "weather.language_code" "${country}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "weather.lang" "${lang}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "weather.units" "${units}"
+    echo "- Local weather settings saved to '${LOCAL_CONFIG_FILE}'."
 }
 
 function setupListThemes() {
@@ -394,34 +684,17 @@ function setupWriteConfig() {
     # Every wizard choice is machine-local: it lands in the git-ignored
     # config.local.yaml (deep-merged over config.yaml, local keys win), so
     # running setup never produces changes in git.
-    python3 - "${DIR}" "${DEFAULT_APPEARANCE}" "${DEFAULT_HOUR_FORMAT}" \
-        "${alignment}" "${panelEnabled}" <<'PYEOF'
-import os
-import sys
-
-import yaml
-
-config_dir, appearance, hour_format, alignment, enabled = sys.argv[1:6]
-path = os.path.join(config_dir, "config.local.yaml")
-data = {}
-if os.path.isfile(path):
-    with open(path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-data["appearance"] = appearance
-data.setdefault("system", {})["hour_format"] = str(hour_format)
-data.setdefault("weather", {}).setdefault("window", {})["alignment"] = alignment
-data.setdefault("panel", {})["enabled"] = enabled == "true"
-with open(path, "w", encoding="utf-8") as f:
-    yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
-print("- Local overrides saved to '%s'." % path)
-PYEOF
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "appearance" "${DEFAULT_APPEARANCE}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "system.hour_format" "${DEFAULT_HOUR_FORMAT}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "weather.window.alignment" "${alignment}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "panel.enabled" "${panelEnabled}"
 
     # The clock position is stored per monitor only (there are no global
     # position_x/position_y keys anymore); the wizard writes monitor 0's entry.
-    python3 "${DIR}/scripts/core/config_set.py" --widget clock --monitor 0 \
-        --key position_x --value "${DEFAULT_POSITION_X}"
-    python3 "${DIR}/scripts/core/config_set.py" --widget clock --monitor 0 \
-        --key position_y --value "${DEFAULT_POSITION_Y}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "weather.window.per_monitor.0.position_x" "${DEFAULT_POSITION_X}"
+    helperYamlSet "${LOCAL_CONFIG_FILE}" "weather.window.per_monitor.0.position_y" "${DEFAULT_POSITION_Y}"
+
+    echo "- Local overrides saved to '${LOCAL_CONFIG_FILE}'."
 }
 
 function setupIconSettings() {
