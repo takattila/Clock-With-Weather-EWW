@@ -123,7 +123,7 @@ terminal** (`eww` logs `defpoll` errors).
 | What changes | Symptom | Cause / solution |
 |---|---|---|
 | **`eww` major version** (0.5 → 0.6/1.0) | the widget does not start, or CSS fails to load | The `yuck` syntax (`:geometry`, `defpoll`, `:anchor`) and the SCSS `@import` API may change. Check the [eww releases](https://github.com/elkowar/eww/releases). |
-| **`eww` minor/patch** | rarely a problem | If the `daemon` reports `Error while forwarding command` after the config loads, it can happen, but the widget still renders — don't panic, measure the screen. |
+| **`eww` minor/patch** | rarely a problem | If the `daemon` reports `Error while forwarding command` after the config loads, it can happen, but the widget still renders — don't panic, measure the screen. On 0.6.0 two more gotchas were measured on this machine: **event handlers on widgets created inside `(for ...)` loops never fire** (that is why the hover submenu is rendered from a prebuilt `literal`, see scripts/widgets/submenu.py), and a nested `button` inside an `eventbox` swallows the box's own enter/leave events (hover rows are therefore plain eventboxes, not buttons). Also: rapidly re-opening the same window id leaks the previous override-redirect X window, and a `close` issued while the daemon regenerates can be silently dropped — close_popup.py verifies via `eww active-windows` (compositor-independent, works on Wayland too) and retries until every popup is really gone, force-unmapping strays on X11. |
 | **`python` major** (3.x → 4.x) | `system.py` / `panel.py` errors | Depends on the availability of `psutil`/`requests` binary wheels. |
 | **`psutil` major** | `panel.py` produces no JSON | API differences (e.g. `cpu_times` order, `net_io_counters`). Symptom: the panel window is empty. |
 | **`PyYAML` missing** | the clock and the `defpoll`s are empty | `config.py` / `theme.py` read the YAML configs via `import yaml` — without it nothing is read. Symptom: the whole widget is empty. |
@@ -323,6 +323,13 @@ The widget itself cannot parse YAML, so `scripts/core/config.py` reads `config.y
 + the selected weather theme and prints the merged values as JSON for the
 `defpoll`s (see the "Structure" section). `jq` is no longer needed.
 
+Several of these keys can also be changed at runtime without touching any
+file by hand: `scripts/core/config_set.py` writes them into
+`config.local.yaml` (`--key hour_format|appearance|units|panel_enabled|
+panel_alignment --value ...`, no `--widget`/`--monitor` needed), and the
+right-click quick-settings menu exposes them as hover submenus (see the
+"Right-click quick-settings menu" section).
+
 #### API key (`OPENWEATHER_API_KEY`)
 
 The OpenWeatherMap key is **not** stored in `config.yaml` (that file is part of
@@ -469,6 +476,9 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 | `install.sh` | — | cross-distro installer (the "Installation" section): installs eww + all dependencies, clones the repo, sets the API key, creates the desktop/menu icons and starts the widgets |
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
+| `menu_toggle.py` (`scripts/widgets/`) | — | context-menu quick settings: with `--value` writes an exact value, without it flips/cycles (hour_format 24↔12, appearance next theme alphabetically, units °C↔°F with an instant weather refresh, panel_enabled, panel_alignment); delegates to `config_set.py`, the watcher applies the change live |
+| `submenu.py` (`scripts/widgets/`) | — | hover submenus of the five selectable context-menu rows: builds the option list per key (Theme dynamically from `assets/themes/appearance/`, two balanced columns), prebuilds the whole picker as a static yuck literal into `sub_yuck` and shows it in the ctx_menu window's side pane, vertically aligned with the hovered row |
+| `hard-reset.sh` (`scripts/bin/`) | — | factory reset: deletes the git-ignored `config.local.yaml` (**no backup**) + a stale input session, regenerates the theme from the committed defaults and relayouts; also available as the context menu's "Hard reset" item |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
 ### `charts/` — generated SVGs
@@ -562,6 +572,70 @@ The **icon color** is not a CSS variable: `appearance.icon.color` (light|dark,
 chosen by `$theme`) is applied to the PNGs themselves by `theme.py` (see the
 "Configuration" section), so the tint works even though GTK/EWW cannot colorize
 images at render time.
+
+### Right-click quick-settings menu
+
+Right-clicking either widget opens the `ctx_menu` eww window (470x500 px:
+the 220px menu column plus a picker pane on its right, opened at the cursor
+by `scripts/widgets/ctx.py` + `scripts/move/menu_pos.py`; transparent
+full-screen dismiss layers on EVERY connected monitor close it on outside
+clicks — clicking on another screen dismisses the popups too — ESC works as
+well).
+The five selectable rows are **hover-only parents**: pointing at one opens a
+small submenu next to it (`scripts/widgets/submenu.py`) with the possible
+values, the active one highlighted; picking an entry writes it and closes
+the popups.
+
+| Row | Submenu values | Config key |
+|---|---|---|
+| Move / Resize / Reset | — (click actions: GTK move/resize session, factory geometry) |
+| AM/PM switch | `24h` / `12h` | `system.hour_format` |
+| Theme | every theme under `assets/themes/appearance/`, two columns | `appearance` |
+| Units | `°C (metric)` / `°F (imperial)` — picking one also re-fetches the weather instantly so °C/°F does not wait for the 10-minute poll | `weather.units` |
+| Panel | shown / hidden (applied by the watcher's relayout) | `panel.enabled` |
+| Side | right / left | `panel.window.alignment` |
+| Hard reset | runs `scripts/bin/hard-reset.sh`: deletes `config.local.yaml` (no backup), so every setting returns to the committed default |
+| About | the GTK About dialog |
+
+Submenu mechanics:
+
+- The picker is NOT a separate window: it renders INSIDE the ctx_menu
+  window, in a 250px-wide pane to the right of the item rows, vertically
+  aligned with the hovered row. This sidesteps every X11/Wayland window
+  placement pitfall and works identically on both compositors.
+- `submenu.py` prebuilds the whole picker as one static yuck definition —
+  every option row an `eventbox` with its click handler and the active value
+  highlighted (Theme = all themes in two balanced columns) — pushes it into
+  the `sub_yuck` eww variable and shows the pane (`sub_show=true`,
+  `sub_top=<row offset>`). Handlers inside `(for ...)` loops never fire on
+  eww 0.6.0, which is why the definition is generated instead of looped.
+- LIFETIME: the pane lives exactly as long as the context menu. There are no
+  hover-out timers: option clicks, outside clicks, ESC and re-opening the
+  menu all go through close_popup.py / ctx.py which hide the pane together
+  with the menu. (Timer/generation races measured earlier made this fragile,
+  so they are gone on purpose.)
+- Values are written through `menu_toggle.py --key <key> --value <value>`
+  → `config_set.py` into the git-ignored `config.local.yaml`; the watcher
+  regenerates / reloads / relayouts automatically.
+- The parent-row labels still show the current state from the `config`
+  defpoll (5 s refresh), so right after a selection they can lag up to 5 s.
+
+### Hand-typed resize percentage
+
+In the Move / Resize control panel (`scripts/move/move_panel.py`) the value
+between − and + is an editable entry, not just a label:
+
+- type a percentage (30–150) and press **Enter** — or just leave the field;
+- on focus-out an uncommitted draft is discarded and the field snaps back to
+  the live value polled from the eww variable `move_pct` every 250 ms;
+- typed values are applied by `move_ctl.py --action set_scale --value N`,
+  which clamps to 30–150% and keeps the anchored corner / panel side gap
+  fixed exactly like the ± buttons do.
+
+While the field owns the keyboard, the panel marks the session file with
+`"typing": true`; the evdev daemon ignores every key during that time
+(otherwise Enter would save and −/+ would zoom while typing). Click outside
+the field first if you want ESC to cancel the session.
 
 ### Resize / reposition workflow
 

@@ -103,7 +103,10 @@ def main():
     h = int(round(rect["height"]))
 
     # Close popups and any stale session windows; the rectangle window + the
-    # control panel own the Move/Resize session.
+    # control panel own the Move/Resize session. NOTE: the per-monitor dismiss
+    # layers deliberately STAY OPEN — they are the click-outside-to-cancel
+    # surface for the whole session (outside click -> close_popup.py -> the
+    # rectangle and panel quit when the session file disappears).
     eww("close", "ctx_menu")
     eww("close", "dismiss_overlay")
 

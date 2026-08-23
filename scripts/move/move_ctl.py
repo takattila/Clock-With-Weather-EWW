@@ -10,6 +10,10 @@ Actions:
   left/right/up/down  move the rectangle by STEP px (clamped to the frame)
   zoom_in/zoom_out    scale by SCALE_STEP (clamped 0.3..1.5), keeping the
                       widget's anchored corner / right gap fixed
+  set_scale           scale to an EXACT percentage given via --value
+                      (30..150; out-of-range values are clamped), same
+                      anchoring rules as zoom_in/zoom_out -- used by the
+                      hand-typed resize field of the GTK control panel
   reset               write the defaults to config.yaml via scripts/
                       config_set.py and close, like save but with the default
                       values (both widgets: position 0/0, scale 1.0)
@@ -159,6 +163,18 @@ def base_rect(monitor, w, h):
         sys.exit("ERROR: workarea.py --base-rect failed:\n%s" % out)
 
 
+def is_degenerate_rect(x, y, w, h):
+    """True when move_x/y/w/h still carry the pre-session defaults.
+
+    eww variables persist between sessions; if a Save somehow fires before
+    move.py ever initialized them for this round (race, stray keypress,
+    ghost panel), the stored rect reads 100x100 at (0,0). Writing THAT
+    produced scale=MIN + top-left positions for users (measured bug), so
+    such a state is refused instead of saved.
+    """
+    return (w, h) == (100, 100) and (x, y) == (0, 0)
+
+
 def finish():
     # The rectangle window (scripts/move_rect.py) and the control panel
     # (scripts/move_panel.py) both watch the session file and quit by
@@ -188,7 +204,10 @@ def main():
     ap.add_argument("--widget", required=True, choices=["clock", "panel"])
     ap.add_argument("--monitor", type=int, default=0)
     ap.add_argument("--action", required=True,
-                    choices=["left", "right", "up", "down", "zoom_in", "zoom_out", "reset", "save", "cancel"])
+                    choices=["left", "right", "up", "down", "zoom_in", "zoom_out",
+                             "set_scale", "reset", "save", "cancel"])
+    ap.add_argument("--value", type=float, default=None,
+                    help="percentage for --action set_scale")
     args = ap.parse_args()
 
     if args.action == "cancel":
@@ -231,14 +250,19 @@ def main():
         eww("update", "move_x=%d" % x, "move_y=%d" % y)
         return
 
-    if args.action in ("zoom_in", "zoom_out"):
+    if args.action in ("zoom_in", "zoom_out", "set_scale"):
         base_w, base_h, scale, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
         # Start from the CURRENT session size (move_w/move_h), not the saved
         # config scale: clicking zoom_out repeatedly must keep stepping down
         # instead of recomputing from the untouched config value each time.
         current = (w / base_w) if base_w else scale
-        delta = SCALE_STEP if args.action == "zoom_in" else -SCALE_STEP
-        scale = clamp(current + delta, MIN_SCALE, MAX_SCALE)
+        if args.action == "set_scale":
+            if args.value is None:
+                sys.exit("ERROR: --action set_scale requires --value <percent>")
+            scale = clamp(args.value / 100.0, MIN_SCALE, MAX_SCALE)
+        else:
+            delta = SCALE_STEP if args.action == "zoom_in" else -SCALE_STEP
+            scale = clamp(current + delta, MIN_SCALE, MAX_SCALE)
         w = int(round(base_w * scale))
         h = int(round(base_h * scale))
         if right_gap is not None:
@@ -253,9 +277,22 @@ def main():
         return
 
     if args.action == "save":
+        # SAFETY: never persist a degenerate/unreachable rect (see helpers).
+        if is_degenerate_rect(x, y, w, h):
+            sys.exit("ERROR: refusing to save default-sized rect at origin "
+                     "(nothing was resized/dragged this session)")
         base_w, base_h, scale, right_gap, h_align, v_align = base_sizes(args.widget, args.monitor, rect)
         if base_w:
             scale = clamp(w / base_w, MIN_SCALE, MAX_SCALE)
+        margin = 40  # the saved widget must keep at least this much on-screen
+
+        def refuse_outside(px, py, pw, ph):
+            """Refuse (exit) when the saved widget would be fully off-screen."""
+            if px + pw < margin or px > frame_w - margin or \
+               py + ph < margin or py > frame_h - margin:
+                sys.exit("ERROR: refusing to save off-screen position "
+                         "(%d,%d %dx%d on %dx%d frame)" % (px, py, pw, ph, frame_w, frame_h))
+
         if args.widget == "panel":
             # The panel position is a per-monitor offset added to the global
             # panel.gap baseline, so Save writes the delta between the dragged
@@ -264,11 +301,15 @@ def main():
             base = base_rect(args.monitor, w, h)
             new_x = int(round(x - base["base_left"]))
             new_y = int(round(y - base["base_top"]))
+            refuse_outside(new_x, new_y, w, h)
             save_value(args.widget, args.monitor, "position_x", new_x)
             save_value(args.widget, args.monitor, "position_y", new_y)
         else:
             new_x = int(round(x - align_pos(w, frame_w, h_align)))
             new_y = int(round(y - align_pos(h, frame_h, v_align)))
+            vw = int(round(base_w * scale))
+            vh = int(round(base_h * scale))
+            refuse_outside(new_x, new_y, vw, vh)
             save_value(args.widget, args.monitor, "position_x", new_x)
             save_value(args.widget, args.monitor, "position_y", new_y)
         save_value(args.widget, args.monitor, "scale", "%.2f" % scale)

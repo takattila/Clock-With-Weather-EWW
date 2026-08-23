@@ -194,3 +194,118 @@ def test_print_message(local_file, monkeypatch, capsys):
     out = capsys.readouterr().out.strip()
     assert "wrote panel.gap.top=7" in out
     assert "config.local.yaml" in out
+
+
+# ---------------------------------------------------------------------------
+# Global keys (context-menu quick toggles; no --widget / no --monitor)
+# ---------------------------------------------------------------------------
+
+def test_hour_format_stored_as_string(local_file, monkeypatch):
+    run(["--key", "hour_format", "--value", "12"], monkeypatch)
+    config_set.main()
+    value = read(local_file)["system"]["hour_format"]
+    assert value == "12"
+    assert isinstance(value, str)
+
+
+def test_hour_format_invalid_value(local_file, monkeypatch):
+    run(["--key", "hour_format", "--value", "13"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must be 12 or 24" in str(exc.value)
+
+
+def test_global_key_rejects_monitor(local_file, monkeypatch):
+    run(["--key", "hour_format", "--value", "12", "--monitor", "0"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "--monitor must not be used" in str(exc.value)
+
+
+def test_units_metric_imperial(local_file, monkeypatch):
+    run(["--key", "units", "--value", "imperial"], monkeypatch)
+    config_set.main()
+    assert read(local_file)["weather"]["units"] == "imperial"
+
+
+def test_units_invalid_value(local_file, monkeypatch):
+    run(["--key", "units", "--value", "kelvin"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "metric or imperial" in str(exc.value)
+
+
+def test_panel_enabled_bool_coercion(local_file, monkeypatch):
+    run(["--key", "panel_enabled", "--value", "false"], monkeypatch)
+    config_set.main()
+    assert read(local_file)["panel"]["enabled"] is False
+    run(["--key", "panel_enabled", "--value", "true"], monkeypatch)
+    config_set.main()
+    assert read(local_file)["panel"]["enabled"] is True
+
+
+def test_panel_enabled_invalid_value(local_file, monkeypatch):
+    run(["--key", "panel_enabled", "--value", "maybe"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must be true or false" in str(exc.value)
+
+
+def test_panel_alignment_flip(local_file, monkeypatch):
+    run(["--key", "panel_alignment", "--value", "left"], monkeypatch)
+    config_set.main()
+    alignment = read(local_file)["panel"]["window"]["alignment"]
+    assert alignment == "left"
+    assert isinstance(alignment, str)
+
+
+def test_panel_alignment_invalid_value(local_file, monkeypatch):
+    run(["--key", "panel_alignment", "--value", "up"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "right or left" in str(exc.value)
+
+
+def test_appearance_known_theme(local_file, tmp_path, monkeypatch):
+    themes = tmp_path / "themes"
+    themes.mkdir()
+    (themes / "dark").mkdir()
+    (themes / "light").mkdir()
+    monkeypatch.setattr(config_set, "APPEARANCE_THEMES_DIR", str(themes))
+    run(["--key", "appearance", "--value", "dark"], monkeypatch)
+    config_set.main()
+    assert read(local_file)["appearance"] == "dark"
+
+
+def test_appearance_unknown_theme_exits(local_file, tmp_path, monkeypatch):
+    themes = tmp_path / "themes"
+    themes.mkdir()
+    monkeypatch.setattr(config_set, "APPEARANCE_THEMES_DIR", str(themes))
+    run(["--key", "appearance", "--value", "nope"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "unknown appearance theme" in str(exc.value)
+
+
+def test_widget_scoped_key_requires_widget(local_file, monkeypatch):
+    run(["--key", "scale", "--value", "0.8"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "--widget is required" in str(exc.value)
+
+
+def test_global_keys_preserve_local_tree(local_file, monkeypatch):
+    local_file.write_text(
+        "appearance: light\nsystem:\n  hour_format: \"24\"\n",
+        encoding="utf-8",
+    )
+    for args in (
+        ["--key", "hour_format", "--value", "12"],
+        ["--key", "panel_enabled", "--value", "false"],
+    ):
+        run(args, monkeypatch)
+        config_set.main()
+    data = read(local_file)
+    assert data["appearance"] == "light"
+    assert data["system"]["hour_format"] == "12"
+    assert data["panel"]["enabled"] is False

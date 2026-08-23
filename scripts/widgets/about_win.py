@@ -41,6 +41,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.dirname(SCRIPT_DIR)  # scripts/
 # scripts/widgets/ -> scripts/ -> repo (widget) root
 CONFIG_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
 SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
 THEME_FILE = os.path.join(CONFIG_DIR, "eww", "eww.theme.json")
 sys.path.insert(0, SCRIPT_DIR)
@@ -474,6 +475,23 @@ class AboutWin:
 
     def on_open(self, *_):
         if self.url:
+            # The transparent dismiss layers sit on the compositor's overlay
+            # level - ABOVE every normal window. Left mapped they would eat
+            # every click meant for the browser / other applications, so they
+            # are closed here (the About window itself stays open: it quits
+            # when the session file disappears).
+            try:
+                mon = subprocess.check_output(
+                    ["python3", os.path.join(CONFIG_DIR, "scripts", "core", "monitors.py")],
+                    stderr=subprocess.DEVNULL, text=True, timeout=5,
+                )
+                screens = [int(m["index"]) for m in json.loads(mon).get("monitors", [])]
+            except Exception:
+                screens = []
+            for idx in screens or [0]:
+                run(["eww", "--config", EWW_CONFIG_DIR, "close",
+                     "dismiss_overlay_%d" % idx])
+            run(["eww", "--config", EWW_CONFIG_DIR, "close", "dismiss_overlay"])
             run(["xdg-open", self.url])
 
     def on_close(self, *_):

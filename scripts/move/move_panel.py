@@ -23,8 +23,12 @@ from window-relative coordinates (the GDK layer-shell root coords are "fake"
 there). The buttons run scripts/move_ctl.py exactly like the old eww buttons
 did (arrows move the overlay rectangle, +/- zoom, Reset returns to the
 defaults, Save writes config.yaml and closes, Cancel discards). The resize
-percentage is polled from the eww variable move_pct (set by move_ctl.py
-together with move_w/move_h).
+percentage between -/+ is an EDITABLE entry: it polls the eww variable
+move_pct (set by move_ctl.py together with move_w/move_h) for display, and
+typed values are applied on Enter / focus-out via move_ctl.py --action
+set_scale (30..150%). While the entry owns the keyboard, the panel marks the
+session file with "typing": true so the evdev daemon ignores every key
+(Enter would otherwise save, -/+ would zoom).
 
 Keyboard control (arrows, +/-/Shift+3, ENTER=save, ESC=cancel) is deliberately
 left to the invisible evdev daemon (scripts/input_daemon.py) so no key is
@@ -47,6 +51,7 @@ CONFIG_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
 SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
 THEME_FILE = os.path.join(CONFIG_DIR, "eww", "eww.theme.json")
+sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "core"))
 
 try:
     import gi
@@ -180,11 +185,15 @@ def build_css(bg, light, alpha, radius, font):
     button.save:hover { background-color: rgba(78, 154, 6, 0.4); }
     button.cancel { background-color: rgba(204, 0, 0, 0.25); }
     button.cancel:hover { background-color: rgba(204, 0, 0, 0.4); }
-    .size-label {
+    entry.size-entry {
       font-size: 14px;
+      min-width: 48px;
       color: %s;
-      min-width: 56px;
+      background-color: %s;
+      border-radius: 8px;
+      padding: 2px 6px;
     }
+    entry.size-entry:focus { background-color: %s; }
     """ % (
         font,
         rgba(bg, 0.97),
@@ -197,12 +206,40 @@ def build_css(bg, light, alpha, radius, font):
         rgba(light, 0.16),
         rgba(light, 0.28),
         rgba(light, alpha),
+        rgba(light, 0.08),
+        rgba(light, 0.16),
     )
 
 
-def action(widget, monitor, act):
-    run([sys.executable, os.path.join(SCRIPT_DIR, "move_ctl.py"),
-         "--widget", widget, "--monitor", str(monitor), "--action", act])
+def action(widget, monitor, act, value=None):
+    cmd = [sys.executable, os.path.join(SCRIPT_DIR, "move_ctl.py"),
+           "--widget", widget, "--monitor", str(monitor), "--action", act]
+    if value is not None:
+        cmd += ["--value", str(value)]
+    run(cmd)
+
+
+def set_session_typing(flag):
+    """(Re)write the session file with/without the 'typing' marker.
+
+    While the resize entry owns the keyboard the evdev daemon must ignore
+    every key (Enter would otherwise SAVE and -/+ would zoom); it skips all
+    handling while session["typing"] is set. ESC is ignored too: click
+    outside the entry first, then ESC cancels the session as usual.
+    """
+    try:
+        with open(SESSION_FILE) as fh:
+            data = json.load(fh)
+        if data.get("mode") != "move":
+            return
+        if flag:
+            data["typing"] = True
+        else:
+            data.pop("typing", None)
+        with open(SESSION_FILE, "w") as fh:
+            json.dump(data, fh)
+    except Exception:
+        pass
 
 
 class MovePanel:
@@ -220,6 +257,11 @@ class MovePanel:
         self.grab_y = 0.0
         self.start_x = x
         self.start_y = y
+        # Hand-typed resize state: while pct_editing is True the periodic
+        # move_pct poll must NOT overwrite the entry text; last_pct is the
+        # value invalid input falls back to.
+        self.pct_editing = False
+        self.last_pct = 100
 
         # Absolute screen origin of the target monitor: on X11 the drag clamps
         # the panel to this rectangle (win.move uses absolute coordinates).
@@ -242,7 +284,10 @@ class MovePanel:
         self.win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         self.win.set_keep_above(True)
         self.win.set_resizable(False)
-        self.win.set_accept_focus(False)
+        # The resize entry needs the keyboard (hand-typed percentage), so the
+        # panel must be focusable; on X11 the entry additionally grabs the X
+        # input focus when clicked (override-redirect windows get no WM help).
+        self.win.set_accept_focus(True)
         self.win.set_default_size(MC_W, MC_H)
 
         if WAYLAND:
@@ -263,11 +308,19 @@ class MovePanel:
             self.win.move(x, y)
 
         self.build_ui(bg, light, alpha, radius, font)
-        self.win.connect("destroy", lambda *_: Gtk.main_quit())
+        self.win.connect("destroy", lambda *_: (self._release_keyboard(), Gtk.main_quit()))
         # On X11 the full-screen eww move overlay is override-redirect, which
         # always floats above managed windows - so the panel must be
         # override-redirect too to receive clicks and be draggable at all.
         self.win.connect("realize", self.on_realize)
+
+    def _release_keyboard(self, *_):
+        """Safety net: never leave a keyboard grab behind."""
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
 
     def on_realize(self, widget):
         if not WAYLAND:
@@ -339,10 +392,19 @@ class MovePanel:
         zrow = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
         zrow.get_style_context().add_class("row")
         zrow.pack_start(self.btn("−", "zoom_out", "size-btn"), True, True, 0)
-        self.size_label = Gtk.Label.new("100%")
-        self.size_label.get_style_context().add_class("size-label")
-        self.size_label.set_xalign(0.5)
-        zrow.pack_start(self.size_label, True, True, 0)
+        self.size_entry = Gtk.Entry.new()
+        self.size_entry.get_style_context().add_class("size-entry")
+        self.size_entry.set_alignment(0.5)
+        self.size_entry.set_width_chars(4)
+        self.size_entry.set_max_width_chars(5)
+        self.size_entry.set_text("%d%%" % self.last_pct)
+        # Enter applies the typed percentage; clicking/leaving the field
+        # guards the poll overwrite and the keyboard daemon (typing flag).
+        self.size_entry.connect("button-press-event", self.on_pct_button_press)
+        self.size_entry.connect("activate", self.on_pct_activate)
+        self.size_entry.connect("focus-in-event", self.on_pct_focus_in)
+        self.size_entry.connect("focus-out-event", self.on_pct_focus_out)
+        zrow.pack_start(self.size_entry, True, True, 0)
         zrow.pack_start(self.btn("+", "zoom_in", "size-btn"), True, True, 0)
         root.pack_start(zrow, False, False, 0)
 
@@ -385,6 +447,108 @@ class MovePanel:
             Gtk.main_quit()
             return
         action(self.widget, self.monitor, act)
+
+    # ---- hand-typed resize percentage --------------------------------------
+    # X11: the panel is an override-redirect toplevel, so clicking the entry
+    # NEVER moves the server-side input focus - keystrokes would keep going
+    # to whatever application was focused before. While the entry owns the
+    # pointer we therefore take a GDK KEYBOARD GRAB: every key event is
+    # routed into this GTK app and delivered to the focused entry normally
+    # (typing selects-all first, so digits REPLACE the old value). The grab
+    # is released on focus-out / when editing ends. On Wayland the
+    # layer-shell ON_DEMAND keyboard mode already delivers keys after a
+    # click, no grab needed.
+    def on_pct_button_press(self, entry, event):
+        self.pct_editing = True
+        set_session_typing(True)
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_grab(self.win.get_window(), True, Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        # Select the whole current value AFTER GTK's own press handling ran
+        # (otherwise it clears our selection and typed digits would land
+        # inside the old number). idle = post-default-handler.
+        GLib.idle_add(entry.select_region, 0, -1)
+        return False
+
+    def on_pct_focus_in(self, entry, event):
+        self.pct_editing = True
+        set_session_typing(True)
+        return False
+
+    def on_pct_button_press(self, entry, event):
+        self.pct_editing = True
+        set_session_typing(True)
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_grab(self.win.get_window(), True, Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        # Select the whole current value AFTER GTK's own press handling ran
+        # (otherwise it clears our selection and typed digits would land
+        # inside the old number). idle = post-default-handler.
+        GLib.idle_add(entry.select_region, 0, -1)
+        return False
+
+    def on_pct_focus_in(self, entry, event):
+        self.pct_editing = True
+        set_session_typing(True)
+        return False
+
+    def on_win_key(self, wdg, ev):
+        """Route keys into the resize entry while it owns the keyboard.
+
+        The override-redirect toplevel never gains the X input focus, so the
+        entry cannot rely on normal key delivery - with the GDK keyboard
+        grab held (button press on the entry), this window-level handler
+        receives every keystroke and edits the text directly. Handles
+        digits, backspace, +/- prefix and Return (=apply).
+        """
+        if not self.pct_editing:
+            return False
+        name = Gdk.keyval_name(ev.keyval) or ""
+        if name in ("Return", "KP_Enter"):
+            self.on_pct_activate(self.size_entry)
+            return True
+        if name == "BackSpace":
+            txt = self.size_entry.get_text()
+            self.size_entry.set_text(txt[:-1])
+            return True
+        if name and len(name) == 1 and (name.isdigit() or name in "+-."):
+            self.size_entry.insert_text(name, self.size_entry.get_position())
+            return True
+        if name in ("Escape",):
+            self._end_pct_editing(self.size_entry)
+            return True
+        return False
+
+    def on_pct_activate(self, entry):
+        raw = entry.get_text().strip().rstrip("%").strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            entry.set_text("%d%%" % self.last_pct)
+            return
+        # move_ctl clamps to MIN/MAX_SCALE and refreshes move_pct, which the
+        # next tick reflects in the (no longer focused) entry text.
+        action(self.widget, self.monitor, "set_scale", value)
+        entry.set_text("%d%%" % max(30, min(150, int(round(value)))))
+
+    def _end_pct_editing(self, entry):
+        self.pct_editing = False
+        set_session_typing(False)
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        # Discard an uncommitted draft; the poll refreshes the real value.
+        entry.set_text("%d%%" % self.last_pct)
+
+    def on_pct_focus_out(self, entry, event):
+        self._end_pct_editing(entry)
+        return False
 
     # ---- dragging ----------------------------------------------------------
     # Both compositors drag the panel live, keeping the grab point (pressed on
@@ -473,7 +637,9 @@ class MovePanel:
         pct = eww_get("move_pct")
         if pct:
             try:
-                self.size_label.set_text("%d%%" % int(round(float(pct))))
+                self.last_pct = int(round(float(pct)))
+                if not self.pct_editing:
+                    self.size_entry.set_text("%d%%" % self.last_pct)
             except Exception:
                 pass
         return True

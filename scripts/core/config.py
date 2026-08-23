@@ -26,7 +26,8 @@ on top of it.
 Usage:
   ./config.py             merged JSON (for the `config` defpoll)
   ./config.py --key NAME  a single value
-                          (api_key | appearance | weather | hour_format |
+                          (api_key | appearance | appearance_name | weather |
+                           hour_format |
                            city | language_code | lang | units | api_url |
                            alignment | position_x | position_y | scale |
                            panel_enabled | panel_alignment | panel_scale |
@@ -114,6 +115,10 @@ def load_config():
     merged = {
         "api_key": resolve_api_key(),
         "appearance": appearance,
+        # Plain-string mirror of `appearance` for the eww labels: with a
+        # custom inline map `appearance` is an OBJECT in the JSON defpoll
+        # payload, which cannot be concatenated into a label string.
+        "appearance_name": appearance if isinstance(appearance, str) else "custom",
         "weather": weather_name,
         "hour_format": str(system.get("hour_format", "24")),
         "city": weather.get("city", ""),

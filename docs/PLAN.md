@@ -1,123 +1,196 @@
-# Local Config Override Plan — `config.local.yaml`
+# Context Menu Actions, Editable Resize % & Hard Reset Plan
 
 > **Status: DONE & verified** (2026-08-22, live on this machine):
-> 105 tests pass, end-to-end smoke tests confirmed that script writes land in
-> `config.local.yaml` while `config.yaml` stays byte-identical.
-> This replaces the restructuring record — see git history for that document.
+> full pytest suite passes, `shellcheck` clean on the new bash script.
+> This replaces the v2.1.0 local-override record — see git history for that
+> document.
 >
-> Deviation from the plan below: `setup.sh` was ALSO switched to write its
-> wizard choices into `config.local.yaml` (originally it would have kept
-> editing `config.yaml`).
->
-> Follow-up fixes folded into the same release (v2.1.0):
-> - **Layered weather resolution**: with `weather.name` set, the theme now
->   provides only the baseline and inline fields patch on top of it —
->   previously the base's `name: default` silently ignored local inline city
->   settings, so not EVERY value could be overridden via `config.local.yaml`.
-> - **Right-click context menu fixed**: `ctx.py` still looked for
->   `menu_pos.py` at its pre-restructure location (`scripts/widgets/`
->   instead of `scripts/move/`), so every right click died before opening
->   the menu.
+> Target release: **v2.2.0** (branch `feature/context-menu-items`).
 
-## Problem
+## Phase 2: hover submenus for every selectable item (same release)
 
-`config.yaml` is tracked in git, yet it changes constantly on a live machine:
-local preference edits AND machine-generated data (the right-click
-Move/Resize -> Save writes `per_monitor` positions/scales through
-`scripts/core/config_set.py`). Every such change shows up as a git
-modification and pollutes diffs / risks accidental commits.
+Follow-up within v2.2.0: the five selectable quick-settings rows
+(AM/PM switch, Theme, Units, Panel, Side) become **hover-only parents** —
+pointing at a row shows a picker pane with the possible values, the active
+one highlighted; picking an entry writes it through `menu_toggle.py --value`
+→ `config_set.py`. Clicking a parent row does nothing.
 
-## Solution
+- **The picker renders INSIDE the ctx_menu window**: a 250px pane to the
+  right of the item rows (window widened to 470x550), vertically aligned
+  with the hovered row.
+- Items are GROUPED with thin separators: actions (Move / Resize / Reset)
+  | quick settings (AM/PM / Theme / Units / Panel / Side) | system
+  (Hard reset / About). The picker's vertical offset accounts for the
+  two separators (`submenu.py` ROWS map). No extra window exists at all — this removes an
+  entire class of problems measured with a standalone popup window on
+  X11 (invisible override-redirect copies stacking up and eating pointer
+  input) and makes Wayland behave exactly like X11.
+- **New `scripts/widgets/submenu.py`**: builds the option list per key
+  (Theme = every directory under `assets/themes/appearance/`, split across
+  two balanced columns), bakes values + active-state class + click handler
+  into ONE static yuck definition pushed into the `sub_yuck` eww variable,
+  rendered via `(literal ...)`, shown with `sub_show=true` /
+  `sub_top=<calibrated row offset>`.
+- Measured eww 0.6.0 constraints that shaped this design: handlers on
+  widgets created inside `(for ...)` loops never fire; defwindow geometry
+  cannot see global defvars; literal-rendered eventboxes deliver clicks but
+  not hover events. All three are avoided by construction.
+- Dismissal stays with close_popup.py / ctx.py (option click, outside click
+  on the per-monitor dismiss layers, ESC, re-opening the menu), which also
+  hides the pane. The pane lives exactly as long as its parent menu.
 
-Add a **local override layer**:
 
-```
-config.yaml         committed defaults   (only intentional edits land here)
-        +
-config.local.yaml   git-ignored overrides (machine-specific values,
-                                         everything the scripts write)
-        =
-                    merged view used by every reader
-```
+## Phase 3: robustness fixes (same release)
 
-Merge semantics: **deep merge down to the leaves** — dict values merge
-recursively, scalars/lists are replaced by the local value. So e.g.
-`per_monitor: 0: { scale: 0.8 }` in the local file keeps `position_x/y`
-from the base entry for monitor 0.
+Live testing surfaced three reliability gaps, all fixed:
+  * a dismissed per-monitor dismiss layer occasionally SURVIVED its close
+    (the IPC close was dropped while the daemon regenerated) — an invisible
+    full-screen layer then blocked every right-click on that monitor.
+    close_popup.py now VERIFIES via `eww active-windows` that no popup
+    window is still listed, retrying ~2s (compositor-independent, works on
+    Wayland/KDE too) and force-unmapping X11 survivors;
+  * About -> "Open repository": the dismiss layers stayed mapped ABOVE the
+    browser on KDE/Wayland (the overlay level sits over every normal
+    window), making everything unclickable; about_win.py now closes them
+    right before xdg-open.
+  * a Save firing on a never-initialized overlay rect (eww defaults:
+    100x100 at the origin) wrote scale=MIN + top-left positions for users;
+    move_ctl.py now refuses degenerate rects and any save that would place
+    the widget completely off its monitor.
+
+## Goal
+
+Turn the right-click context menu into a real quick-settings panel and make
+the Move / Resize percentage editable by hand:
+
+1. **New context menu toggles** (all writing git-ignored
+   `config.local.yaml`, applied live by the watcher):
+   - `AM/PM switch` — `system.hour_format` `"24"` ↔ `"12"`
+   - `Theme` — cycle through every theme under
+     `assets/themes/appearance/`
+   - `Units` — `weather.units` `metric` ↔ `imperial` (°C ↔ °F) with an
+     immediate weather refresh (the defpoll alone would take up to 10 min)
+   - `Panel shown/hidden` — `panel.enabled`
+   - `Side right/left` — `panel.window.alignment`
+   - `Hard reset` — factory-reset the local configuration
+2. **Editable resize percentage** in the GTK Move / Resize control panel:
+   the `%` label becomes a text entry (30–150 %, same clamp as +/-).
+3. **`scripts/bin/hard-reset.sh`**: deletes `config.local.yaml` (no backup,
+   by design) + stale session state, regenerates the theme and relayouts,
+   so everything falls back to the committed `config.yaml` defaults.
+
+## Design decisions
+
+- **Single writer stays single**: `scripts/core/config_set.py` learns the
+  new *global* keys (`hour_format`, `appearance`, `units`, `panel_enabled`,
+  `panel_alignment`). No script ever writes YAML directly.
+- **One orchestrator for all toggles**: new `scripts/widgets/menu_toggle.py`
+  reads the merged view (`config_io.load_merged`), computes the next value
+  per key semantics and delegates the write to `config_set.py`. The context
+  menu buttons call it like they call `move_ctl.py`.
+- **Dynamic labels** come from the existing `config` defpoll (5 s): the
+  buttons show the current state (`Theme: light ▸`, `Units: °C ▸`, ...).
+  Because a custom inline appearance map makes `config.appearance` an
+  OBJECT, `config.py` additionally exposes a plain string
+  `appearance_name` (`custom` | theme name).
+- **Keyboard safety while typing**: the evdev daemon sees every physical
+  key globally; without care, Enter typed in the % entry would SAVE the
+  session and `-`/`+` would zoom. The session file therefore gets a
+  `"typing": true` flag while the entry has focus, during which the daemon
+  ignores all keys.
+- **Hard reset deletes without backup** (user decision); the committed
+  `config.yaml` is never touched, so nothing can get lost that matters.
 
 ## Implementation steps
 
-### 1. New shared loader: `scripts/core/config_io.py`
+### 1. `scripts/core/config_set.py` — global keys
 
-- `deep_merge(base, override)`: recursive dict merge (leaf-level; the local
-  value wins; lists/scalars replace).
-- `load_merged(config_dir)`: reads `config.yaml`, then `config.local.yaml`
-  if it exists (missing/empty file = no-op) and returns the merged dict.
-- Broken local YAML: warning on stderr, fall back to base (the widget must
-  not die from a typo'd local edit).
+- `--widget` becomes OPTIONAL (widget-scoped keys still require it;
+  `gap_*` still requires `--widget panel`).
+- New branch handled before the widget keys; none of these accept
+  `--monitor`:
+  | key | allowed values | stored path | type |
+  |---|---|---|---|
+  | `hour_format` | `12` \| `24` | `system.hour_format` | str |
+  | `appearance` | existing dir under `assets/themes/appearance/` | `appearance` | str |
+  | `units` | `metric` \| `imperial` | `weather.units` | str |
+  | `panel_enabled` | `true` \| `false` | `panel.enabled` | bool |
+  | `panel_alignment` | `right` \| `left` | `panel.window.alignment` | str |
 
-### 2. Switch the readers to the merged loader
+### 2. `scripts/widgets/menu_toggle.py` (new)
 
-Import via `sys.path.insert(0, <scripts>/core)` — same bootstrap pattern as
-`move_ctl.py`.
+- `--key {hour_format|appearance|units|panel_enabled|panel_alignment}`.
+- Flip/cycle logic:
+  - `hour_format`: swap `24`/`12`
+  - `units`: swap `metric`/`imperial`; afterwards refresh the weather
+    immediately by re-running `weather.py` with the same arguments as the
+    defpoll (with the NEW units) and `eww update weather_info=<json>`
+  - `panel_enabled` / `panel_alignment`: write only — the watcher's
+    automatic `start.sh --relayout` applies both
+  - `appearance`: next directory alphabetically (wrap-around); unknown or
+    custom-map current values start the cycle at the first theme
+- Prints what it wrote (same style as `config_set.py`).
 
-| File | Function | Notes |
-|---|---|---|
-| `scripts/core/config.py` | `load_config()` (~line 74) | main JSON/key reader |
-| `scripts/core/theme.py` | `load_config()` (~line 27) | makes `appearance` + `system.corner_radius` locally overridable too |
-| `scripts/core/workarea.py` | `load_gaps()` (~line 309), `load_panel_offsets()` (~line 634) | panel gaps + per-monitor offsets |
+### 3. `scripts/bin/hard-reset.sh` (new)
 
-### 3. Rewrite the writer: `scripts/core/config_set.py`
+1. `rm -f config.local.yaml` and stale `generated/input_session.json`
+2. best-effort `theme.py` regeneration + `start.sh --relayout`
+   (harmless if the eww daemon is not running; the running watcher would
+   also pick up the deletion on its own)
 
-- CLI stays identical (`--widget/--key/--value/--monitor`) so callers
-  (`move_ctl.py`, context menus) need no changes — only docstrings update.
-- New behavior: load base + existing local, apply the change into the
-  **local** tree, write `config.local.yaml` with `yaml.safe_dump(sort_keys=False)`.
-  The file is machine-generated, so the line-aware comment-preserving editor
-  (KEY_RE, block_region, ...) can be dropped.
-- After this change no script ever writes `config.yaml` -> its diffs come
-  only from deliberate hand edits.
+### 4. Context menu UI (`eww/eww.yuck`, `eww/eww.scss`)
 
-### 4. Hot reload: `scripts/core/watch.py`
+- Final item order: Move, Resize, Reset, AM/PM switch, Theme, Units,
+  Panel shown/hidden, Side right/left, Hard reset, About.
+- Toggle onclicks follow the Reset pattern
+  (`close_popup.py && <script>`); slower ones (units refresh) are
+  backgrounded with `nohup ... &`.
+- Window geometry: 4 -> 10 items means `190px` -> ~430px height and
+  `180px` -> 220px width.
 
-- `_scan()`: interesting names of the root dir become
-  `{"config.yaml", "config.local.yaml"}`.
-- `_handle_events()`: a `config.local.yaml` change also sets
-  `config_changed = True` (triggers `start.sh --relayout`, needed because
-  per_monitor positions change window geometry).
+### 5. Editable resize %
 
-### 5. Git + documentation
+- `scripts/move/move_ctl.py`: new action `set_scale --value <percent>`
+  clamped to `MIN_SCALE..MAX_SCALE`, reusing the zoom_in/out positioning
+  logic (anchored corner / panel right-gap kept fixed).
+- `scripts/move/move_panel.py`:
+  - `%` Gtk.Label -> Gtk.Entry (centered, ~4 chars)
+  - apply on Enter (`activate`) AND on focus-out; invalid input reverts
+    to the current value
+  - the 250 ms `move_pct` poll never overwrites the entry mid-edit
+    (`pct_editing` flag on focus-in/out)
+  - focus plumbing: window accepts focus again; on X11 the override-
+    redirect toplevel takes X input focus on entry click
+  - writes/removes the session `"typing"` flag around edits
+- `scripts/move/input_daemon.py`: in `move` mode ignore ALL keys while
+  `session["typing"]` is set (ESC included — click outside the entry
+  first, then ESC cancels as usual).
 
-- `.gitignore`: add `config.local.yaml` (like `.api_key`).
-- `config.yaml` header comment: short explanation + override example.
-- README: new section about the override layer.
-- Docstrings of all touched scripts updated (`config.local.yaml` instead of
-  `config.yaml` where writes/reads are concerned).
+### 6. Tests
 
-### 6. Tests (pytest)
+- `tests/test_config_set.py`: global-key coverage (string/bool coercion,
+  value validation, `--monitor` rejection, missing `--widget` rejection,
+  base-file untouched).
+- `tests/test_menu_toggle.py` (new): flip logic for every key, theme
+  cycle incl. wrap-around and custom-map fallback, units weather-refresh
+  call, eww/config_set invocations mocked via monkeypatch.
 
-- `tests/conftest.py`: new `write_local_config` fixture.
-- `test_config.py`: override cases (appearance / per_monitor / gap from the
-  local file; missing local file = pure base).
-- `test_theme.py`, `test_workarea.py`: same merge coverage for their readers.
-- `test_config_set.py`: rewritten — asserts values land in
-  `config.local.yaml` and **the base `config.yaml` stays byte-identical**
-  (the key property of the whole feature).
+### 7. Documentation
 
-### 7. Verification (executed)
+- `docs/RELEASE_NOTES.md`: rewritten for v2.2.0.
+- `README.md`: context-menu feature bullets.
+- `docs/WIKI.md`: menu description, new writable keys, resize entry.
 
-1. `pytest tests/` — **104 passed** (12 new merge/writer tests).
-2. `config_set.py` runs wrote `config.local.yaml`; `config.py --key scale
-   --monitor 0` returned the override while untouched keys kept base values.
-3. `theme.py` regenerated the theme files through the merged loader; watcher
-   changes verified by unit-level parse + the existing inotify flow.
-4. `git status` stays clean across Move/Resize Save actions — the writer and
-   the setup wizard only ever touch the git-ignored file.
+## Verification (executed)
 
-## Decisions (defaults)
-
-- `setup.sh` originally would have kept writing the committed `config.yaml`;
-  per user request it now writes into `config.local.yaml` (see the deviation
-  note above).
-- No separate `config.local.yaml.example` shipped; the `config.yaml` header
-  + README cover discoverability.
+1. `pytest tests/` — **133 passed** (existing + new global-key / toggle tests).
+2. `shellcheck scripts/bin/hard-reset.sh` — clean.
+3. Live smoke test on this machine: `menu_toggle.py --key hour_format /
+   panel_alignment / panel_enabled` flipped the values and the merged readers
+   reported them within a second (`config.local.yaml` restored afterwards);
+   the new yuck labels were verified with an isolated eww daemon — zero
+   expression errors once the `config` defpoll is populated (the transient
+   empty-var errors right after daemon start match the existing
+   `config.hour_format == "12"` visibility pattern of the main widget).
+4. Hard reset path reviewed step-by-step (theme regen + relayout are the same
+   best-effort calls the watcher performs; safe when the widget is stopped).
