@@ -9,13 +9,17 @@ REPO_BRANCH="${REPO_BRANCH:-master}"
 
 EWW_REPO="elkowar/eww"
 # Pinned eww release built when no distro package provides eww. Override by
-# exporting EWW_REPO_REF before running the installer. NOTE: the v0.6.0 tag
-# build reports itself as "eww 0.5.0 d87c2fdb..." (stale Cargo version string)
-# and applies transform :scale before :translate; the widget scripts detect
-# the actual behavior from the embedded git hash, so any identified build works.
-# ensurePinnedEww() compares the installed binary's hash against the ref's
-# commit SHA and offers a pinned source build whenever they differ -- even when
-# a distro package or a newer master build is already present.
+# exporting EWW_REPO_REF before running the installer.
+#
+# IDENTITY RULE: the ONLY reliable identifier of an eww build is the 40-hex
+# git hash embedded in `eww --version`. The printed version NUMBER is
+# cosmetic -- upstream tagged v0.6.0 while its Cargo string still said
+# "eww 0.5.0" (that tag build also applies transform :scale before
+# :translate), and later master commits print "eww 0.6.0". The widget
+# scripts read exactly this hash, and ensurePinnedEww() below compares it
+# against the ref's commit SHA and offers a pinned source build whenever
+# they differ -- even when a distro package or a newer master build is
+# already present.
 EWW_REPO_REF="${EWW_REPO_REF:-v0.6.0}"
 BASE_DIR="${HOME}/.eww"
 REPO_DIR="${BASE_DIR}/${REPO}"
@@ -31,6 +35,7 @@ DEFAULT_CITY="${DEFAULT_CITY:-Budapest}"
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
 C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
 C_R=$(echo -en "\e[1;31m") # COLOR: RED
+C_G=$(echo -en "\e[1;92m") # COLOR: GREEN
 C_U=$(echo -en "\e[1;4m")  # UNDERLINED
 
 # --- Terminal colors ---------------------------------------------------------
@@ -529,60 +534,61 @@ function ewwInstalledHash() {
 
 function ensurePinnedEww() {
     # Prints what is installed and reconciles it with the pinned
-    # ${EWW_REPO_REF}. NOTE: upstream ships a stale Cargo version string, so
-    # builds of the v0.6.0 tag report themselves as "eww 0.5.0 ..." -- the
-    # embedded git hash is the only reliable identity, and the widget scripts
-    # read exactly that to pick the transform order.
-    local ver="" inst_hash="" exp_sha="" ans="" new_hash=""
+    # ${EWW_REPO_REF}.
+    #
+    # IDENTITY RULE (deliberately loud): the ONLY reliable identifier of an
+    # eww build is the 40-hex git hash embedded in `eww --version`. The
+    # printed version NUMBER can be anything -- upstream tagged v0.6.0 while
+    # its Cargo string still said "eww 0.5.0", and later master commits print
+    # "eww 0.6.0". Every message below therefore leads with an explicit
+    # "Identity:" line built from the hash, never from the number.
+    local ver="" inst_hash="" exp_sha="" ans="" new_hash="" ident=""
     if command -v eww &> /dev/null; then
         ver="$(eww --version 2> /dev/null)"
     fi
 
-    echo -n "- Installed eww: ${C_Y}${ver:-NOT FOUND}${C_D}"
+    echo "- Installed eww: ${ver:-NOT FOUND}"
 
     if [[ -z "${ver}" ]]; then
-        echo
-        echo "  ${C_R}[ WARNING ]${C_D} eww is not runnable; the widget will not start."
+        echo "  ${C_R}Identity: NONE${C_D} -- eww is not runnable; the widget will not start."
         return
     fi
 
     inst_hash="$(ewwInstalledHash)"
     if [[ -z "${inst_hash}" ]]; then
-        echo
-        echo "  ${C_Y}NOTE:${C_D} unrecognized eww build (no git hash); the widget assumes the modern transform order."
+        echo "  ${C_Y}Identity: UNKNOWN${C_D} (no embedded git hash). Treated as a modern build; it cannot be verified against ${C_Y}${EWW_REPO_REF}${C_D}."
         return
     fi
 
     exp_sha="$(helperGetEwwRefSha)"
     if [[ -z "${exp_sha}" ]]; then
-        echo
-        echo "  ${C_Y}NOTE:${C_D} could not verify the build against ${C_Y}${EWW_REPO_REF}${C_D} (GitHub unreachable or rate-limited)."
+        echo "  ${C_Y}Identity: build ${C_Y}${inst_hash:0:7}${C_D} (GitHub unreachable -- comparison with ${C_Y}${EWW_REPO_REF}${C_D} skipped)."
         return
     fi
 
     if [[ "${inst_hash}" = "${exp_sha}" ]]; then
-        echo
-        echo "  == Content matches ${C_Y}${EWW_REPO_REF}${C_D}. NOTE: upstream ships a stale Cargo version string, so builds of this tag report themselves as 'eww 0.5.0' -- the embedded hash (${C_Y}${inst_hash:0:7}${C_D}) is the identity that matters."
+        echo "  ${C_G}Identity: build ${C_Y}${inst_hash:0:7}${C_G} == pinned ${EWW_REPO_REF}.${C_D}"
+        echo "  NOTE: this tag's binaries print a stale 'eww 0.5.0' label -- the NUMBER is cosmetic, the HASH above is what matters."
         return
     fi
 
-    echo
+    echo "  ${C_Y}Identity: build ${C_Y}${inst_hash:0:7}${C_Y} != pinned ${EWW_REPO_REF} (${exp_sha:0:7})${C_D}. Only the hash counts -- the printed number does not."
     ans="$(helperPrompt \
-        "  == Installed build (${C_Y}${inst_hash:0:7}${C_D}) differs from pinned ${C_Y}${EWW_REPO_REF}${C_D}. Build & install it now? ${C_Y}[y or n]${C_D}: " \
+        "  == Build & install the pinned ${C_Y}${EWW_REPO_REF}${C_D} now? ${C_Y}[y or n]${C_D}: " \
         "y" "y n")"
 
     if [[ "${ans}" != "y" ]]; then
-        echo "  ${C_Y}NOTE:${C_D} keeping the installed build; the widget detects its transform order automatically."
+        echo "  Keeping the installed build; the widget detects its transform order automatically."
         return
     fi
 
     helperBuildEwwFromSource "force"
     new_hash="$(ewwInstalledHash)"
-    echo "- Installed eww now: ${C_Y}$(eww --version 2> /dev/null || echo 'NOT FOUND')${C_D}"
+    echo "- Installed eww now: $(eww --version 2> /dev/null || echo 'NOT FOUND')"
     if [[ -n "${new_hash}" && "${new_hash}" = "${exp_sha}" ]]; then
-        echo "  == The installed build now matches ${C_Y}${EWW_REPO_REF}${C_D}."
+        echo "  ${C_G}Identity: build ${C_Y}${new_hash:0:7}${C_G} == pinned ${EWW_REPO_REF}.${C_D}"
     elif [[ -n "${new_hash}" ]]; then
-        echo "  ${C_Y}NOTE:${C_D} the fresh build reports a different hash (${C_Y}${new_hash:0:7}${C_D}); leaving it in place."
+        echo "  ${C_Y}Identity: fresh build reports ${C_Y}${new_hash:0:7}${C_Y} != pinned ref${C_D}; leaving it in place."
     fi
 }
 
