@@ -178,7 +178,6 @@ def test_open_item_updates_pane_vars(themes, tmp_path, monkeypatch):
     # them on a running window).
     assert payload["sub_top"] == str(submenu.pane_top_for("appearance"))
     assert payload["sub_cols"] == "2"
-    assert payload["sub_w"] == str(submenu.SUB_W[2])
     assert payload["sub_show"] == "true"
     assert not any(a.startswith(("menu_h=", "pos_y=")) for a in update[1:])
 
@@ -244,7 +243,6 @@ def test_open_item_keeps_row_alignment_when_window_is_tall(themes, tmp_path, mon
     pane2 = submenu.pane_height([None] * 42, 2)
     assert payload["sub_top"] == str(submenu.THEME_ROW_TOP)
     assert payload["sub_cols"] == "2"
-    assert payload["sub_w"] == str(submenu.SUB_W[2])
     assert not any(a.startswith(("menu_h=", "pos_y=")) for a in update[1:])
     assert pane2 + submenu.THEME_ROW_TOP + submenu.MENU_PAD <= 865
 
@@ -280,7 +278,6 @@ def test_open_item_adds_a_column_when_height_is_tight(themes, tmp_path, monkeypa
     pane3 = submenu.pane_height([None] * 42, 3)
     top = int(payload["sub_top"])
     assert payload["sub_cols"] == "3"
-    assert payload["sub_w"] == str(submenu.SUB_W[3])
     assert top == max(submenu.MENU_PAD,
                       min(submenu.THEME_ROW_TOP,
                           min(552, 768 - submenu.EDGE_MARGIN - 208)
@@ -314,13 +311,13 @@ def test_horizontal_layout_flips_left_near_right_edge():
     # pane_w_max further left, pane flips to the LEFT of the menu column.
     x, flipped = submenu.horizontal_layout(1500, 1920)
     assert flipped is True
-    assert x == 1500 - submenu.SUB_W[3]
-    assert 1500 - submenu.SUB_W[3] + submenu.MENU_COL_W + submenu.SUB_W[3] <= 1920
+    assert x == 1500 - submenu.PANE_W
+    assert 1500 - submenu.PANE_W + submenu.MENU_COL_W + submenu.PANE_W <= 1920
 
 
 def test_horizontal_layout_shifts_left_when_neither_side_fits():
     # Degenerate: pane fits on neither side -> plain left shift, clamped.
     x, flipped = submenu.horizontal_layout(50, 400)
     assert flipped is False
-    assert x == max(0, min(50, 400 - submenu.MENU_COL_W - submenu.SUB_W[3]
+    assert x == max(0, min(50, 400 - submenu.MENU_COL_W - submenu.PANE_W
                            - submenu.EDGE_MARGIN))

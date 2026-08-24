@@ -55,15 +55,17 @@ SUB_PAD_V = 8    # picker vertical padding (top+bottom)
 # on the screen purely with eww variables (sub_top clamp + adaptive column
 # count), because `eww update` cannot change window-arg variables (menu_h,
 # pos_y) of a running window. EDGE_MARGIN is the gap kept above the bottom
-# screen edge. SUB_W is the picker pane width per column count (the yuck
-# pane box is :width {sub_w}).
+# screen edge. PANE_W is the FIXED width of the picker pane strip in the
+# yuck (both the left and the right instance): the submenu hugs the menu
+# side of the strip, so the menu column never moves when the hovered
+# submenu changes width.
 BASE_MENU_H = 550
 EDGE_MARGIN = 8
-SUB_W = {1: 130, 2: 250, 3: 375}
+PANE_W = 375
 MENU_COL_W = 290  # conservative natural width of the ctx-menu column
 
 
-def horizontal_layout(x, monitor_w, pane_w_max=SUB_W[3]):
+def horizontal_layout(x, monitor_w, pane_w_max=PANE_W):
     """(x_open, sub_left) for the ctx_menu window on `monitor_w` px.
 
     The picker pane renders RIGHT of the menu column by default. When that
@@ -266,7 +268,6 @@ def open_item(key):
         "sub_yuck=%s" % build_yuck(key, options, active, columns),
         "sub_top=%d" % top,
         "sub_cols=%d" % columns,
-        "sub_w=%d" % SUB_W.get(columns, 250),
         "sub_show=true",
     )
 

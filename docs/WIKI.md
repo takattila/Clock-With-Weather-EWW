@@ -721,9 +721,12 @@ Submenu mechanics:
   to three columns (trading width for height). Near the RIGHT monitor edge
   ctx.py opens the window shifted left and flips the pane to the LEFT side
   of the menu column (`sub_left`), so no column is ever clipped
-  horizontally. (Window-arg variables such as `menu_h` / `pos_y` cannot be
-  changed by `eww update` on a running window — that is why the sizing
-  happens at open time and the pane adapts with plain variables only.)
+  horizontally. The pane strip itself is a FIXED 375px on either side and
+  the picker hugs the menu column — the menu never moves when the hovered
+  submenu changes width. (Window-arg variables such as `menu_h` / `pos_y`
+  cannot be changed by `eww update` on a running window — that is why the
+  sizing happens at open time and the pane adapts with plain variables
+  only.)
 - `submenu.py` prebuilds the whole picker as one static yuck definition —
   every option row an `eventbox` with its click handler and the active value
   highlighted (Theme = all themes in two balanced columns) — pushes it into

@@ -34,14 +34,16 @@
 ;; variables -> identical behavior on X11 and Wayland, no extra window.
 (defvar sub_top 7)
 (defvar sub_cols 1)
-;; Picker pane width, follows the adaptive column count (submenu.py):
-;; 1 col = 130px, 2 cols = 250px, 3 cols = 375px.
-(defvar sub_w 250)
 ;; Horizontal flip: when the menu opens near the RIGHT monitor edge, ctx.py
-;; opens the window shifted left and sets sub_left=true, so the picker pane
-;; renders on the LEFT side of the parent menu column (the right pane is
-;; hidden) and never gets clipped by the screen edge.
+;; opens the window shifted left and sets sub_left=true + sub_right=false,
+;; so the picker pane renders on the LEFT side of the parent menu column
+;; (the right pane is hidden) and never gets clipped by the screen edge.
+;; Both flags are plain globals always written as a pair by ctx.py (no
+;; negation expressions - eww 0.6.0 is unreliable at those), and the
+;; visibility lives on the INNER box: a hidden eventbox would still be
+;; clickable, a hidden box is removed from the layout entirely.
 (defvar sub_left false)
+(defvar sub_right true)
 (defvar sub_show false)
 
 
@@ -274,13 +276,19 @@
     ;; LEFT picker pane — only visible in the flipped layout (sub_left=true,
     ;; set at menu-open time by ctx.py when the menu sits near the RIGHT
     ;; monitor edge): the pane then renders on the LEFT side of the menu
-    ;; column, hugging it, so no column is clipped by the screen edge.
-    (eventbox :onclick "../scripts/widgets/close_popup.py" :visible {sub_left}
-      (box :class "submenu-pane" :width {sub_w} :halign "end" :valign "start"
-        (box :class "submenu" :valign "start" :halign "start"
+    ;; column, so no column is clipped by the screen edge. The pane strip is
+    ;; a FIXED 375px (the widest picker) wrapped in a plain :visible box (a
+    ;; :width widget does not collapse from the layout when hidden — a plain
+    ;; wrapper does), and the submenu hugs the menu side (:halign "end") —
+    ;; the menu column therefore never moves when the hovered submenu
+    ;; changes width.
+    (eventbox :onclick "../scripts/widgets/close_popup.py"
+      (box :visible {sub_left}
+        (box :class "submenu-pane" :width 375 :valign "start"
+        (box :class "submenu" :valign "start" :halign "end"
              :visible {sub_show}
              :style "margin-top:${sub_top}px"
-          (literal :content {sub_yuck}))))
+          (literal :content {sub_yuck})))))
     (box :class "ctx-menu" :orientation "v" :valign "start"
     ;; move.py opens the overlay + control panel and returns immediately, so it
     ;; is backgrounded (nohup ... &) to keep the shell call instant.
@@ -340,16 +348,19 @@
             (box :class "ctx-btn-box" (label :text "About"))))
     ;; RIGHT picker pane — the default layout (hidden when the flipped
     ;; sub_left=true layout shows the pane on the left instead). submenu.py
-    ;; fills sub_yuck / sub_top / sub_w and shows it while a selectable row
-    ;; is hovered. The pane box width follows the adaptive column count
-    ;; (2 cols = 250px, 3 = 375px). Clicking the empty pane area dismisses
+    ;; fills sub_yuck / sub_top and shows it while a selectable row is
+    ;; hovered. The pane strip is a FIXED 375px (wrapped in a plain
+    ;; :visible box, see the left pane) and the submenu hugs the menu side
+    ;; (:halign "start"), so the menu column never moves when the hovered
+    ;; submenu changes width. Clicking the empty pane area dismisses
     ;; everything, like the rest of the popup surface.
-    (eventbox :onclick "../scripts/widgets/close_popup.py" :visible {!sub_left}
-      (box :class "submenu-pane" :width {sub_w} :valign "start"
+    (eventbox :onclick "../scripts/widgets/close_popup.py"
+      (box :visible {sub_right}
+        (box :class "submenu-pane" :width 375 :valign "start"
         (box :class "submenu" :valign "start" :halign "start"
              :visible {sub_show}
              :style "margin-top:${sub_top}px"
-          (literal :content {sub_yuck}))))))
+          (literal :content {sub_yuck})))))))
 
 ;; ===========================================================================
 ;; Hover submenu (value picker for the selectable context-menu rows)
