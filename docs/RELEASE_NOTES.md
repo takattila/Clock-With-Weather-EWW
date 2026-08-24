@@ -1,171 +1,144 @@
-# Clock-With-Weather-EWW — v2.3.0
+# Clock-With-Weather-EWW — v3.0.0
 
 **A beautiful, fully customizable clock & weather widget with a live system
 monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
 layer-shell) and also works on **X11**. Powered by the
 [OpenWeatherMap](https://openweathermap.org) API.
 
-**v2.3.0 lets you resize width and height independently**: the Move / Resize
-dialog gained Width and Height rows (each with − / editable % / +), edge
-drags resize a single axis and Shift+arrows do it from the keyboard — while
-the classic proportional resize (+/-, corner drag) stays exactly as it was.
-Both widgets support it, and each monitor remembers its own width/height
-scales.
+**v3.0.0 turns the theme system style-aware**: every panel chart (CPU /
+Memory / NET Down / NET Up) can have its own color, the panel gets its own
+background (solid or gradient), and text can glow. Nine ready-made style
+themes showcase the new possibilities — **sunset-basic**, **neon**,
+**pastel**, **metallic-blue-orange**, **candy-pastel**, **aurora**,
+**cyberpunk**, **rose-gold** and **titanium** — each in two variants: a
+transparent base version and a `-bg` version with visible widget/panel
+backgrounds. Everything is optional: existing themes and configs keep
+working exactly as before.
 
 ---
 
-## What changed in v2.3.0
+## What changed in v3.0.0
 
-### New: independent width / height resize
+### New: style-aware theme system
 
-The Move / Resize control panel now has THREE resize rows:
+The `appearance` definition (theme YAML or inline map) accepts four new,
+optional sections:
 
-| Row | Buttons | Typed % action | Effect |
+| New key | Effect | Default (omitted) |
+|---|---|---|
+| `chart.colors.{cpu, memory, net_down, net_up}` | per-chart line/fill color | all charts use `font.color.light` (the pre-v3.0 behavior) |
+| `chart.glow` | neon glow under the chart lines (wide translucent stroke painted below the 2px line) | `false` |
+| `panel.background.{color, transparency}` | the system panel's own background, independent of the widget background | falls back to `background.color` / `background.transparency` |
+| `panel.background.gradient` | GTK CSS gradient as the panel background image, e.g. `linear-gradient(to bottom, #1b3a5c, #0d1f33)` | none |
+| `font.shadow.{color, blur}` | neon text glow (two-layer GTK `text-shadow`) on the clock digits and the panel titles | no shadow |
+
+The matching panel **titles follow their chart color** (CPU title orange,
+MEMORY title green, ... in the style themes), and the generated
+`eww.theme.scss` gained the `$chart-*`, `$panel-bg-*` and `$text-shadow`
+variables (documented in the
+[WIKI](https://github.com/takattila/Clock-With-Weather-EWW/blob/master/docs/WIKI.md)).
+
+### New: eighteen ready-made style themes (9 styles x 2 variants)
+
+Each style comes as a transparent base theme and a `-bg` variant with
+visible widget/panel backgrounds (the same convention as `dark` /
+`dark-bg`):
+
+| Style | Base (transparent) | With background | Palette (cpu / memory / net down / net up) |
 |---|---|---|---|
-| *(unlabeled)* | − / + | `set_scale` | proportional zoom, aspect ratio preserved (as before) |
-| **W** | − / + | `set_scale_x` | **width only** |
-| **H** | − / + | `set_scale_y` | **height only** |
+| Warm sunset | `sunset-basic` | `sunset-basic-bg` | orange / green / magenta / blue |
+| Cyberpunk neon (glowing charts, two-tone cyan-pink clock) | `neon` | `neon-bg` | orange / cyan / pink / lime |
+| Soft pastel | `pastel` | `pastel-bg` | peach / light green / pink / light blue |
+| Metallic steel (gradient panels) | `metallic-blue-orange` | `metallic-blue-orange-bg` | orange / sky / silver / blue |
+| Candy pastel | `candy-pastel` | `candy-pastel-bg` | pink / mint / lavender / peach |
+| Aurora glow (glowing charts + text) | `aurora` | `aurora-bg` | green / teal / violet / blue |
+| Techno neon (glowing charts + text) | `cyberpunk` | `cyberpunk-bg` | yellow / cyan / magenta / purple |
+| Rose gold metallic (shimmer glow, gradient) | `rose-gold` | `rose-gold-bg` | copper / champagne / dusty rose / lilac |
+| Titanium metallic (gradient panels) | `titanium` | `titanium-bg` | platinum / steel / silver / electric blue |
 
-- Every percentage is an editable field (30–150%, same clamp as before):
-  type a value and press Enter or leave the field; invalid input snaps back.
-  While you type, the keyboard daemon still steps aside (no accidental
-  Enter = Save).
-- The anchored edge stays fixed: the panel grows/shrinks leftward from its
-  right gap on W changes; the clock realigns to its anchor per axis.
-- New keyboard shortcuts (evdev daemon): **Shift+Up/Down** = height ±,
-  **Shift+Right/Left** = width ±. Plain arrows still move, +/- still zoom
-  proportionally.
-- Mouse resizing on the overlay rectangle: **corner drag keeps the aspect
-  ratio**, **edge drags resize a single axis** (left/right = width,
-  top/bottom = height).
-
-Both the clock and the system panel support everything above; each monitor
-stores its own values.
-
-### New config keys: `scale_x` / `scale_y`
-
-A Save that changed the axes independently writes `scale_x` (= width scale)
-and `scale_y` (= height scale) into the per_monitor entry of
-`weather.window` / `panel.window`, e.g.:
-
-```yaml
-panel:
-  window:
-    per_monitor:
-      0: { position_x: 0, position_y: 0, scale_x: 1.00, scale_y: 0.80 }
-```
-
-Each axis falls back to the shared `scale` when missing, so existing configs
-keep working unchanged — no migration needed. The classic `scale` key is
-still written (mirroring the width axis) for older external tooling.
+Pick them from the right-click Theme submenu like any other theme — new
+themes under `assets/themes/appearance/` are picked up automatically.
 
 ### Changed
 
-- **Installer pins and verifies the eww build by git hash.** `install.sh`
-  clones the pinned `EWW_REPO_REF` (default `v0.6.0`) and, after any install
-  path (distro package included), compares the installed binary's embedded
-  hash against the ref's commit SHA — offering a pinned source build
-  whenever they differ (default: y). Also clarifies the confusing upstream
-  version string: builds of the v0.6.0 tag print "eww 0.5.0 …" while their
-  content is v0.6.0.
-- **Single-instance process management + orphan cleanup.** Repeated widget
-  restarts used to accumulate orphaned background helpers (measured: 4x
-  config watcher, 4x monitor watcher and 2x keyboard daemon pairs after one
-  day — ~95 MB of wasted RAM): `stop.sh` killed only the newest instance via
-  its pidfile, and the input daemon had no stop path at all. A shared,
-  ancestor-protected pattern sweep (`scripts/bin/process_sweep.sh`) now runs
-  on start, stop and lazy daemon spawn, so exactly one instance of each
-  helper stays alive (verified with a double-start test). Total related RSS
-  dropped from ~272 MB to ~95 MB; the GUI daemon itself idles at ~55 MB and
-  0% CPU.
-- `scripts/move/move_ctl.py`: new actions `zoom_in_x` / `zoom_out_x`,
-  `zoom_in_y` / `zoom_out_y`, `set_scale_x` / `set_scale_y`; Reset clears
-  position and writes all three scale keys to 1.0; Save persists per-axis
-  scales.
-- `scripts/move/widget_rect.py`: reports the natural (100%) size for BOTH
-  widgets and computes the rectangle with independent axis scales.
-- `scripts/move/move_panel.py`: the resize entries share one refactored
-  `PctField` implementation; the panel is slightly taller to fit the new rows.
-- `eww.yuck` + `start.sh`: windows are scaled with separate X/Y percentages
-  (`main_scale_perc_x/y`, `panel_scale_perc_x/y`); the panel's anchored-edge
-  translate uses its own axis.
-- The Move/Resize session publishes a second percentage variable
-  (`move_pct_h`) so both fields always show live values.
+- The panel chart generator reads the per-chart colors (and the glow flag)
+  from `eww.theme.json`; the `$color-light` regex remains as a fallback for
+  older generated files.
+- The active-value highlight of the right-click submenu
+  (`.sub-btn.active`) used a hardcoded red; it now follows the theme's
+  light font color.
+- **The right-click Theme submenu never clips anymore.** With 40+ themes
+  the picker is now edge-aware: the context-menu window is sized down to
+  the monitor bottom at open time, the picker clamps to the bottom screen
+  edge and adds a third column when the list is too tall, and near the
+  right screen edge it flips to the LEFT side of the menu — every column
+  stays fully visible on every monitor, on either widget.
 
 ### Fixed
 
-- **KDE / Wayland: widgets could not be parked at the screen edges when the
-  stack was started without `WAYLAND_DISPLAY` in its environment** (SSH
-  session, some autostart/terminal contexts). Detection then silently fell
-  back to X11-compat windows, whose requested positions KWin ignores — the
-  resize rectangle showed the target spot but the widget landed elsewhere.
-  Compositor detection is now robust (env + `XDG_SESSION_TYPE` + running
-  compositor processes via a shared `scripts/core/detect.py`) and
-  `start.sh` imports each missing session variable individually, so a
-  Wayland desktop always gets native layer-shell windows with exact margin
-  placement. Genuine X11 sessions are unaffected.
-- **KDE / Wayland: right-clicking the system panel opened the weather
-  menu** (so the panel could not be moved or resized). Ownership forwarding
-  trusted xdotool for the cursor, but on Wayland it only tracks the pointer
-  over XWayland surfaces and reports a stale position above the native
-  widgets. The context menu now uses KDE's global cursor (KWin scripting)
-  on Wayland, and keeps clicks on the claimed widget when no cursor API is
-  available instead of acting on stale coordinates.
-- **The context menu now opens instantly.** Ownership resolution and menu
-  placement used to spawn 6 helper processes (each re-running the slow
-  monitor enumeration and config/YAML parsing), costing ~3.5 s before the
-  menu appeared. Everything runs in a single process now, with a short-TTL
-  monitor cache and in-process config/font caches: ~0.3 s cold,
-  imperceptible afterwards. `menu_pos.py` exposes the placement as a
-  reusable function; hotplug invalidates the cache.
-- **Moving the panel and pressing Save silently did nothing.** The off-screen
-  safety check validated the panel's saved POSITION OFFSETS as if they were
-  absolute screen coordinates — every drag AWAY from the anchored edge
-  produces a negative offset and was therefore refused invisibly (stderr is
-  discarded by design). The check now validates the dragged rectangle itself,
-  Save/Cancel run synchronously with inline error feedback in the control
-  panel, and `move_ctl.py` appends every action + refusal to
-  `logs/move_ctl.log` for future diagnosis.
-- **Right-clicking a widget partially covered by the other one opened the
-  wrong menu** (e.g. clicking the clock where it slid under the panel's
-  transparent bottom strip opened the panel's Move/Resize rectangle). The
-  context-menu opener now checks which widget is VISIBLE under the cursor and
-  forwards accordingly, so the rectangle always matches the widget you aimed
-  at.
-- **Right-click stopped working after using Move / Resize until restart.**
-  The invisible per-monitor dismiss layers are intentionally kept open for
-  the whole move/resize session (click-outside-to-cancel), but ending the
-  session with Save / Cancel / Reset — or Enter / ESC on the keyboard — only
-  cleared the session file: an invisible full-screen layer stayed above the
-  widget and swallowed every further click. The session teardown now closes
-  the popup stack itself, and popup closing additionally discovers orphaned
-  overlays by instance id from `eww active-windows`, so leftovers can be
-  cleaned even when their session file is already gone.
-- **Resizing above 100% no longer clips the widget, and shrunken widgets can
-  finally be parked at the screen edges.** The eww window is a fixed-size
-  transparent canvas whose drawing is scaled visually; the canvas itself used
-  to stay at the natural (100%) size — so an enlarged widget was cut off at
-  its old bounds, and a shrunken one dragged to e.g. the bottom-right corner
-  made the oversized invisible canvas overflow the monitor, which the window
-  manager then relocated (dragging the visible widget away from where the
-  resize rectangle showed it). The canvas now grows above 100%, and below
-  100% it is positioned to always fit while a transform translate places the
-  scaled content exactly on the saved rectangle — for both widgets.
-- Removed duplicated GTK handler definitions in `scripts/move/move_panel.py`
-  (`on_pct_button_press` / `on_pct_focus_in` existed twice since v2.2.0;
-  Python silently kept the second copy).
+- **Light widget elements no longer sit on light backgrounds.** When a
+  theme's main text would vanish on its own painted background (light text
+  on a light box — e.g. the pastel `-bg` variants), `theme.py` flips that
+  background to a contrasting, hue-preserving tone (`pastel-bg`'s
+  `#f5f7fa` renders as dark slate `#111822`). Only painted backgrounds are
+  affected; fully transparent themes are untouched.
+- **Light-background themes keep the context menu, submenu and panel
+  status text readable.** The menu/submenu ink used to follow
+  `font.color.light` unconditionally — white text on the white menu
+  background of the pastel-style themes. `theme.py` now derives the ink
+  from the background luminance (`$menu-ink` / `$panel-ink`): dark
+  backgrounds keep the classic light ink, light backgrounds flip to a
+  dark gray automatically. No theme key needed; existing themes are
+  pixel-identical.
 
 ### Upgrade from v2.x
 
-1. Pull / check out `v2.3.0`.
+1. Pull / check out `v3.0.0`.
 2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
-3. Nothing else to do — your existing `config.local.yaml` keeps working; the
-   new axis scales appear there automatically after the first non-proportional
-   Save.
+3. Nothing else to do — every new appearance key is optional and falls back
+   to the previous behavior, so your existing themes and
+   `config.local.yaml` keep working unchanged. Try the new style themes
+   from the right-click menu's Theme submenu.
 
 ---
 
 ## Screenshots
+
+| Sunset basic | Sunset basic — bg |
+|---|---|
+| ![Sunset basic](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-sunset-basic.png) | ![Sunset basic bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-sunset-basic-bg.png) |
+
+| Neon | Neon — bg |
+|---|---|
+| ![Neon](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-neon.png) | ![Neon bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-neon-bg.png) |
+
+| Pastel | Pastel — bg |
+|---|---|
+| ![Pastel](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-pastel.png) | ![Pastel bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-pastel-bg.png) |
+
+| Metallic blue-orange | Metallic blue-orange — bg |
+|---|---|
+| ![Metallic blue-orange](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-metallic-blue-orange.png) | ![Metallic blue-orange bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-metallic-blue-orange-bg.png) |
+
+| Candy pastel | Candy pastel — bg |
+|---|---|
+| ![Candy pastel](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-candy-pastel.png) | ![Candy pastel bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-candy-pastel-bg.png) |
+
+| Aurora | Aurora — bg |
+|---|---|
+| ![Aurora](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-aurora.png) | ![Aurora bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-aurora-bg.png) |
+
+| Cyberpunk | Cyberpunk — bg |
+|---|---|
+| ![Cyberpunk](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-cyberpunk.png) | ![Cyberpunk bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-cyberpunk-bg.png) |
+
+| Rose gold | Rose gold — bg |
+|---|---|
+| ![Rose gold](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-rose-gold.png) | ![Rose gold bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-rose-gold-bg.png) |
+
+| Titanium | Titanium — bg |
+|---|---|
+| ![Titanium](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-titanium.png) | ![Titanium bg](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/theme-titanium-bg.png) |
 
 | Dark text with light background | Light text with dark background |
 |---|---|
@@ -187,6 +160,11 @@ still written (mirroring the width axis) for older external tooling.
   location, description, MIN/MAX/Feels) in one widget.
 - **System Monitor Panel** — a side panel with real-time **CPU**, **Memory**
   and **Network Traffic** (Download/Upload) SVG charts.
+- **Style-aware theming** — per-chart colors, panel background with optional
+  gradient and neon text/chart glow; nine ready-made style themes
+  (sunset-basic, neon, pastel, metallic-blue-orange, candy-pastel, aurora,
+  cyberpunk, rose-gold, titanium), each in a transparent and a `-bg`
+  variant, showcase it.
 - **Dynamic Scaling** — the network charts auto-adjust their scale and units
   (KiB/s to MiB/s) based on traffic; the active network interface is detected
   automatically.
@@ -252,9 +230,9 @@ Defaults live in a single, heavily commented `config.yaml`; machine-specific
 overrides go into the git-ignored `config.local.yaml` (same structure, only
 what you want to change):
 
-- `appearance` — a theme name (`light`, `dark`, `dark-orange-bg`, ...) or a
+- `appearance` — a theme name (`light`, `dark`, `neon`, `pastel`, ...) or a
   custom inline appearance map (fonts, colors, icon set + tint, transparency,
-  background).
+  background, per-chart colors, panel background/gradient, text shadow).
 - `weather` — city settings (via a named weather theme or inline), window
   alignment, and **per-monitor** `position_x` / `position_y` / `scale`
   (+ optional independent `scale_x` / `scale_y`).
@@ -272,26 +250,36 @@ returns everything to the committed defaults.
 
 ## Themes
 
-A wide gallery of ready-made **light** and **dark** appearance themes plus
-per-city weather themes (`assets/themes/weather/<name>/weather.yaml`) — or define
-your own colors inline in `config.yaml` (or locally override them in
-`config.local.yaml` without touching the tracked defaults). Pick any of them
-from the right-click menu's Theme submenu.
+A wide gallery of ready-made **light** and **dark** appearance themes — now
+including the nine **style themes** (`sunset-basic`, `neon`, `pastel`,
+`metallic-blue-orange`, `candy-pastel`, `aurora`, `cyberpunk`, `rose-gold`,
+`titanium`, each in a transparent and a `-bg` variant) with per-chart colors,
+gradient panel backgrounds and glow — plus per-city weather themes
+(`assets/themes/weather/<name>/weather.yaml`). Or define your own colors
+inline in `config.yaml` (or locally override them in `config.local.yaml`
+without touching the tracked defaults). Pick any of them from the
+right-click menu's Theme submenu; see the WIKI's "Creating style themes"
+section for the full recipe.
 
 ## Documentation
 
 - **[README](https://github.com/takattila/Clock-With-Weather-EWW/blob/master/README.md)**
   — overview, screenshots and quick start.
+- **[SCREENSHOTS](https://github.com/takattila/Clock-With-Weather-EWW/blob/master/docs/SCREENSHOTS.md)**
+  — gallery of all 42 themes plus the context menu in action.
 - **[WIKI](https://github.com/takattila/Clock-With-Weather-EWW/blob/master/docs/WIKI.md)**
   — dependencies, version-change risks, `config.yaml` reference, project
-  structure, EWW/CSS customization and testing.
+  structure, EWW/CSS customization, style themes and testing.
 - **[PLAN](https://github.com/takattila/Clock-With-Weather-EWW/blob/master/docs/PLAN.md)**
-  — the executed plan behind the independent width/height resize.
+  — the executed plan behind the style-aware theme system.
 
 ## Compatibility
 
 - **Wayland** (KDE Plasma tested) — EWW + GTK layer-shell.
 - **X11** (Linux Mint / Cinnamon tested) — EWW absolute-coordinate placement.
+- Every v3.0.0 style feature (per-chart colors, gradient panel background,
+  text/chart glow) is plain GTK3 CSS + SVG rendering, identical on both
+  compositors — verified on X11/Cinnamon and Wayland/KDE.
 - Python 3.11+, eww 0.5.0+, `PyYAML`, `psutil`, `requests`, `pillow`
   (see the WIKI for the full dependency table).
 
@@ -312,6 +300,7 @@ from the right-click menu's Theme submenu.
 ---
 
 > Looking for older release notes? They are preserved on their release pages:
+> [v2.3.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.3.0),
 > [v2.2.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.2.0),
 > [v2.1.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.1.0),
 > [v2.0.0](https://github.com/takattila/Clock-With-Weather-EWW/releases/tag/v2.0.0),
