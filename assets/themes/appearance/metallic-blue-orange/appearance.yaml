@@ -1,0 +1,27 @@
+appearance:
+  theme: dark
+  icon:
+    set: openweathermap
+    transparency:
+      light: 1.0
+      dark: 0.8
+    color:
+      dark: '#cfe8ff'
+  font:
+    face: Noto Sans
+    color:
+      light: '#6db3f2'
+      dark: '#ff8c1a'
+    transparency:
+      light: 1.0
+      dark: 1.0
+  background:
+    transparency: 0.0
+    color: '#0d1f33'
+  chart:
+    colors:
+      cpu: '#ff8c1a'
+      memory: '#4fc3f7'
+      net_down: '#cfd8dc'
+      net_up: '#2979ff'
+    glow: false

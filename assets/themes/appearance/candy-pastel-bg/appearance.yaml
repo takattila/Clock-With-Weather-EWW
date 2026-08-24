@@ -1,0 +1,29 @@
+appearance:
+  theme: light
+  icon:
+    set: dovora
+    transparency:
+      light: 1.0
+      dark: 0.5
+  font:
+    face: Noto Sans
+    color:
+      light: '#fdf6f9'
+      dark: '#e8c7d8'
+    transparency:
+      light: 1.0
+      dark: 1.0
+  background:
+    transparency: 0.4
+    color: '#fff0f5'
+  chart:
+    colors:
+      cpu: '#ff9ebb'
+      memory: '#a8e6cf'
+      net_down: '#cdb4f6'
+      net_up: '#ffd3a5'
+    glow: false
+  panel:
+    background:
+      color: '#fff0f5'
+      transparency: 0.45
