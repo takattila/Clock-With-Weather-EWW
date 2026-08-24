@@ -7,6 +7,15 @@ backgrounds.** Pick any of them live from the right-click menu's Theme
 submenu — or use them as recipes for your own (see the WIKI's "Creating
 style themes" section).
 
+## Overview
+
+The clock & weather widget with the system monitor panel — dark text on a
+light background (Budapest) and light text on a dark background (New York):
+
+| Dark text with light background | Light text with dark background |
+|---|---|
+| ![Budapest dark blue](images/screenshots/budapest-dark-blue.png) | ![New York light bg](images/screenshots/new-york-light-bg.png) |
+
 ## Style themes
 
 ### Warm sunset — `sunset-basic` / `sunset-basic-bg`
@@ -128,6 +137,15 @@ Light text on dark/transparent backgrounds, in six accent colors.
 | ![dark-yellow](images/screenshots/theme-dark-yellow.png) | ![dark-yellow-bg](images/screenshots/theme-dark-yellow-bg.png) |
 
 ---
+
+## System monitor panel
+
+The full-height side panel with live CPU / Memory / Network charts
+(light-orange and dark-orange-bg themes):
+
+| With panel — theme: light-orange | With panel — theme: dark-orange-bg |
+|---|---|
+| ![Panel light orange](images/screenshots/panel-light-orange.png) | ![Panel dark orange bg](images/screenshots/panel-dark-orange-bg.png) |
 
 ## Context menu
 
