@@ -45,6 +45,7 @@
 .hour-label {
   font-size: 145px;
   color: rgba($color-light, $color-light-alpha);
+  text-shadow: $text-shadow;
   margin-left: 10px;
   margin-top: 16px;
 }
@@ -52,6 +53,7 @@
 .minutes-label {
   font-size: 145px;
   color: rgba($color-dark, $color-dark-alpha);
+  text-shadow: $text-shadow;
   margin-left: 165px;
   margin-top: 16px;
 }
@@ -253,22 +255,43 @@
    ============================================================ */
 
 .panel-container {
-  background-color: rgba($bg-color, $bg-alpha);
+  background-color: rgba($panel-bg-color, $panel-bg-alpha);
+  background-image: $panel-bg-image;
   border-radius: $bg-radius;
-  color: rgba($color-light, $color-light-alpha);
+  color: rgba($panel-ink, $color-light-alpha);
 }
 
 .panel-title {
   font-size: 22px;
   font-weight: bold;
-  color: rgba($color-light, 0.9);
+  color: rgba($panel-ink, 0.9);
+  text-shadow: $text-shadow;
   margin-top: 6px;
   margin-left: 10px;
 }
 
+/* Per-section title colors: each title follows its chart color (falls back
+   to $color-light for themes without chart.colors). */
+
+.panel-title-cpu {
+  color: rgba($chart-cpu, 0.9);
+}
+
+.panel-title-memory {
+  color: rgba($chart-memory, 0.9);
+}
+
+.panel-title-down {
+  color: rgba($chart-down, 0.9);
+}
+
+.panel-title-up {
+  color: rgba($chart-up, 0.9);
+}
+
 .panel-status {
   font-size: 14px;
-  color: rgba($color-light, 0.7);
+  color: rgba($panel-ink, 0.7);
   margin-top: 2px;
   margin-left: 10px;
 }
@@ -280,11 +303,14 @@
 
 /* ============================================================
    Context menu (right-click)
+   The menu paints its background from $bg-color, so its "ink"
+   ($menu-ink) is derived from that background's luminance: light
+   backgrounds automatically flip to a dark ink (theme.py).
    ============================================================ */
 
 .ctx-menu {
   background-color: rgba($bg-color, 0.95);
-  border: 1px solid rgba($color-light, 0.15);
+  border: 1px solid rgba($menu-ink, 0.15);
   border-radius: $bg-radius;
   padding: 6px;
 }
@@ -297,11 +323,11 @@
 }
 
 .ctx-btn:hover {
-  background-color: rgba($color-light, 0.12);
+  background-color: rgba($menu-ink, 0.12);
 }
 
 .ctx-btn:active {
-  background-color: rgba($color-light, 0.22);
+  background-color: rgba($menu-ink, 0.22);
 }
 
 .ctx-btn-box {
@@ -310,7 +336,7 @@
 
 .ctx-btn-box label {
   font-size: 15px;
-  color: rgba($color-light, $color-light-alpha);
+  color: rgba($menu-ink, $color-light-alpha);
 }
 
 /* ============================================================
@@ -319,7 +345,7 @@
 
 .submenu {
   background-color: rgba($bg-color, 0.95);
-  border: 1px solid rgba($color-light, 0.15);
+  border: 1px solid rgba($menu-ink, 0.15);
   border-radius: $bg-radius;
   padding: 4px 3px;
 }
@@ -336,15 +362,15 @@
 }
 
 .sub-btn:hover {
-  background-color: rgba($color-light, 0.12);
+  background-color: rgba($menu-ink, 0.12);
 }
 
 .sub-btn:active {
-  background-color: rgba($color-light, 0.22);
+  background-color: rgba($menu-ink, 0.22);
 }
 
 .sub-btn.active {
-  background-color: red;
+  background-color: rgba($menu-ink, 0.35);
 }
 
 .sub-btn-box {
@@ -353,12 +379,12 @@
 
 .sub-btn-box label {
   font-size: 12px;
-  color: rgba($color-light, $color-light-alpha);
+  color: rgba($menu-ink, $color-light-alpha);
 }
 
 .ctx-sep {
   font-size: 7px;
   letter-spacing: 4px;
-  color: rgba($color-light, 0.35);
+  color: rgba($menu-ink, 0.35);
   margin: 2px 14px;
 }

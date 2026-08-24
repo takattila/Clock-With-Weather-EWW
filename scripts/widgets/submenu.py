@@ -26,6 +26,8 @@ Usage:
 """
 
 import argparse
+import json
+import math
 import os
 import subprocess
 import sys
@@ -43,8 +45,43 @@ APPEARANCE_THEMES_DIR = os.path.join(CONFIG_DIR, "assets", "themes", "appearance
 # Pane geometry (kept in sync with eww.yuck / eww.scss).
 MENU_PAD = 7     # ctx_menu top padding (+border)
 ROW_H = 42.6     # calibrated pitch of one context-menu row
-SUB_ROW_H = 30   # one picker row
+SUB_ROW_H = 30   # one picker row (deliberate over-estimate: clamps fire early)
 SUB_PAD_V = 8    # picker vertical padding (top+bottom)
+
+# The pane lives INSIDE the ctx_menu window. ctx.py opens that window with a
+# height that already reaches the monitor bottom (menu_h = monitor_h - y -
+# EDGE_MARGIN, floored at BASE_MENU_H) and stores menu_h / monitor_h / y in
+# the input session; this script then keeps the pane inside the window and
+# on the screen purely with eww variables (sub_top clamp + adaptive column
+# count), because `eww update` cannot change window-arg variables (menu_h,
+# pos_y) of a running window. EDGE_MARGIN is the gap kept above the bottom
+# screen edge. SUB_W is the picker pane width per column count (the yuck
+# pane box is :width {sub_w}).
+BASE_MENU_H = 550
+EDGE_MARGIN = 8
+SUB_W = {1: 130, 2: 250, 3: 375}
+MENU_COL_W = 290  # conservative natural width of the ctx-menu column
+
+
+def horizontal_layout(x, monitor_w, pane_w_max=SUB_W[3]):
+    """(x_open, sub_left) for the ctx_menu window on `monitor_w` px.
+
+    The picker pane renders RIGHT of the menu column by default. When that
+    would cross the right monitor edge but the pane fits on the left, the
+    window opens pane_w_max further left and the pane FLIPS to the left
+    side of the menu column (sub_left=true) — so even the widest (3-column)
+    theme picker stays fully on-screen. As a last resort (pane fits on
+    neither side) the window just shifts left, clamped to the monitor.
+    """
+    if not monitor_w:
+        return x, False
+    fits_right = x + MENU_COL_W + pane_w_max + EDGE_MARGIN <= monitor_w
+    fits_left = x - pane_w_max >= 0
+    if fits_right:
+        return x, False
+    if fits_left:
+        return x - pane_w_max, True
+    return max(0, min(x, monitor_w - MENU_COL_W - pane_w_max - EDGE_MARGIN)), False
 
 # Row index of every selectable item inside widget_ctx_menu (0-based).
 ROWS = {
@@ -123,11 +160,10 @@ def active_for(key, cfg):
 
 
 def split_columns(options, columns):
-    """Split the option list into balanced column lists."""
-    if columns <= 1:
-        return options, []
-    half = (len(options) + 1) // 2
-    return options[:half], options[half:]
+    """Split the option list into `columns` balanced column lists."""
+    columns = max(1, int(columns))
+    per_col = math.ceil(len(options) / float(columns)) if options else 0
+    return [options[i * per_col:(i + 1) * per_col] for i in range(columns)]
 
 
 def build_yuck(key, options, active, columns):
@@ -137,7 +173,7 @@ def build_yuck(key, options, active, columns):
     eww 0.6.0 does not wire handlers onto widgets created inside `(for ...)`
     loops, so the definition is generated here instead of looped in yuck.
     """
-    col_a, col_b = split_columns(options, columns)
+    chunks = split_columns(options, columns)
 
     def row(o):
         cls = "sub-btn active" if o["value"] == str(active) else "sub-btn"
@@ -151,7 +187,7 @@ def build_yuck(key, options, active, columns):
         )
 
     parts = ['(box :class "submenu" :orientation "h" :space-evenly false']
-    for col in (col_a, col_b):
+    for col in chunks:
         if not col:
             continue
         parts.append(
@@ -166,18 +202,71 @@ def pane_top_for(key):
     return int(MENU_PAD + ROWS[key] * ROW_H)
 
 
+THEME_ROW_TOP = int(MENU_PAD + ROWS["appearance"] * ROW_H)
+
+
+def pane_height(options, columns):
+    """Total picker pane height in px (rows * pitch + vertical padding)."""
+    rows = math.ceil(len(options) / float(columns)) if columns > 0 else len(options)
+    return int(rows * SUB_ROW_H + SUB_PAD_V)
+
+
+def max_pane_height(columns=2):
+    """Worst-case theme picker pane height for the CURRENT theme count.
+
+    ctx.py uses it at menu-open time to size the ctx_menu window so the
+    theme picker always fits without any runtime window mutation.
+    """
+    return pane_height([None] * len(available_themes()), columns)
+
+
+def session_geometry():
+    """{y, monitor_h, menu_h} of the open ctx_menu window (fallbacks when
+    the input session file is missing: menu at the top of a 1080p screen
+    with the default window height)."""
+    path = os.path.join(CONFIG_DIR, "generated", "input_session.json")
+    geo = {"y": 0, "monitor_h": 1080, "menu_h": BASE_MENU_H}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        geo["y"] = int(data.get("y", 0))
+        geo["monitor_h"] = int(data.get("monitor_h", 1080))
+        geo["menu_h"] = int(data.get("menu_h", BASE_MENU_H))
+    except Exception:
+        pass
+    return geo
+
+
 def open_item(key):
     cfg = load_merged(CONFIG_DIR)
     options = options_for(key, cfg)
     active = active_for(key, cfg)
+
+    # Everything the pane may need is known at menu-open time: ctx.py sized
+    # the window to reach the monitor bottom (session menu_h) and stored the
+    # monitor height. The pane is kept inside BOTH purely with eww variables:
+    # `eww update` cannot change window-arg variables (menu_h, pos_y) of a
+    # running window, so the window itself is never mutated here.
+    geo = session_geometry()
+    limit = max(
+        MENU_PAD,
+        min(geo["menu_h"], geo["monitor_h"] - EDGE_MARGIN - geo["y"]) - MENU_PAD,
+    )
+    row_top = pane_top_for(key)
+
     columns = 2 if key == "appearance" else 1
-    top = pane_top_for(key)
+    while key == "appearance" and columns < 3 and \
+            pane_height(options, columns) > limit - row_top:
+        columns += 1  # long list + little room: trade width for height
+    pane_h = pane_height(options, columns)
+    top = int(max(MENU_PAD, min(row_top, limit - pane_h)))
 
     eww(
         "update",
         "sub_yuck=%s" % build_yuck(key, options, active, columns),
         "sub_top=%d" % top,
         "sub_cols=%d" % columns,
+        "sub_w=%d" % SUB_W.get(columns, 250),
         "sub_show=true",
     )
 
