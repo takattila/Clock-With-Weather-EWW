@@ -39,18 +39,61 @@ def test_hex_to_rgb255():
     assert panel.hex_to_rgb255("#abc") == (170, 187, 204)
 
 
-def test_load_chart_color(monkeypatch, tmp_path):
+def test_load_chart_colors(monkeypatch, tmp_path):
     panel = _panel()
+    theme_json = tmp_path / "eww.theme.json"
+    theme_json.write_text(
+        json.dumps(
+            {
+                "chart_cpu": "#ff9500",
+                "chart_memory": "#00e5ff",
+                "chart_down": "#ff2d95",
+                "chart_up": "#39ff14",
+                "chart_glow": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(panel, "THEME_JSON_FILE", str(theme_json))
+    colors, glow = panel.load_chart_colors()
+    assert colors == {
+        "cpu": "#ff9500",
+        "mem": "#00e5ff",
+        "down": "#ff2d95",
+        "up": "#39ff14",
+    }
+    assert glow is True
+
+
+def test_load_chart_colors_scss_fallback(monkeypatch, tmp_path):
+    """Without the theme JSON the $color-light regex still feeds all charts."""
+    panel = _panel()
+    monkeypatch.setattr(panel, "THEME_JSON_FILE", str(tmp_path / "missing.json"))
     scss = tmp_path / "eww.theme.scss"
     scss.write_text("$color-light: #aabbcc;\n", encoding="utf-8")
     monkeypatch.setattr(panel, "THEME_FILE", str(scss))
-    assert panel.load_chart_color() == "#aabbcc"
+    colors, glow = panel.load_chart_colors()
+    assert colors == {
+        "cpu": "#aabbcc",
+        "mem": "#aabbcc",
+        "down": "#aabbcc",
+        "up": "#aabbcc",
+    }
+    assert glow is False
 
 
-def test_load_chart_color_default(monkeypatch, tmp_path):
+def test_load_chart_colors_default(monkeypatch, tmp_path):
     panel = _panel()
+    monkeypatch.setattr(panel, "THEME_JSON_FILE", str(tmp_path / "missing.json"))
     monkeypatch.setattr(panel, "THEME_FILE", str(tmp_path / "missing.scss"))
-    assert panel.load_chart_color() == "#ffffff"
+    colors, glow = panel.load_chart_colors()
+    assert colors == {
+        "cpu": "#ffffff",
+        "mem": "#ffffff",
+        "down": "#ffffff",
+        "up": "#ffffff",
+    }
+    assert glow is False
 
 
 def test_render_chart(tmp_path):
@@ -61,6 +104,16 @@ def test_render_chart(tmp_path):
     assert 'width="100" height="50"' in svg
     assert "<polyline" in svg
     assert '<polygon points="' in svg
+
+
+def test_render_chart_glow(tmp_path):
+    panel = _panel()
+    out = tmp_path / "cpu.svg"
+    panel.render_chart(str(out), [50, 100, 25], 100, "#ff0000", 100, 50, glow=True)
+    svg = out.read_text(encoding="utf-8")
+    assert svg.count("<polyline") == 2
+    assert 'stroke-width="6"' in svg
+    assert 'stroke-width="2"' in svg
 
 
 def test_main(monkeypatch, tmp_path, capsys):
@@ -88,6 +141,7 @@ def test_main(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(panel, "CHARTS_DIR", str(charts))
     monkeypatch.setattr(panel, "STATE_FILE", str(tmp_path / "state.json"))
     monkeypatch.setattr(panel, "THEME_FILE", str(tmp_path / "eww.theme.scss"))
+    monkeypatch.setattr(panel, "THEME_JSON_FILE", str(tmp_path / "eww.theme.json"))
     monkeypatch.setattr(panel, "LAYOUT_FILE", str(tmp_path / ".layout.json"))
 
     panel.main()

@@ -34,6 +34,16 @@
 ;; variables -> identical behavior on X11 and Wayland, no extra window.
 (defvar sub_top 7)
 (defvar sub_cols 1)
+;; Horizontal flip: when the menu opens near the RIGHT monitor edge, ctx.py
+;; opens the window shifted left and sets sub_left=true + sub_right=false,
+;; so the picker pane renders on the LEFT side of the parent menu column
+;; (the right pane is hidden) and never gets clipped by the screen edge.
+;; Both flags are plain globals always written as a pair by ctx.py (no
+;; negation expressions - eww 0.6.0 is unreliable at those), and the
+;; visibility lives on the INNER box: a hidden eventbox would still be
+;; clickable, a hidden box is removed from the layout entirely.
+(defvar sub_left false)
+(defvar sub_right true)
 (defvar sub_show false)
 
 
@@ -231,22 +241,22 @@
       (box :class "panel-container" :orientation "v" :space-evenly true
 
         (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-          (label :class "panel-title" :text "CPU" :halign "start")
+          (label :class "panel-title panel-title-cpu" :text "CPU" :halign "start")
           (label :class "panel-status" :text {panel.cpu_txt} :halign "start")
           (image :class "panel-chart" :path {panel.files[ph].cpu} :halign "start"))
 
         (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-          (label :class "panel-title" :text "MEMORY" :halign "start")
+          (label :class "panel-title panel-title-memory" :text "MEMORY" :halign "start")
           (label :class "panel-status" :text {panel.mem_txt} :halign "start")
           (image :class "panel-chart" :path {panel.files[ph].mem} :halign "start"))
 
         (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-          (label :class "panel-title" :text "NET DOWN" :halign "start")
+          (label :class "panel-title panel-title-down" :text "NET DOWN" :halign "start")
           (label :class "panel-status" :text {panel.down_txt} :halign "start")
           (image :class "panel-chart" :path {panel.files[ph].down} :halign "start"))
 
         (box :class "panel-section" :orientation "v" :space-evenly false :halign "start"
-          (label :class "panel-title" :text "NET UP" :halign "start")
+          (label :class "panel-title panel-title-up" :text "NET UP" :halign "start")
           (label :class "panel-status" :text {panel.up_txt} :halign "start")
           (image :class "panel-chart" :path {panel.files[ph].up} :halign "start"))))))
 
@@ -263,6 +273,22 @@
 ;; like Move / Resize.
 (defwidget widget_ctx_menu [widget monitor]
   (box :orientation "h" :space-evenly false
+    ;; LEFT picker pane — only visible in the flipped layout (sub_left=true,
+    ;; set at menu-open time by ctx.py when the menu sits near the RIGHT
+    ;; monitor edge): the pane then renders on the LEFT side of the menu
+    ;; column, so no column is clipped by the screen edge. The pane strip is
+    ;; a FIXED 375px (the widest picker) wrapped in a plain :visible box (a
+    ;; :width widget does not collapse from the layout when hidden — a plain
+    ;; wrapper does), and the submenu hugs the menu side (:halign "end") —
+    ;; the menu column therefore never moves when the hovered submenu
+    ;; changes width.
+    (eventbox :onclick "../scripts/widgets/close_popup.py"
+      (box :visible {sub_left}
+        (box :class "submenu-pane" :width 375 :valign "start"
+        (box :class "submenu" :valign "start" :halign "end"
+             :visible {sub_show}
+             :style "margin-top:${sub_top}px"
+          (literal :content {sub_yuck})))))
     (box :class "ctx-menu" :orientation "v" :valign "start"
     ;; move.py opens the overlay + control panel and returns immediately, so it
     ;; is backgrounded (nohup ... &) to keep the shell call instant.
@@ -320,15 +346,21 @@
     (button :class "ctx-btn" :timeout "10s"
             :onclick "../scripts/widgets/about.py --open --monitor ${monitor}"
             (box :class "ctx-btn-box" (label :text "About"))))
-    ;; Quick-settings picker pane: submenu.py fills sub_yuck / sub_top and
-    ;; shows it while a selectable row is hovered. Clicking the empty pane
-    ;; area dismisses everything, like the rest of the popup surface.
+    ;; RIGHT picker pane — the default layout (hidden when the flipped
+    ;; sub_left=true layout shows the pane on the left instead). submenu.py
+    ;; fills sub_yuck / sub_top and shows it while a selectable row is
+    ;; hovered. The pane strip is a FIXED 375px (wrapped in a plain
+    ;; :visible box, see the left pane) and the submenu hugs the menu side
+    ;; (:halign "start"), so the menu column never moves when the hovered
+    ;; submenu changes width. Clicking the empty pane area dismisses
+    ;; everything, like the rest of the popup surface.
     (eventbox :onclick "../scripts/widgets/close_popup.py"
-      (box :class "submenu-pane" :width 250 :valign "start"
+      (box :visible {sub_right}
+        (box :class "submenu-pane" :width 375 :valign "start"
         (box :class "submenu" :valign "start" :halign "start"
              :visible {sub_show}
              :style "margin-top:${sub_top}px"
-          (literal :content {sub_yuck}))))))
+          (literal :content {sub_yuck})))))))
 
 ;; ===========================================================================
 ;; Hover submenu (value picker for the selectable context-menu rows)
@@ -436,13 +468,17 @@
 ;; On X11 `:stacking "overlay"` keeps the window a normal toplevel (no
 ;; set_keep_above/below), so it floats above the keep-below widget windows.
 ;; :focusable true lets the buttons receive clicks on Wayland.
+;; The height is DYNAMIC (menu_h, default "550px" from ctx.py): the hover
+;; submenu pane renders inside this window, and long pickers (the theme
+;; list) grow it via submenu.py so nothing gets clipped; the pane top and
+;; the window y are edge-clamped there as well.
 (defwindow ctx_menu
-  [screen widget monitor pos_x pos_y]
+  [screen widget monitor pos_x pos_y menu_h]
   :monitor {screen}
   :geometry (geometry :x {pos_x}
                       :y {pos_y}
                       :width "470px"
-                      :height "550px"
+                      :height {menu_h}
                       :anchor "top left")
   :stacking "overlay"
   :windowtype "normal"

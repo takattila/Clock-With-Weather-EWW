@@ -61,6 +61,171 @@ def test_load_appearance_missing_theme(config_dir):
         theme.load_appearance(str(config_dir), "does-not-exist")
 
 
+def test_parse_appearance_style_defaults(appearance_dict):
+    """Without the v3.0 style keys everything falls back to the classic values."""
+    data = theme.parse_appearance(appearance_dict)
+    assert data["chart_cpu"] == "#ffffff"
+    assert data["chart_memory"] == "#ffffff"
+    assert data["chart_down"] == "#ffffff"
+    assert data["chart_up"] == "#ffffff"
+    assert data["chart_glow"] is False
+    assert data["panel_bg_color"] == "#000000"
+    assert data["panel_bg_alpha"] == 0.2
+    assert data["panel_bg_image"] == "none"
+    assert data["text_shadow"] == "none"
+
+
+def test_parse_appearance_style_keys():
+    data = theme.parse_appearance(
+        {
+            "theme": "dark",
+            "font": {
+                "color": {"light": "#00e5ff", "dark": "#ff2d95"},
+                "shadow": {"color": "#00e5ff", "blur": 8},
+            },
+            "background": {"color": "#000010", "transparency": 0.25},
+            "chart": {
+                "colors": {
+                    "cpu": "#ff9500",
+                    "memory": "#00e5ff",
+                    "net_down": "#ff2d95",
+                    "net_up": "#39ff14",
+                },
+                "glow": True,
+            },
+            "panel": {
+                "background": {
+                    "color": "#000020",
+                    "transparency": 0.5,
+                    "gradient": "linear-gradient(to bottom, #1b3a5c, #0d1f33)",
+                }
+            },
+        }
+    )
+    assert data["chart_cpu"] == "#ff9500"
+    assert data["chart_memory"] == "#00e5ff"
+    assert data["chart_down"] == "#ff2d95"
+    assert data["chart_up"] == "#39ff14"
+    assert data["chart_glow"] is True
+    assert data["panel_bg_color"] == "#000020"
+    assert data["panel_bg_alpha"] == 0.5
+    assert data["panel_bg_image"] == "linear-gradient(to bottom, #1b3a5c, #0d1f33)"
+    assert data["text_shadow"] == (
+        "0 0 8px rgba(0,229,255,0.85), 0 0 16px rgba(0,229,255,0.45)"
+    )
+
+
+def test_text_shadow_value():
+    assert theme._text_shadow_value({}) == "none"
+    assert theme._text_shadow_value({"color": "#ff0000"}) == "none"
+    assert theme._text_shadow_value({"blur": 8}) == "none"
+    assert theme._text_shadow_value({"color": "#00e5ff", "blur": 4}) == (
+        "0 0 4px rgba(0,229,255,0.85), 0 0 8px rgba(0,229,255,0.45)"
+    )
+    # An unparsable blur falls back to 6 px.
+    assert theme._text_shadow_value({"color": "#ffffff", "blur": "x"}) == (
+        "0 0 6px rgba(255,255,255,0.85), 0 0 12px rgba(255,255,255,0.45)"
+    )
+
+
+def test_contrast_ink():
+    # Dark backgrounds keep the (light) fallback ink.
+    assert theme._contrast_ink("#000000", "#ffffff") == "#ffffff"
+    assert theme._contrast_ink("#0a1420", "#6db3f2") == "#6db3f2"
+    # Light backgrounds flip to a dark ink.
+    assert theme._contrast_ink("#f5f7fa", "#f8fafc") == "#2e3436"
+    assert theme._contrast_ink("#fff0f5", "#fdf6f9") == "#2e3436"
+
+
+def test_parse_appearance_ink_dark_background(appearance_dict):
+    # bg #000000 -> dark -> the classic light ink (unchanged behavior).
+    data = theme.parse_appearance(appearance_dict)
+    assert data["menu_ink"] == "#ffffff"
+    assert data["panel_ink"] == "#ffffff"
+
+
+def test_parse_appearance_ink_light_background():
+    # Light PAINTED background + light text: the background flips dark
+    # (hue-preserving) and the ink flips light with it.
+    data = theme.parse_appearance(
+        {
+            "theme": "light",
+            "font": {"color": {"light": "#fdf6f9", "dark": "#e8c7d8"}},
+            "background": {"color": "#fff0f5", "transparency": 0.4},
+            "panel": {"background": {"color": "#fff0f5", "transparency": 0.45}},
+        }
+    )
+    assert theme._luminance(theme._parse_color(data["bg_color"])) < 60
+    assert theme._luminance(theme._parse_color(data["panel_bg_color"])) < 60
+    assert data["menu_ink"] == "#fdf6f9"
+    assert data["panel_ink"] == "#fdf6f9"
+
+
+def test_parse_appearance_ink_panel_differs_from_widget():
+    # Dark widget background (light menu ink) + light panel background
+    # (flipped dark -> light panel ink) are independent.
+    data = theme.parse_appearance(
+        {
+            "theme": "dark",
+            "font": {"color": {"light": "#ffffff"}},
+            "background": {"color": "#0a1420", "transparency": 0.0},
+            "panel": {"background": {"color": "#f5f7fa", "transparency": 0.5}},
+        }
+    )
+    assert data["menu_ink"] == "#ffffff"
+    assert data["panel_ink"] == "#ffffff"
+
+
+def test_bg_for_text_flips_light_background_for_light_text():
+    # pastel-bg: near-white text on a near-white background -> dark flip
+    flipped = theme._bg_for_text("#f5f7fa", "#f8fafc")
+    assert theme._luminance(theme._parse_color(flipped)) < 60
+    # hue preserved: the bluish background stays bluish (blue >= red)
+    r, g, b = theme._parse_color(flipped)
+    assert b >= r
+
+
+def test_bg_for_text_flips_dark_background_for_dark_text():
+    flipped = theme._bg_for_text("#101418", "#2e3436")
+    assert theme._luminance(theme._parse_color(flipped)) > 200
+
+
+def test_bg_for_text_keeps_contrasting_backgrounds():
+    # dark background + light text: unchanged
+    assert theme._bg_for_text("#1a120b", "#ffffff") == "#1a120b"
+    # light background + dark text: unchanged
+    assert theme._bg_for_text("#ffffff", "#2e3436") == "#ffffff"
+
+
+def test_parse_appearance_flips_only_painted_backgrounds():
+    base = {
+        "theme": "light",
+        "font": {"color": {"light": "#f8fafc", "dark": "#cdd9e5"}},
+        "background": {"color": "#f5f7fa", "transparency": 0.0},
+        "panel": {"background": {"color": "#f5f7fa", "transparency": 0.5}},
+    }
+    # Fully transparent widget background: NOT flipped (the clock floats on
+    # the wallpaper), so the menu keeps its light background + dark ink.
+    d = theme.parse_appearance(base)
+    assert d["bg_color"] == "#f5f7fa"
+    assert d["menu_ink"] == "#2e3436"
+    # Painted panel background: flipped dark -> panel ink flips light.
+    assert theme._luminance(theme._parse_color(d["panel_bg_color"])) < 60
+    assert d["panel_ink"] == "#f8fafc"
+
+    # -bg variant: the painted widget background flips too.
+    bg_variant = dict(base, background={"color": "#f5f7fa", "transparency": 0.45})
+    d2 = theme.parse_appearance(bg_variant)
+    assert theme._luminance(theme._parse_color(d2["bg_color"])) < 60
+    assert d2["menu_ink"] == "#f8fafc"
+
+
+def test_parse_appearance_keeps_dark_bg_themes_unchanged(appearance_dict):
+    data = theme.parse_appearance(appearance_dict)
+    assert data["bg_color"] == "#000000"
+    assert data["panel_bg_color"] == "#000000"
+
+
 def test_load_config_merges_local_overrides(config_dir):
     (config_dir / "config.yaml").write_text(
         "appearance: light\nsystem:\n  corner_radius: 20\n", encoding="utf-8"

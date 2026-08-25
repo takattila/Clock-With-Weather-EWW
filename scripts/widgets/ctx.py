@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "move"))
 import session  # noqa: E402
 import widget_rect as wr  # noqa: E402
 import menu_pos  # noqa: E402
+import submenu  # noqa: E402  (same directory: pane geometry for menu_h sizing)
 
 # The monitor enumeration (xrandr) is the slowest piece of the right-click
 # path (~250 ms on this machine). It only changes on hotplug, which
@@ -263,6 +264,50 @@ def main():
              "--arg", "screen=%d" % idx,
              "dismiss_overlay"])
     run(["eww", "--config", EWW_CONFIG_DIR, "close", "ctx_menu"])
+    # Window height: size the ctx_menu window DOWN TO THE MONITOR BOTTOM at
+    # open time (menu_h = monitor_h - y - margin, floored at the classic
+    # 550px). The hover submenu pane renders inside this window, and the
+    # theme picker keeps it on-screen with eww variables only (sub_top clamp
+    # + adaptive columns, see submenu.py) -- `eww update` cannot change
+    # window-arg variables of a running window, so the sizing must happen
+    # HERE, before the open. The extra transparent area is click-through to
+    # the same close_popup handler as the dismiss overlays.
+    mon_h = None
+    try:
+        mon_h = int(next(
+            m["height"] for m in (data or {}).get("monitors", [])
+            if int(m["index"]) == int(pos["screen"])
+        ))
+    except Exception:
+        mon_h = None
+    needed_h = submenu.THEME_ROW_TOP + submenu.max_pane_height(2) + submenu.MENU_PAD
+    if mon_h:
+        menu_h = int(max(submenu.BASE_MENU_H,
+                         min(needed_h, mon_h - submenu.EDGE_MARGIN - pos["y"])))
+        pos["y"] = max(0, min(pos["y"], mon_h - submenu.EDGE_MARGIN - menu_h))
+    else:
+        menu_h = int(max(submenu.BASE_MENU_H, needed_h))
+
+    # Horizontal flip: near the RIGHT monitor edge (e.g. the panel side) the
+    # picker pane would be clipped, so the window opens shifted left and the
+    # pane renders on the LEFT of the menu column (sub_left=true, see
+    # submenu.horizontal_layout). sub_left is a plain global variable — it
+    # must be pushed BEFORE the open (window-arg variables of a RUNNING
+    # window cannot be changed by `eww update`, and the decision is per-open).
+    mon_w = None
+    try:
+        mon_w = int(next(
+            m["width"] for m in (data or {}).get("monitors", [])
+            if int(m["index"]) == int(pos["screen"])
+        ))
+    except Exception:
+        mon_w = None
+    pos["x"], sub_left = submenu.horizontal_layout(pos["x"], mon_w)
+    # Both flags are written as a pair BEFORE the open (plain globals):
+    # exactly one of the two pane instances is visible at any time.
+    run(["eww", "--config", EWW_CONFIG_DIR, "update",
+         "sub_left=%s" % ("true" if sub_left else "false"),
+         "sub_right=%s" % ("false" if sub_left else "true")])
     run(
         [
             "eww", "--config", EWW_CONFIG_DIR, "open",
@@ -272,19 +317,23 @@ def main():
             "--arg", "monitor=%d" % monitor,
             "--arg", "pos_x=%d" % pos["x"],
             "--arg", "pos_y=%d" % pos["y"],
+            "--arg", "menu_h=%dpx" % menu_h,
             "ctx_menu",
         ]
     )
     # The invisible keyboard daemon (scripts/input_daemon.py) reads the session
     # file: while it exists, ESC closes the popups. The menu position is stored
     # as well so the hover submenus (scripts/widgets/submenu.py) can anchor
-    # themselves next to their parent row, and the opened dismiss-overlay ids
-    # so close_popup.py can take down every instance on every monitor.
+    # themselves next to their parent row and clamp to the screen bottom, and
+    # the opened dismiss-overlay ids so close_popup.py can take down every
+    # instance on every monitor.
     session.set_session({
         "mode": "ctx",
         "x": int(pos["x"]),
         "y": int(pos["y"]),
         "screen": int(pos["screen"]),
+        "menu_h": menu_h,
+        "monitor_h": mon_h if mon_h else 0,
         "overlays": screens,
     })
 

@@ -295,15 +295,35 @@ The `appearance` field accepts **two forms**:
        transparency:
          light: 1.0       # opacity of $color-light texts
          dark: 1.0        # opacity of $color-dark texts
+       shadow:            # neon text glow (GTK text-shadow) - optional;
+         color: '#00e5ff' #   applied to the clock digits and the panel titles
+         blur: 8          #   (omit the whole section -> no shadow)
      background:
        transparency: 0.0  # 0.0 = fully transparent, 1.0 = opaque
        color: '#000000'
-   ```
+     chart:               # style-aware theming (v3.0.0) - every key optional
+       colors:            # per-chart colors; a missing entry falls back to
+         cpu: '#ff8c00'   #   font.color.light (the pre-v3.0 single-color look)
+         memory: '#9acd32'
+         net_down: '#ff2fa0'
+         net_up: '#2f9bff'
+       glow: false        # neon glow stroke under the chart lines
+     panel:
+       background:        # the system panel's own background; a missing
+         color: '#1a120b' #   color/transparency falls back to the widget
+         transparency: 0.45 #  background values above
+         gradient: ~      # optional GTK CSS background-image, e.g.
+                          #   linear-gradient(to bottom, #1b3a5c, #0d1f33)
+    ```
 
 | Field | Values | Effect |
 |---|---|---|
-| `appearance` | `light`, `dark`, `light-bg`, ... **or** a custom map | a theme name selects `assets/themes/appearance/<name>/appearance.yaml`; a custom map (`theme`, `icon`, `font`, `background`) defines the appearance inline (see the "Configuration" section) |
+| `appearance` | `light`, `dark`, `light-bg`, `neon`, `sunset-basic-bg`, ... **or** a custom map | a theme name selects `assets/themes/appearance/<name>/appearance.yaml`; a custom map (`theme`, `icon`, `font`, `background`, `chart`, `panel`) defines the appearance inline (see the "Configuration" section) |
 | `appearance.icon.color` | `#rrggbb` (light / dark) | icon color, tinted into the PNGs by `theme.py` (Pillow); `light` is used when the theme is "light", `dark` when "dark". Omit it to keep the icons' original colors |
+| `appearance.font.shadow` | `{ color: '#rrggbb', blur: px }` | neon text glow on the clock digits and the panel titles (two-layer GTK `text-shadow`); omit for no shadow |
+| `appearance.chart.colors` | `{ cpu, memory, net_down, net_up }` (`#rrggbb`) | per-chart line/fill colors; a missing entry falls back to `font.color.light` (the pre-v3.0 single-color look). The matching panel titles follow the same colors |
+| `appearance.chart.glow` | `true` / `false` | neon glow stroke (wide translucent line) painted under the chart lines |
+| `appearance.panel.background` | `{ color, transparency, gradient }` | the system panel's own background; `color`/`transparency` fall back to the widget background values; `gradient` is an optional GTK CSS `background-image` value (e.g. `linear-gradient(to bottom, #1b3a5c, #0d1f33)`) |
 | `weather.name` | `default`, `budapest`, `berlin`, ... | which `assets/themes/weather/<name>/weather.yaml` provides `city`, `lang`, `units`. Omit the `name` key to define the city settings **inline** in `config.yaml` (`city`, `language_code`, `lang`, `units`, `api_url`). The forms mix: with `name` set, inline fields patch the theme's baseline (useful for `config.local.yaml` overrides) |
 | `weather.city` | string | the city queried from the weather API; in theme mode it patches/overrides the theme's city |
 | `weather.language_code` | `hu`, `en`, `fr`, ... | the country code of the city; in theme mode it patches/overrides the theme's value |
@@ -466,8 +486,8 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 |---|---|---|
 | `system.py` | `{hdd, ram, cpu, swap}` | `psutil`/`shutil`-based system info, dynamic `format_bytes` (B/KB/MB/GB/TB) |
 | `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call to the configured `api_url`, rounding, °C/°F |
-| `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection |
-| `theme.py` | `eww.theme.scss` + `eww.theme.json` + tinted icons under `generated/icons/` | `config.yaml` `appearance` + `assets/themes/appearance/<name>/appearance.yaml` → EWW theme (+ PNG tinting when `appearance.icon.color` is set) |
+| `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection; per-chart colors + glow flag from `eww.theme.json` (`chart.*`), with the `$color-light` regex as fallback |
+| `theme.py` | `eww.theme.scss` + `eww.theme.json` + tinted icons under `generated/icons/` | `config.yaml` `appearance` + `assets/themes/appearance/<name>/appearance.yaml` → EWW theme (+ PNG tinting when `appearance.icon.color` is set); also emits the v3.0.0 style values (`chart.*`, `panel.background.*`, `font.shadow`) as `$chart-*` / `$panel-bg-*` / `$text-shadow` SCSS vars + JSON fields |
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `assets/themes/weather/<name>/weather.yaml` **or** the inline `weather` map → the values for the `defpoll`s |
 | `workarea.py` | JSON (screen / workarea / taskbar position / panel geometry / compositor) | reading `_NET_WORKAREA`, detecting the taskbar position and computing the symmetric panel geometry (`panel.gap`), honoring the `--align left|right` panel side (`panel.window.alignment`); detects Wayland vs. X11 and computes the offsets for the current compositor; also logs a human-readable summary to stderr |
 | `watch.py` | — | inotify-based watcher (`ctypes`, no packages, ~0 CPU idle): on a change to `config.yaml` / theme YAMLs it runs `theme.py` + `eww reload`; a `config.yaml` change also triggers `start.sh --relayout`; log: `logs/watch.log`, PID: `run/watch.pid` |
@@ -477,7 +497,8 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 | `setup.sh` | — | interactive setup: API key, appearance/weather theme, hour format, and desktop/menu icon creation (menu icons always, desktop icons optional) |
 | `setup-test-env.sh` | — | enabling/disabling and restoring the KDE Plasma test environment (section 4): `hide` / `status` / `restore` |
 | `menu_toggle.py` (`scripts/widgets/`) | — | context-menu quick settings: with `--value` writes an exact value, without it flips/cycles (hour_format 24↔12, appearance next theme alphabetically, units °C↔°F with an instant weather refresh, panel_enabled, panel_alignment); delegates to `config_set.py`, the watcher applies the change live |
-| `submenu.py` (`scripts/widgets/`) | — | hover submenus of the five selectable context-menu rows: builds the option list per key (Theme dynamically from `assets/themes/appearance/`, two balanced columns), prebuilds the whole picker as a static yuck literal into `sub_yuck` and shows it in the ctx_menu window's side pane, vertically aligned with the hovered row |
+| `submenu.py` (`scripts/widgets/`) | — | hover submenus of the five selectable context-menu rows: builds the option list per key (Theme dynamically from `assets/themes/appearance/`), prebuilds the whole picker as a static yuck literal into `sub_yuck` and shows it in the ctx_menu window's side pane, vertically aligned with the hovered row; clamps the pane to the bottom screen edge and adds a third column when the list is too tall (session-driven geometry, see the "Right-click quick-settings menu" section) |
+| `horizontal_layout()` (in `submenu.py`, used by `ctx.py`) | — | decides at menu-open time whether the picker pane fits right of the menu column; near the right monitor edge the window opens shifted left and the pane flips to the menu's left side (`sub_left`) |
 | `hard-reset.sh` (`scripts/bin/`) | — | factory reset: deletes the git-ignored `config.local.yaml` (**no backup**) + a stale input session, regenerates the theme from the committed defaults and relayouts; also available as the context menu's "Hard reset" item |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
@@ -566,12 +587,100 @@ $color-light-alpha: 1.0;   // font.transparency.light -> rgba($color-light, ...)
 $color-dark-alpha: 1.0;    // font.transparency.dark -> rgba($color-dark, ...)
 $bg-color: #000000;
 $bg-alpha: 0.0;
+$bg-radius: 20px;
+// --- style-aware theming (v3.0.0) ---
+$chart-cpu: #ffffff;       // chart.colors.* -> the matching .panel-title-* class
+$chart-memory: #ffffff;    //   and the chart colors consumed by panel.py
+$chart-down: #ffffff;      //   (from eww.theme.json)
+$chart-up: #ffffff;
+$chart-glow: false;        // chart.glow -> neon stroke under the chart lines
+$panel-bg-color: #000000;  // panel.background.* -> .panel-container
+$panel-bg-alpha: 0.0;      //   (falls back to $bg-color / $bg-alpha)
+$panel-bg-image: none;     //   panel.background.gradient, or "none"
+$text-shadow: none;        // font.shadow -> clock digits + panel titles
+$menu-ink: #ffffff;        // DERIVED: text ink with contrast against
+$panel-ink: #ffffff;       //   $bg-color / $panel-bg-color — light
+                           //   backgrounds automatically flip it to a
+                           //   dark gray (context menu, submenu, panel
+                           //   status text); no theme key needed.
 ```
+
+Two more values are derived automatically (no theme keys):
+
+- **`$menu-ink` / `$panel-ink`** (above) — contrast ink for the context
+  menu, the submenu and the panel status text.
+- **Painted background flip** — when a theme's main text (`font.color.light`)
+  would vanish on its own painted background (light text on a light box or
+  dark on dark, luminance distance < 90), `theme.py` flips that background
+  to a contrasting, HUE-PRESERVING tone (a bluish light background becomes
+  dark slate, a pinkish one dark plum). This only applies where the
+  background is actually painted (`background.transparency` /
+  `panel.background.transparency` > 0): fully transparent themes keep the
+  declared color for the context menu. Example: `pastel-bg` declares
+  `#f5f7fa`, which renders as `#111822` so its silver clock stays readable.
 
 The **icon color** is not a CSS variable: `appearance.icon.color` (light|dark,
 chosen by `$theme`) is applied to the PNGs themselves by `theme.py` (see the
 "Configuration" section), so the tint works even though GTK/EWW cannot colorize
 images at render time.
+
+### Creating style themes
+
+Any theme is a single YAML file:
+`assets/themes/appearance/<name>/appearance.yaml` — new directories are picked
+up automatically by the right-click Theme submenu (two balanced columns), and
+the file watcher applies a change the moment it is saved. The v3.0.0
+style keys make the panel style-aware:
+
+| Key | What it styles |
+|---|---|
+| `chart.colors.{cpu, memory, net_down, net_up}` | one color per chart; the matching panel title (`.panel-title-cpu` etc.) follows it |
+| `chart.glow` | a wide translucent stroke painted under each chart line (SVG, no filter support needed) |
+| `panel.background.{color, transparency, gradient}` | the panel's own background — solid, translucent or a GTK CSS gradient |
+| `font.shadow.{color, blur}` | two-layer `text-shadow` glow on the clock digits and the panel titles |
+
+Everything is optional and falls back to the classic single-color look, so a
+theme only needs the keys it actually styles. The ready-made examples under
+`assets/themes/appearance/` double as recipes (each in a transparent and a
+`-bg` variant):
+
+- **`sunset-basic`** — warm translucent panels: per-chart colors only
+  (`#ff8c00` / `#9acd32` / `#ff2fa0` / `#2f9bff`), the `-bg` variant adds a
+  dark warm widget background + panel background.
+- **`neon`** — cyberpunk: two-tone clock (`font.color.light` cyan /
+  `font.color.dark` pink), `chart.glow: true`, `font.shadow` (cyan, blur 8),
+  nearly transparent backgrounds.
+- **`pastel`** — muted pastel chart colors on light translucent panels.
+- **`metallic-blue-orange`** — steel-blue `panel.background.gradient`
+  (`linear-gradient(to bottom, #1b3a5c, #0d1f33)`), cold-warm chart contrast.
+- **`candy-pastel`** — sweet candy palette (pink / mint / lavender / peach)
+  on soft light panels.
+- **`aurora`** — borealis glow: green-teal-violet-blue charts with
+  `chart.glow`, mint text shadow, tinted monochrome icons.
+- **`cyberpunk`** — techno neon: yellow / cyan / magenta / purple charts,
+  yellow glow, the `-bg` variant adds a dark gradient panel.
+- **`rose-gold`** — metallic rose gold: copper / champagne / dusty rose /
+  lilac charts, subtle warm shimmer shadow, plum gradient panels.
+- **`titanium`** — brushed steel: platinum / steel / silver / electric blue
+  charts, dark steel gradient panels, no glow.
+
+The naming convention: the base theme name is fully transparent
+(`background.transparency: 0.0`), the `-bg` suffix adds visible
+widget/panel backgrounds (like `dark` / `dark-bg`).
+
+Workflow for a custom theme: create the directory + `appearance.yaml`,
+pick it from the right-click Theme submenu (or set `appearance: <name>` in
+`config.local.yaml`), fine-tune the colors — the watcher regenerates the
+theme files and reloads eww on every save. The same keys work as an inline
+`appearance` map in `config.yaml` / `config.local.yaml` without creating a
+theme directory. All style features are plain GTK3 CSS + SVG, so they render
+identically on Wayland (KDE) and X11 (Cinnamon).
+
+> GTK3 CSS limits to keep in mind: `text-shadow` and
+> `background-image: linear-gradient(...)` work; `box-shadow` and gradient
+> TEXT (background-clip) do not — the two-tone metallic clock look comes
+> from giving `font.color.light` and `font.color.dark` different colors
+> (hour vs minutes).
 
 ### Right-click quick-settings menu
 
@@ -590,7 +699,7 @@ the popups.
 |---|---|---|
 | Move / Resize / Reset | — (click actions: GTK move/resize session, factory geometry) |
 | AM/PM switch | `24h` / `12h` | `system.hour_format` |
-| Theme | every theme under `assets/themes/appearance/`, two columns | `appearance` |
+| Theme | every theme under `assets/themes/appearance/`, adaptive two/three columns (flips to the left of the menu near the right screen edge) | `appearance` |
 | Units | `°C (metric)` / `°F (imperial)` — picking one also re-fetches the weather instantly so °C/°F does not wait for the 10-minute poll | `weather.units` |
 | Panel | shown / hidden (applied by the watcher's relayout) | `panel.enabled` |
 | Side | right / left | `panel.window.alignment` |
@@ -603,6 +712,21 @@ Submenu mechanics:
   window, in a 250px-wide pane to the right of the item rows, vertically
   aligned with the hovered row. This sidesteps every X11/Wayland window
   placement pitfall and works identically on both compositors.
+- LONG LISTS (the theme picker): ctx.py sizes the ctx_menu window at open
+  time so it reaches the monitor bottom (`menu_h` = monitor height − menu y
+  − margin, floored at 550px) and stores `menu_h` / `monitor_h` / `y` in the
+  input session. `submenu.py` then keeps the pane inside BOTH purely with
+  eww variables: it clamps the pane top so its bottom edge stays above the
+  screen bottom, and — when even that would not fit — switches the picker
+  to three columns (trading width for height). Near the RIGHT monitor edge
+  ctx.py opens the window shifted left and flips the pane to the LEFT side
+  of the menu column (`sub_left`), so no column is ever clipped
+  horizontally. The pane strip itself is a FIXED 375px on either side and
+  the picker hugs the menu column — the menu never moves when the hovered
+  submenu changes width. (Window-arg variables such as `menu_h` / `pos_y`
+  cannot be changed by `eww update` on a running window — that is why the
+  sizing happens at open time and the pane adapts with plain variables
+  only.)
 - `submenu.py` prebuilds the whole picker as one static yuck definition —
   every option row an `eventbox` with its click handler and the active value
   highlighted (Theme = all themes in two balanced columns) — pushes it into

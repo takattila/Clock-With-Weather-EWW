@@ -30,6 +30,7 @@ CONFIG_DIR = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.dirna
 CHARTS_DIR = os.path.join(CONFIG_DIR, "charts")
 STATE_FILE = os.path.join(CHARTS_DIR, "state.json")
 THEME_FILE = os.path.join(CONFIG_DIR, "eww", "eww.theme.scss")
+THEME_JSON_FILE = os.path.join(CONFIG_DIR, "eww", "eww.theme.json")
 LAYOUT_FILE = os.path.join(CONFIG_DIR, ".layout.json")
 
 MAX_POINTS = 100
@@ -153,16 +154,35 @@ def get_dynamic_max(hist, min_ceiling):
     return max_val * 1.1
 
 
-def load_chart_color():
+def load_chart_colors():
+    """Per-chart colors + glow flag from the generated theme files.
+
+    Primary source: eww.theme.json (written by theme.py: chart.colors +
+    chart.glow). Fallback: the $color-light regex on eww.theme.scss — the
+    pre-v3.0 behavior of one shared color and no glow.
+    """
     default = "#ffffff"
+    colors = {"cpu": default, "mem": default, "down": default, "up": default}
+    try:
+        with open(THEME_JSON_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        colors = {
+            "cpu": data.get("chart_cpu", default),
+            "mem": data.get("chart_memory", default),
+            "down": data.get("chart_down", default),
+            "up": data.get("chart_up", default),
+        }
+        return colors, bool(data.get("chart_glow", False))
+    except Exception:
+        pass
     try:
         with open(THEME_FILE, "r", encoding="utf-8") as f:
             match = re.search(r"\$color-light:\s*(#[0-9a-fA-F]{3,8});", f.read())
         if match:
-            return match.group(1)
+            colors = {k: match.group(1) for k in colors}
     except Exception:
         pass
-    return default
+    return colors, False
 
 
 def hex_to_rgb255(hex_color):
@@ -172,7 +192,7 @@ def hex_to_rgb255(hex_color):
     return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
 
 
-def render_chart(filename, hist, max_val, color_hex, w, h):
+def render_chart(filename, hist, max_val, color_hex, w, h, glow=False):
     r, g, b = hex_to_rgb255(color_hex)
     points = []
     area = ["%d,%d" % (0, h)]
@@ -195,10 +215,20 @@ def render_chart(filename, hist, max_val, color_hex, w, h):
 
     line = ""
     if len(points) > 1:
-        line = (
+        pts = " ".join(points)
+        if glow:
+            # Wide translucent stroke painted UNDER the main line: a neon
+            # glow that needs no SVG filter support (works on every
+            # librsvg/gdk-pixbuf build).
+            line += (
+                '<polyline points="%s" fill="none" stroke="rgba(%d,%d,%d,0.25)" '
+                'stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>\n'
+                % (pts, r, g, b)
+            )
+        line += (
             '<polyline points="%s" fill="none" stroke="rgba(%d,%d,%d,0.8)" '
             'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>\n'
-            % (" ".join(points), r, g, b)
+            % (pts, r, g, b)
         )
     area_fill = (
         '<polygon points="%s" fill="rgba(%d,%d,%d,0.15)"/>\n' % (" ".join(area), r, g, b)
@@ -281,12 +311,17 @@ def main():
     title_space = 50
     gap = 20
 
-    # --- Chart color from the active theme ---
-    color_hex = load_chart_color()
+    # --- Chart colors + glow from the active theme ---
+    chart_colors, chart_glow = load_chart_colors()
 
     os.makedirs(CHARTS_DIR, exist_ok=True)
     stamp = counter
-    series = (("cpu", cpu_hist, 100), ("mem", mem_hist, 100), ("down", down_hist, dynamic_down_max), ("up", up_hist, dynamic_up_max))
+    series = (
+        ("cpu", cpu_hist, 100, chart_colors["cpu"]),
+        ("mem", mem_hist, 100, chart_colors["mem"]),
+        ("down", down_hist, dynamic_down_max, chart_colors["down"]),
+        ("up", up_hist, dynamic_up_max, chart_colors["up"]),
+    )
     files = {}
     chart_h = {}
     for h in heights:
@@ -294,12 +329,20 @@ def main():
         ch = int(section_height - title_space - gap)
         key = str(h)
         files[key] = {}
-        for k, hist, max_val in series:
+        for k, hist, max_val, color in series:
             name = "%s_h%d_%05d.svg" % (k, h, stamp)
             # The SVG is written to $ROOT/charts/, but the eww image :path is
             # resolved relative to the eww CONFIG dir ($ROOT/eww), hence "../".
             files[key][k] = "../charts/" + name
-            render_chart(os.path.join(CHARTS_DIR, name), hist, max_val, color_hex, chart_w, ch)
+            render_chart(
+                os.path.join(CHARTS_DIR, name),
+                hist,
+                max_val,
+                color,
+                chart_w,
+                ch,
+                glow=chart_glow,
+            )
         chart_h[key] = ch
 
     # --- Cleanup old charts (keep the last 3 per chart type and height) ---

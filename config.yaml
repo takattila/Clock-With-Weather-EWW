@@ -18,10 +18,12 @@
 # Edit this file only when you want to change a DEFAULT for every machine.
 # ============================================================================
 
-# appearance -> the color theme. Two forms are accepted:00
+# appearance -> the color theme. Two forms are accepted:
 #
 #   1. A theme NAME (string) -> uses themes/appearance/<name>/appearance.yaml,
-#      e.g.: appearance: light | dark | dark-orange-bg | ...
+#      e.g.: appearance: light | dark | dark-orange-bg | neon | neon-bg |
+#      pastel | sunset-basic | candy-pastel | aurora | cyberpunk |
+#      rose-gold | titanium | ...
 #
 #   2. A custom map (object) -> inline appearance definition, e.g.:
 #
@@ -43,9 +45,25 @@
 #          transparency:
 #            light: 1.0         # opacity of $color-light texts
 #            dark: 1.0          # opacity of $color-dark texts
+#          shadow:              # optional neon text glow (clock digits +
+#            color: '#00e5ff'   #   panel titles, GTK text-shadow)
+#            blur: 8
 #        background:
 #          transparency: 0.0    # 0.0 = fully transparent, 1.0 = opaque
 #          color: '#000000'
+#        chart:                 # optional style keys (v3.0.0) - all fall back
+#          colors:              #   to the classic single-color look
+#            cpu: '#ff8c00'     # per-chart colors; the matching panel title
+#            memory: '#9acd32'  #   follows the same color; missing entries
+#            net_down: '#ff2fa0'#   use font.color.light
+#            net_up: '#2f9bff'
+#          glow: false          # neon glow stroke under the chart lines
+#        panel:
+#          background:          # the panel's own background; missing
+#            color: '#1a120b'   #   color/transparency fall back to the
+#            transparency: 0.45 #   widget background above
+#            gradient: ~        # optional GTK CSS background-image, e.g.
+#                               # linear-gradient(to bottom, #1b3a5c, #0d1f33)
 #
 
 # appearance -> active appearance theme (see the options above).

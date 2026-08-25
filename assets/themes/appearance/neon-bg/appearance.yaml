@@ -1,0 +1,34 @@
+appearance:
+  theme: dark
+  icon:
+    set: modern
+    transparency:
+      light: 1.0
+      dark: 0.9
+    color:
+      dark: '#00e5ff'
+  font:
+    face: Noto Sans
+    color:
+      light: '#00e5ff'
+      dark: '#ff2d95'
+    transparency:
+      light: 1.0
+      dark: 1.0
+    shadow:
+      color: '#00e5ff'
+      blur: 8
+  background:
+    transparency: 0.25
+    color: '#000010'
+  chart:
+    colors:
+      cpu: '#ff9500'
+      memory: '#00e5ff'
+      net_down: '#ff2d95'
+      net_up: '#39ff14'
+    glow: true
+  panel:
+    background:
+      color: '#000010'
+      transparency: 0.25

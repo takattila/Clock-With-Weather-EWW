@@ -62,6 +62,47 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/hard-reset.sh # factory-reset the
 
 ## Screenshots
 
+### Style Themes (new in v3.0.0)
+
+Nine styles × two variants (transparent / `-bg`) — a representative selection
+below (sunset, neon glow, aurora glow, metallic gradient). The full gallery
+with **all 42 themes** lives in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+
+<table>
+    <tr>
+        <th>sunset-basic</th>
+        <th>sunset-basic-bg</th>
+    </tr>
+    <tr>
+        <td><img src="./docs/images/screenshots/theme-sunset-basic.png"></td>
+        <td><img src="./docs/images/screenshots/theme-sunset-basic-bg.png"></td>
+    </tr>
+    <tr>
+        <th>neon</th>
+        <th>neon-bg</th>
+    </tr>
+    <tr>
+        <td><img src="./docs/images/screenshots/theme-neon.png"></td>
+        <td><img src="./docs/images/screenshots/theme-neon-bg.png"></td>
+    </tr>
+    <tr>
+        <th>aurora</th>
+        <th>aurora-bg</th>
+    </tr>
+    <tr>
+        <td><img src="./docs/images/screenshots/theme-aurora.png"></td>
+        <td><img src="./docs/images/screenshots/theme-aurora-bg.png"></td>
+    </tr>
+    <tr>
+        <th>titanium</th>
+        <th>titanium-bg</th>
+    </tr>
+    <tr>
+        <td><img src="./docs/images/screenshots/theme-titanium.png"></td>
+        <td><img src="./docs/images/screenshots/theme-titanium-bg.png"></td>
+    </tr>
+</table>
+
 ### System Monitor Panel
 
 <table>
@@ -79,12 +120,14 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/hard-reset.sh # factory-reset the
 
 The context menu is a quick-settings panel: Move / Resize / Reset, plus hover
 submenus for the **AM/PM format** (12 ↔ 24 hour), the **theme** (all
-ready-made themes, two columns, active one highlighted), **°C/°F** (with
-instant weather refresh), **panel show/hide** and **panel side** — and a
-factory **Hard reset** + About dialog. The menu opens instantly and always
-belongs to the widget actually sitting under the pointer — even where their
-transparent edges overlap. Every selection is written to the git-ignored
-`config.local.yaml` and applied live.
+ready-made themes, adaptive two/three columns, active one highlighted),
+**°C/°F** (with instant weather refresh), **panel show/hide** and **panel
+side** — and a factory **Hard reset** + About dialog. The menu opens
+instantly and always belongs to the widget actually sitting under the
+pointer — even where their transparent edges overlap. Long pickers clamp to
+the bottom screen edge, and near the right edge the picker flips to the
+left side of the menu, so nothing is ever clipped. Every selection is
+written to the git-ignored `config.local.yaml` and applied live.
 
 <table>
     <tr>
@@ -116,6 +159,11 @@ transparent edges overlap. Every selection is written to the git-ignored
 - **Dynamic Scaling** — the network charts automatically adjust their scale and
   units (KiB/s to MiB/s) based on traffic, and the active network interface is
   detected automatically.
+- **Style-aware theming** — every chart can have its own color, the panel can
+  carry its own solid or gradient background, and text/charts can glow (new in
+  v3.0.0; showcased by nine style themes — `sunset-basic`, `neon`, `pastel`,
+  `metallic-blue-orange`, `candy-pastel`, `aurora`, `cyberpunk`, `rose-gold`,
+  `titanium` — each in a transparent and a `-bg` variant).
 - **Wayland native** — runs via **EWW** + GTK layer-shell; works on X11 too.
 - **Light & dark ready** — supports appearance on both light and dark
   backgrounds, with a wide gallery of ready-made themes (pickable from the
@@ -154,10 +202,17 @@ look like a single, cohesive interface — whether you pick a light or dark them
 
 ## Themes
 
-A wide gallery of ready-made **light** and **dark** appearance themes, plus
-per-city weather themes — or define your own colors inline. See the
-[configuration docs](docs/WIKI.md#configuration-configyaml) for how to switch and
-customize them.
+A wide gallery of ready-made **light** and **dark** appearance themes —
+including the nine **style themes** (`sunset-basic`, `neon`, `pastel`,
+`metallic-blue-orange`, `candy-pastel`, `aurora`, `cyberpunk`, `rose-gold`,
+`titanium`, each in a transparent and a `-bg` variant) with per-chart colors,
+gradient panel backgrounds and neon glow — plus per-city weather themes. Or
+define your own colors inline: per-chart colors (`chart.colors`), panel
+background/gradient (`panel.background`), text shadow (`font.shadow`) and
+more. See the
+[configuration docs](docs/WIKI.md#configuration-configyaml) for how to switch
+and customize them, and the WIKI's "Creating style themes" section for the
+full recipe.
 
 ---
 
@@ -202,7 +257,7 @@ Clock-With-Weather-EWW/
 │   ├── themes/         # appearance + per-city weather YAMLs
 │   ├── icons-src/      # source icons (tinted copies go to generated/)
 │   └── fonts/          # bundled Noto Sans
-├── docs/               # WIKI, PLAN, release notes + screenshots
+├── docs/               # WIKI, PLAN, SCREENSHOTS gallery, release notes + images
 ├── tools/              # screenshot tooling, vendored git-filter-repo
 ├── tests/              # headless pytest suite
 ├── config.yaml         # central, commented defaults
@@ -216,10 +271,12 @@ Clock-With-Weather-EWW/
 
 - **[WIKI — Technical documentation](docs/WIKI.md)** — dependencies, configuration
   (`config.yaml`), project structure, EWW/CSS customization, testing and more.
+- **[SCREENSHOTS — theme gallery](docs/SCREENSHOTS.md)** — every style theme
+  and the context menu in action.
 - **[PLAN — feature plan](docs/PLAN.md)** — the executed plan behind the
-  independent width/height resize (the previous plans for the
-  `config.local.yaml` override layer and the quick-settings context menu are
-  preserved in git history).
+  style-aware theme system (the previous plans for the independent
+  width/height resize, the `config.local.yaml` override layer and the
+  quick-settings context menu are preserved in git history).
 - **Screenshots** — [view all](#screenshots).
 
 ---
