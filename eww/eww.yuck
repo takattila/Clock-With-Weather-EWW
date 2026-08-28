@@ -285,11 +285,14 @@
 ;; in sync. The hover-only rows (AM/PM, Theme, Units, Panel, Side) open
 ;; scripts/widgets/submenu.py --item <key> --widget ${widget} when the
 ;; pointer enters; submenu.py scopes its row-offset math to the open widget's
-;; menu. The submenu lives exactly as long as this menu — every dismissal
-;; path (option click, outside click, ESC, another right-click) goes through
-;; close_popup.py. Move / Resize / Reset keep their click behavior. Slower
-;; actions are nohup-backgrounded to keep the click instant, exactly like
-;; Move / Resize.
+;; menu. Every non-submenu row (Move / Resize / Reset / Weather / Panel gap /
+;; Hard reset / About) runs scripts/widgets/submenu_hide.py on hover so a
+;; still-open picker pane does NOT stick (these rows are eventboxes -- eww
+;; buttons never fire :onhover). The submenu lives exactly as long as this
+;; menu — every dismissal path (option click, outside click, ESC, another
+;; right-click) goes through close_popup.py. Move / Resize / Reset keep their
+;; click behavior. Slower actions are nohup-backgrounded to keep the click
+;; instant, exactly like Move / Resize.
 (defwidget widget_ctx_menu [widget monitor]
   (box :orientation "h" :space-evenly false
     ;; LEFT picker pane — only visible in the flipped layout (sub_left=true,
@@ -308,22 +311,30 @@
              :visible {sub_show}
              :style "margin-top:${sub_top}px"
           (literal :content {sub_yuck})))))
-    (box :class "ctx-menu" :orientation "v" :valign "start"
+    ;; The column width is PINNED to submenu.MENU_COL_W (290px): the two 375px
+    ;; pane strips are always reserved (so the column never moves when a
+    ;; picker opens), which makes the window's natural width backend-dependent
+    ;; -- pinned column + fixed strips is the same number on EVERY compositor
+    ;; (KDE/Wayland measures the label text narrower than Cinnamon/X11).
+    (box :class "ctx-menu" :width 290 :orientation "v" :valign "start"
     ;; move.py opens the overlay + control panel and returns immediately, so it
     ;; is backgrounded (nohup ... &) to keep the shell call instant.
-    (button :class "ctx-btn" :timeout "5s"
-            :onclick "nohup ../scripts/move/move.py --widget ${widget} --monitor ${monitor} --mode move >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box" (label :text "Move")))
-    (button :class "ctx-btn" :timeout "5s"
-            :onclick "nohup ../scripts/move/move.py --widget ${widget} --monitor ${monitor} --mode resize >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box" (label :text "Resize")))
+    (eventbox :class "ctx-btn"
+              :onclick "nohup ../scripts/move/move.py --widget ${widget} --monitor ${monitor} --mode move >/dev/null 2>&1 &"
+              :onhover "../scripts/widgets/submenu_hide.py"
+      (box :class "ctx-btn-box" (label :text "Move")))
+    (eventbox :class "ctx-btn"
+              :onclick "nohup ../scripts/move/move.py --widget ${widget} --monitor ${monitor} --mode resize >/dev/null 2>&1 &"
+              :onhover "../scripts/widgets/submenu_hide.py"
+      (box :class "ctx-btn-box" (label :text "Resize")))
     ;; Reset writes the factory defaults to config.yaml directly (scripts/
     ;; move_ctl.py --action reset: position 0/0 + scale 1.0 for both the clock
     ;; and the panel -- for the panel the global panel.gap baseline stays
     ;; untouched) and closes the popups.
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/close_popup.py && ../scripts/move/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
-            (box :class "ctx-btn-box" (label :text "Reset")))
+    (eventbox :class "ctx-btn"
+              :onclick "../scripts/widgets/close_popup.py && ../scripts/move/move_ctl.py --widget ${widget} --monitor ${monitor} --action reset"
+              :onhover "../scripts/widgets/submenu_hide.py"
+      (box :class "ctx-btn-box" (label :text "Reset")))
     ;; --- group separator: actions | settings -----------------------------
     (label :class "ctx-sep" :text "───────────────────────────")
     ;; AM/PM switch (clock only): system.hour_format 24h / 12h picker.
@@ -359,9 +370,10 @@
     ;; again; both are backgrounded (nohup ... &) so the click returns
     ;; instantly.
     (box :visible {widget == "clock"}
-      (button :class "ctx-btn" :timeout "5s"
-              :onclick "nohup ../scripts/move/weather_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
-              (box :class "ctx-btn-box" (label :text "Weather"))))
+      (eventbox :class "ctx-btn"
+                :onclick "nohup ../scripts/move/weather_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
+                :onhover "../scripts/widgets/submenu_hide.py"
+        (box :class "ctx-btn-box" (label :text "Weather"))))
     (box :visible {widget == "panel"}
       (label :class "ctx-sep" :text "───────────────────────────"))
     ;; Panel visibility (panel only): panel.enabled shown / hidden.
@@ -384,19 +396,22 @@
     ;; in one go; it is backgrounded (nohup ... &) so the click returns
     ;; instantly.
     (box :visible {widget == "panel"}
-      (button :class "ctx-btn" :timeout "5s"
-              :onclick "nohup ../scripts/move/gap_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
-              (box :class "ctx-btn-box" (label :text "Panel gap"))))
+      (eventbox :class "ctx-btn"
+                :onclick "nohup ../scripts/move/gap_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
+                :onhover "../scripts/widgets/submenu_hide.py"
+        (box :class "ctx-btn-box" (label :text "Panel gap"))))
     ;; --- group separator: settings | system -------------------------------
     (label :class "ctx-sep" :text "───────────────────────────")
     ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and
     ;; relayouts, restoring every committed default (scripts/bin/hard-reset.sh).
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/bin/hard-reset.sh >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box" (label :text "Hard reset")))
-    (button :class "ctx-btn" :timeout "10s"
-            :onclick "../scripts/widgets/about.py --open --monitor ${monitor}"
-            (box :class "ctx-btn-box" (label :text "About"))))
+    (eventbox :class "ctx-btn"
+              :onclick "../scripts/widgets/close_popup.py && nohup ../scripts/bin/hard-reset.sh >/dev/null 2>&1 &"
+              :onhover "../scripts/widgets/submenu_hide.py"
+      (box :class "ctx-btn-box" (label :text "Hard reset")))
+    (eventbox :class "ctx-btn"
+              :onclick "../scripts/widgets/about.py --open --monitor ${monitor}"
+              :onhover "../scripts/widgets/submenu_hide.py"
+      (box :class "ctx-btn-box" (label :text "About"))))
     ;; RIGHT picker pane — the default layout (hidden when the flipped
     ;; sub_left=true layout shows the pane on the left instead). submenu.py
     ;; fills sub_yuck / sub_top and shows it while a selectable row is
@@ -523,12 +538,21 @@
 ;; submenu pane renders inside this window, and long pickers (the theme
 ;; list) grow it via submenu.py so nothing gets clipped; the pane top and
 ;; the window y are edge-clamped there as well.
+;; The WIDTH is a fixed 1040px = left pane strip (375) + pinned menu column
+;; (290 = submenu.MENU_COL_W, see :width on widget_ctx_menu) + right pane
+;; strip (375). Both strips are reserved even when no picker is open (the
+;; picker renders inside one of them, and the empty rest is a
+;; click-to-dismiss zone). Pinning width + column makes the menu map at the
+;; SAME size on every compositor -- an entirely natural-sized window gets its
+;; width from the label text, which GTK measures differently under
+;; KDE/Wayland (narrower) and Cinnamon/X11 (wider). Keep 290 in sync with
+;; submenu.MENU_COL_W and both 375s with submenu.PANE_W.
 (defwindow ctx_menu
   [screen widget monitor pos_x pos_y menu_h]
   :monitor {screen}
   :geometry (geometry :x {pos_x}
                       :y {pos_y}
-                      :width "470px"
+                      :width "1040px"
                       :height {menu_h}
                       :anchor "top left")
   :stacking "overlay"

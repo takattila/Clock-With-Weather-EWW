@@ -200,6 +200,18 @@ def close_popups_verified(session_data=None):
 def main():
     session_data = read_session_data()
     close_popups_verified(session_data)
+    # Hide any open picker pane. sub_show / sub_yuck are plain globals and
+    # nothing else resets them, so without this the LAST hovered picker (e.g.
+    # the AM/PM one) would reappear in the freshly opened menu on the next
+    # right-click.
+    try:
+        subprocess.run(
+            ["eww", "--config", EWW_CONFIG_DIR, "update", "sub_show=false"],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    except Exception:
+        pass
     # Deactivate the keyboard daemon session (ESC / click-outside closed the
     # popups), so the daemon goes back to idle.
     session.clear_session()

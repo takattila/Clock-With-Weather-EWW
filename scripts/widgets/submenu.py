@@ -64,7 +64,7 @@ SUB_PAD_V = 8    # picker vertical padding (top+bottom)
 BASE_MENU_H = 550
 EDGE_MARGIN = 8
 PANE_W = 375
-MENU_COL_W = 290  # conservative natural width of the ctx-menu column
+MENU_COL_W = 290  # exact pinned width of the ctx-menu column (eww.yuck :width 290)
 
 
 def horizontal_layout(x, monitor_w, pane_w_max=PANE_W):

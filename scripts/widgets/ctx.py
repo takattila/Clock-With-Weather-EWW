@@ -304,11 +304,17 @@ def main():
     except Exception:
         mon_w = None
     pos["x"], sub_left = submenu.horizontal_layout(pos["x"], mon_w)
-    # Both flags are written as a pair BEFORE the open (plain globals):
-    # exactly one of the two pane instances is visible at any time.
+    # All pane flags are plain globals pushed as ONE update BEFORE the open
+    # (window-arg variables of a RUNNING window cannot be changed by
+    # `eww update`, and the pair must be decided per-open): exactly one of the
+    # two pane instances is visible at any time, and the picker pane starts
+    # CLOSED -- if a previous hover left sub_show=true, sub_yuck holds that
+    # picker and the pane would pop open on every right-click (sticky state).
     run(["eww", "--config", EWW_CONFIG_DIR, "update",
          "sub_left=%s" % ("true" if sub_left else "false"),
-         "sub_right=%s" % ("false" if sub_left else "true")])
+         "sub_right=%s" % ("false" if sub_left else "true"),
+         "sub_show=false",
+         "sub_yuck="])
     run(
         [
             "eww", "--config", EWW_CONFIG_DIR, "open",
