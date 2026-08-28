@@ -264,14 +264,15 @@ def main():
              "--arg", "screen=%d" % idx,
              "dismiss_overlay"])
     run(["eww", "--config", EWW_CONFIG_DIR, "close", "ctx_menu"])
-    # Window height: size the ctx_menu window DOWN TO THE MONITOR BOTTOM at
-    # open time (menu_h = monitor_h - y - margin, floored at the classic
-    # 550px). The hover submenu pane renders inside this window, and the
-    # theme picker keeps it on-screen with eww variables only (sub_top clamp
-    # + adaptive columns, see submenu.py) -- `eww update` cannot change
-    # window-arg variables of a running window, so the sizing must happen
-    # HERE, before the open. The extra transparent area is click-through to
-    # the same close_popup handler as the dismiss overlays.
+    # Window height: at open time the window is sized so its CONTENT never
+    # gets clipped (menu_h >= column height). Near the bottom edge the menu
+    # anchors flush to the screen bottom and grows upward (starts from the
+    # screen bottom); otherwise it may grow up to needed_h (the theme picker's
+    # worst case) and the bottom idle area is click-through like the dismiss
+    # overlays. The hover submenu pane keeps itself inside this window with eww
+    # variables only (sub_top clamp + adaptive columns, see submenu.py) --
+    # `eww update` cannot change window-arg variables of a running window, so
+    # the sizing must happen HERE, before the open.
     mon_h = None
     try:
         mon_h = int(next(
@@ -281,10 +282,10 @@ def main():
     except Exception:
         mon_h = None
     needed_h = submenu.THEME_ROW_TOP + submenu.max_pane_height(2) + submenu.MENU_PAD
+    content_h = submenu.menu_content_height(widget)
     if mon_h:
-        menu_h = int(max(submenu.BASE_MENU_H,
-                         min(needed_h, mon_h - submenu.EDGE_MARGIN - pos["y"])))
-        pos["y"] = max(0, min(pos["y"], mon_h - submenu.EDGE_MARGIN - menu_h))
+        pos["y"], menu_h = submenu.menu_layout(
+            pos["y"], mon_h, content_h, needed_h)
     else:
         menu_h = int(max(submenu.BASE_MENU_H, needed_h))
 
@@ -303,11 +304,17 @@ def main():
     except Exception:
         mon_w = None
     pos["x"], sub_left = submenu.horizontal_layout(pos["x"], mon_w)
-    # Both flags are written as a pair BEFORE the open (plain globals):
-    # exactly one of the two pane instances is visible at any time.
+    # All pane flags are plain globals pushed as ONE update BEFORE the open
+    # (window-arg variables of a RUNNING window cannot be changed by
+    # `eww update`, and the pair must be decided per-open): exactly one of the
+    # two pane instances is visible at any time, and the picker pane starts
+    # CLOSED -- if a previous hover left sub_show=true, sub_yuck holds that
+    # picker and the pane would pop open on every right-click (sticky state).
     run(["eww", "--config", EWW_CONFIG_DIR, "update",
          "sub_left=%s" % ("true" if sub_left else "false"),
-         "sub_right=%s" % ("false" if sub_left else "true")])
+         "sub_right=%s" % ("false" if sub_left else "true"),
+         "sub_show=false",
+         "sub_yuck="])
     run(
         [
             "eww", "--config", EWW_CONFIG_DIR, "open",

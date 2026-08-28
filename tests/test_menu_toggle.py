@@ -113,6 +113,12 @@ def test_main_writes_next_theme(writes, themes, monkeypatch):
 
 def test_main_units_refreshes_weather(writes, monkeypatch):
     calls = {"weather": None, "eww": []}
+    # Hermetic: the flip must not depend on the real config.local.yaml (whose
+    # metric/imperial the user may have changed live while testing).
+    monkeypatch.setattr(
+        menu_toggle, "load_merged",
+        lambda _path: {"weather": {"units": "metric"}},
+    )
 
     def fake_config_key(name):
         return {

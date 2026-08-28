@@ -40,9 +40,11 @@ EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
 sys.path.insert(0, os.path.join(SCRIPTS_DIR, "core"))
 
 import session
+from panel_pos import panel_position
 
 MC_W = 200
 MC_H = 320
+GAP = 10  # gap between the widget and the control panel
 
 
 def run(cmd, capture=False):
@@ -59,10 +61,6 @@ def eww(*args):
     run(["eww", "--config", EWW_CONFIG_DIR] + list(args))
 
 
-def clamp(value, lo, hi):
-    return max(lo, min(value, hi))
-
-
 def widget_rect(widget, monitor):
     out = run(
         ["python3", os.path.join(SCRIPT_DIR, "widget_rect.py"), "--widget", widget, "--monitor", str(monitor)],
@@ -72,19 +70,6 @@ def widget_rect(widget, monitor):
         return json.loads(out)
     except Exception:
         sys.exit("ERROR: widget_rect.py failed:\n%s" % out)
-
-
-def cursor_position():
-    out = run(["xdotool", "getmouselocation"], capture=True)
-    m = {}
-    for part in out.split():
-        if ":" in part:
-            k, v = part.split(":", 1)
-            m[k] = v
-    try:
-        return int(m.get("x", 0)), int(m.get("y", 0))
-    except ValueError:
-        return 0, 0
 
 
 def main():
@@ -154,15 +139,23 @@ def main():
         stdin=subprocess.DEVNULL, start_new_session=True, cwd=CONFIG_DIR,
     )
 
-    # Control panel near the cursor (the user just clicked the menu button);
-    # fall back to the widget's corner when the cursor cannot be read. It is a
-    # GTK window (scripts/move_panel.py) so it can be dragged around with the
-    # mouse; its position is clamped to the monitor frame.
-    px, py = cursor_position()
-    if px <= 0 and py <= 0:
-        px, py = int(round(rect["left"])), int(round(rect["top"]))
-    px = clamp(px, 0, max(0, frame_w - MC_W))
-    py = clamp(py, 0, max(0, frame_h - MC_H))
+    # Control panel just outside the current widget: on the horizontal side
+    # with MORE free space (right vs left of the widget), GAP px away from its
+    # edge, vertically centered on the widget (see panel_pos.py). It is a GTK
+    # window (scripts/move_panel.py) so it can still be dragged around with
+    # the mouse after it opens. The coordinate space matches the panel's own
+    # positioning code:
+    #   * Wayland: layer-shell margins are frame/workarea-local -> frame coords.
+    #   * X11    : win.move() uses ABSOLUTE screen coordinates, so the frame's
+    #              absolute top-left (abs - frame-local, i.e. the widget's
+    #              monitor origin) is added afterwards.
+    px, py = panel_position(rect, MC_W, MC_H, GAP)
+    WAYLAND = "WAYLAND_DISPLAY" in os.environ \
+        and os.environ.get("GDK_BACKEND", "wayland") != "x11"
+    if not WAYLAND:
+        px += int(round(rect["abs_x"] - rect["left"]))
+        py += int(round(rect["abs_y"] - rect["top"]))
+
     subprocess.Popen(
         [
             sys.executable, os.path.join(SCRIPT_DIR, "move_panel.py"),

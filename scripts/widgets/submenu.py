@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Hover submenu pane for the selectable context-menu items.
 
-Hovering one of the five quick-setting rows (AM/PM switch, Theme, Units,
-Panel shown/hidden, Side right/left) shows a picker pane INSIDE the context
+Hovering one of the five quick-setting rows (AM/PM switch, Theme,
+Units, Panel shown/hidden, Side right/left) shows a picker pane INSIDE the context
 menu window, right of the item rows and vertically aligned with the hovered
 row. The active value is highlighted; clicking an entry writes it via
 menu_toggle.py -> config_set.py into the git-ignored config.local.yaml (the
@@ -22,7 +22,9 @@ all three. The pane is shown/hidden purely with eww variables, so behavior is
 identical on X11 and Wayland.
 
 Usage:
-  ./submenu.py --item hour_format|appearance|units|panel_enabled|panel_alignment
+  ./submenu.py --item <key> [--widget clock|panel]
+  (--widget scopes the row-offset math to the menu that is actually open:
+   clock shows AM/PM, Theme, Units; panel shows Theme, Panel, Side.)
 """
 
 import argparse
@@ -62,7 +64,7 @@ SUB_PAD_V = 8    # picker vertical padding (top+bottom)
 BASE_MENU_H = 550
 EDGE_MARGIN = 8
 PANE_W = 375
-MENU_COL_W = 290  # conservative natural width of the ctx-menu column
+MENU_COL_W = 290  # exact pinned width of the ctx-menu column (eww.yuck :width 290)
 
 
 def horizontal_layout(x, monitor_w, pane_w_max=PANE_W):
@@ -85,15 +87,34 @@ def horizontal_layout(x, monitor_w, pane_w_max=PANE_W):
         return x - pane_w_max, True
     return max(0, min(x, monitor_w - MENU_COL_W - pane_w_max - EDGE_MARGIN)), False
 
-# Row index of every selectable item inside widget_ctx_menu (0-based).
-ROWS = {
-    "hour_format": 4,       # +1: actions|settings separator
-    "appearance": 5,
-    "units": 6,
-    "panel_enabled": 7,
-    "panel_alignment": 8,   # settings|system separator follows
+# Row index (0-based) of every selectable item inside widget_ctx_menu, PER
+# the widget whose menu is open. These are VISIBLE column positions: the
+# context-filtered (hidden) rows are plain-box wrapped (:visible) in the
+# yuck and COLLAPSE - the hidden markup slots take no space - so the indices
+# must match the order of the COLLAPSED column, not the markup order (see
+# eww.yuck). The clock menu drops Panel/Side/Panel-gap/its sep; the panel
+# menu drops AM/PM/sep/Units/Weather - so in the panel menu, e.g., Theme
+# sits ONE row higher (4) and Panel/Side at 6/7.
+CONTEXT_ROWS = {
+    "clock": {
+        "hour_format": 4,   # 0 Move,1 Resize,2 Reset,3 sep -> 4 is AM/PM
+        "appearance": 5,
+        "units": 7,         # 6 is the clock-only sep after Theme
+    },
+    "panel": {
+        "appearance": 4,       # AM/PM is hidden -> Theme one row higher
+        "panel_enabled": 6,    # 5 is the panel-only sep after Theme
+        "panel_alignment": 7,
+    },
 }
-KEYS = tuple(ROWS)
+# Default scope for bare callers / the legacy ROWS accessor.
+ROWS = CONTEXT_ROWS["clock"]
+KEYS = tuple(sorted({key for rows in CONTEXT_ROWS.values() for key in rows}))
+
+
+def rows_for(widget):
+    """Row-index map of the selectable items for the open widget's menu."""
+    return CONTEXT_ROWS.get(widget) or CONTEXT_ROWS["clock"]
 
 
 def run(cmd):
@@ -199,12 +220,47 @@ def build_yuck(key, options, active, columns):
     return " ".join(parts)
 
 
-def pane_top_for(key):
+def pane_top_for(key, widget="clock"):
     """Vertical offset of the picker inside the ctx_menu window."""
-    return int(MENU_PAD + ROWS[key] * ROW_H)
+    return int(MENU_PAD + rows_for(widget)[key] * ROW_H)
 
 
-THEME_ROW_TOP = int(MENU_PAD + ROWS["appearance"] * ROW_H)
+THEME_ROW_TOP = int(MENU_PAD + CONTEXT_ROWS["clock"]["appearance"] * ROW_H)
+
+# Number of ctx-menu column rows VISIBLE per widget (markup rows minus the
+# context-filtered ones). Drives menu_content_height() so ctx.py never sizes
+# the window below its column content - keep in sync with widget_ctx_menu.
+VISIBLE_ROW_COUNTS = {"clock": 12, "panel": 12}
+
+
+def menu_content_height(widget="clock"):
+    """Height the ctx-menu COLUMN occupies: visible rows + vertical padding.
+
+    Both menus show 12 rows; the helper stays widget-scoped so a future
+    layout drift cannot silently clip one menu's content.
+    """
+    rows = VISIBLE_ROW_COUNTS.get(widget, VISIBLE_ROW_COUNTS["clock"])
+    return int(rows * ROW_H + 2 * MENU_PAD)
+
+
+def menu_layout(y, monitor_h, content_h, needed_h):
+    """(y, menu_h) sizing for the ctx_menu window on `monitor_h` tall screen.
+
+    The column must NEVER be clipped: the window is at least as tall as the
+    column itself (content_h). When y + content_h would run past the screen
+    bottom (y near the bottom edge), the menu is anchored flush to the bottom
+    and grows upward - i.e. it starts from the screen bottom - so all visible
+    rows stay on-screen. Otherwise y is kept and the window may grow up to
+    needed_h (the theme picker's worst case) without mutating the window.
+    """
+    available = monitor_h - EDGE_MARGIN
+    if y + content_h > available:
+        y = max(0, available - content_h)
+    window_h = int(max(
+        content_h,
+        min(max(BASE_MENU_H, needed_h), available - y),
+    ))
+    return y, window_h
 
 
 def pane_height(options, columns):
@@ -239,7 +295,7 @@ def session_geometry():
     return geo
 
 
-def open_item(key):
+def open_item(key, widget="clock"):
     cfg = load_merged(CONFIG_DIR)
     options = options_for(key, cfg)
     active = active_for(key, cfg)
@@ -254,7 +310,7 @@ def open_item(key):
         MENU_PAD,
         min(geo["menu_h"], geo["monitor_h"] - EDGE_MARGIN - geo["y"]) - MENU_PAD,
     )
-    row_top = pane_top_for(key)
+    row_top = pane_top_for(key, widget)
 
     columns = 2 if key == "appearance" else 1
     while key == "appearance" and columns < 3 and \
@@ -275,10 +331,11 @@ def open_item(key):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--item", choices=KEYS)
+    ap.add_argument("--widget", choices=sorted(CONTEXT_ROWS), default="clock")
     args = ap.parse_args()
 
     if not args.item:
-        sys.exit("Usage: ./submenu.py --item <key>")
+        sys.exit("Usage: ./submenu.py --item <key> [--widget clock|panel]")
 
     # eww kills widget commands whose runtime exceeds its timeout even when
     # :timeout is set on the eventbox; re-spawn detached like ctx.py does so
@@ -292,7 +349,7 @@ def main():
         )
         return
 
-    open_item(args.item)
+    open_item(args.item, args.widget)
 
 
 if __name__ == "__main__":

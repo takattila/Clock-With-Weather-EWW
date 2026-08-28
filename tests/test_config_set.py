@@ -340,3 +340,62 @@ def test_global_keys_preserve_local_tree(local_file, monkeypatch):
     assert data["appearance"] == "light"
     assert data["system"]["hour_format"] == "12"
     assert data["panel"]["enabled"] is False
+
+
+# ---------------------------------------------------------------------------
+# Weather settings (scripts/move/weather_panel.py): global weather.* keys
+# ---------------------------------------------------------------------------
+
+def test_weather_city_stored_as_string(local_file, monkeypatch):
+    run(["--key", "city", "--value", "Tatabánya"], monkeypatch)
+    config_set.main()
+    value = read(local_file)["weather"]["city"]
+    assert value == "Tatabánya"
+    assert isinstance(value, str)
+
+
+def test_weather_language_fields(local_file, monkeypatch):
+    run(["--key", "language_code", "--value", "hu"], monkeypatch)
+    config_set.main()
+    run(["--key", "lang", "--value", "hu"], monkeypatch)
+    config_set.main()
+    weather = read(local_file)["weather"]
+    assert weather["language_code"] == "hu"
+    assert weather["lang"] == "hu"
+
+
+def test_weather_api_url_stored(local_file, monkeypatch):
+    url = "https://api.openweathermap.org/data/2.5/weather"
+    run(["--key", "api_url", "--value", url], monkeypatch)
+    config_set.main()
+    saved = read(local_file)["weather"]["api_url"]
+    assert saved == url
+    assert isinstance(saved, str)
+
+
+def test_weather_city_empty_exits(local_file, monkeypatch):
+    run(["--key", "city", "--value", "   "], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must not be empty" in str(exc.value)
+
+
+def test_weather_lang_empty_exits(local_file, monkeypatch):
+    run(["--key", "lang", "--value", ""], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must not be empty" in str(exc.value)
+
+
+def test_weather_api_url_bad_scheme_exits(local_file, monkeypatch):
+    run(["--key", "api_url", "--value", "ftp://host"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "http:// or https://" in str(exc.value)
+
+
+def test_weather_key_rejects_monitor(local_file, monkeypatch):
+    run(["--key", "city", "--value", "Tatabánya", "--monitor", "0"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "--monitor must not be used" in str(exc.value)

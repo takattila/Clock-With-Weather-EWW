@@ -33,9 +33,12 @@ GLOBAL keys need neither --widget nor --monitor (passing --monitor is an
 error):
   ./config_set.py --key hour_format --value 12      -> system.hour_format
   ./config_set.py --key appearance --value dark     -> appearance
-  ./config_set.py --key units --value imperial      -> weather.units
-  ./config_set.py --key panel_enabled --value false -> panel.enabled
-  ./config_set.py --key panel_alignment --value left-> panel.window.alignment
+./config_set.py --key units --value imperial      -> weather.units
+   ./config_set.py --key panel_enabled --value false -> panel.enabled
+   ./config_set.py --key panel_alignment --value left-> panel.window.alignment
+   ./config_set.py --key city --value Tatabánya      -> weather.city
+   ./config_set.py --key lang --value hu             -> weather.lang
+   ./config_set.py --key api_url --value https://... -> weather.api_url
 
 Keys not touched by this run are preserved: the whole previous local tree is
 loaded, updated and dumped back. Values are coerced (positions and gaps to
@@ -95,7 +98,8 @@ def coerce_value(key, raw):
         if flag in ("true", "false"):
             return flag == "true"
         sys.exit("ERROR: panel_enabled must be true or false, got: %s" % (raw,))
-    if key in ("hour_format", "appearance", "units", "alignment"):
+    if key in ("hour_format", "appearance", "units", "alignment",
+               "city", "language_code", "lang", "api_url"):
         return str(raw).strip()
     try:
         return int(str(raw).strip().rstrip(","))
@@ -136,6 +140,18 @@ def resolve_target(args):
         if str(args.value) not in ("metric", "imperial"):
             sys.exit("ERROR: units must be metric or imperial, got: %s" % (args.value,))
         return ["weather", "units"], "weather.units"
+    if args.key in ("city", "language_code", "lang", "api_url"):
+        reject_monitor(args)
+        value = str(args.value).strip()
+        if args.key == "api_url":
+            if not value.startswith(("http://", "https://")):
+                sys.exit(
+                    "ERROR: api_url must start with http:// or https://, got: %s"
+                    % value
+                )
+        elif not value:
+            sys.exit("ERROR: %s must not be empty" % args.key)
+        return ["weather", args.key], "weather.%s" % args.key
     if args.key == "panel_enabled":
         reject_monitor(args)
         return ["panel", "enabled"], "panel.enabled"

@@ -118,33 +118,68 @@ with **all 42 themes** lives in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 
 ### Right click on the Widgets
 
-The context menu is a quick-settings panel: Move / Resize / Reset, plus hover
+The context menu is a quick-settings panel: **Move / Resize / Reset**, hover
 submenus for the **AM/PM format** (12 ↔ 24 hour), the **theme** (all
 ready-made themes, adaptive two/three columns, active one highlighted),
 **°C/°F** (with instant weather refresh), **panel show/hide** and **panel
-side** — and a factory **Hard reset** + About dialog. The menu opens
-instantly and always belongs to the widget actually sitting under the
-pointer — even where their transparent edges overlap. Long pickers clamp to
-the bottom screen edge, and near the right edge the picker flips to the
-left side of the menu, so nothing is ever clipped. Every selection is
-written to the git-ignored `config.local.yaml` and applied live.
+side** — plus **Weather settings**, **Panel gap**, factory **Hard reset** and
+the **About** dialog. The menu opens instantly and always belongs to the
+widget actually sitting under the pointer — even where their transparent
+edges overlap.
+
+The pane never gets stuck: hovering any row without a submenu (Move /
+Resize / Reset / Weather / Panel gap / Hard reset / About) closes the picker
+again, and the picker never pops open by itself. Long pickers clamp to the
+bottom screen edge, near the right edge the picker flips to the left side of
+the menu, and the menu is a fixed width on every compositor — nothing is
+ever clipped. **ESC closes any popup** (menu, picker or the control
+windows), even mid-typing. Every selection is written to the git-ignored
+`config.local.yaml` and applied live.
 
 <table>
     <tr>
         <th>Right click</th>
-        <th>Resize Weather</th>
+        <th>Theme picker</th>
     </tr>
     <tr>
-        <td><img src="./docs/images/screenshots/context-menu-01.png"></td>
-        <td><img src="./docs/images/screenshots/context-menu-02.png"></td>
+        <td><img src="./docs/images/screenshots/context-menu-open.png"></td>
+        <td><img src="./docs/images/screenshots/context-menu-theme.png"></td>
+    </tr>
+</table>
+
+### Settings windows (new in v3.1.0)
+
+Move / Resize, the Weather settings form, the Panel gap control and the About
+dialog open as dedicated windows that hug the widget or the screen edge they
+control — editing is draft-only, **Save commits it in one go**:
+
+<table>
+    <tr>
+        <th>Weather settings</th>
+        <th>Move / Resize</th>
     </tr>
     <tr>
-        <th>Resize Panel</th>
+        <td><img src="./docs/images/screenshots/window-weather-settings.png"></td>
+        <td><img src="./docs/images/screenshots/window-move-resize.png"></td>
+    </tr>
+    <tr>
+        <th>Panel gap</th>
         <th>About</th>
     </tr>
     <tr>
-        <td><img src="./docs/images/screenshots/context-menu-03.png"></td>
-        <td><img src="./docs/images/screenshots/context-menu-04.png"></td>
+        <td><img src="./docs/images/screenshots/window-panel-gap.png"></td>
+        <td><img src="./docs/images/screenshots/window-about.png"></td>
+    </tr>
+</table>
+
+### Full desktop (main display)
+
+<table>
+    <tr>
+        <th>Clock & weather widget + system monitor panel on the desktop</th>
+    </tr>
+    <tr>
+        <td><img src="./docs/images/screenshots/main-display.png"></td>
     </tr>
 </table>
 
@@ -172,7 +207,18 @@ written to the git-ignored `config.local.yaml` and applied live.
   wizard or right-click AM/PM submenu).
 - **Quick-settings context menu** — hover submenus for hour format, theme,
   °C/°F, panel show/hide and side flip, plus a factory Hard reset, one right
-  click away.
+  click away. The picker hides again when the pointer enters a row without a
+  submenu, and never pops open by itself after a right click.
+- **Weather settings window** (new in v3.1.0) — a draggable form that edits the
+  city, language, units, API URL and key as a draft; Save validates and
+  commits them in one go (config.local.yaml + `.api_key`) and refreshes the
+  weather immediately, Reset drops the local weather overrides.
+- **Panel gap control** (new in v3.1.0) — top / right / bottom / left spacing
+  between the panel and the screen / taskbar edges, edited in a draggable
+  window next to the panel (± and typed values as a draft), saved in one go.
+- **One universal ESC** (new in v3.1.0) — closes the context menu, any picker
+  and the control windows from any mode, and cancels Move / Resize geometry
+  editing (even mid-typing) instead of closing the popups.
 - **Per-widget scaling** — scale the clock and the panel independently; each
   shrinks as a single object, so the relative distances between its parts never
   change. The Move / Resize dialog accepts a hand-typed exact percentage too —
@@ -250,8 +296,8 @@ Clock-With-Weather-EWW/
 ├── eww/                # the eww config dir: eww.yuck + eww.scss (+ generated theme files)
 ├── scripts/
 │   ├── core/           # config / theme / watch / weather / system data scripts
-│   ├── widgets/        # panel charts, context menu + quick toggles, About popups
-│   ├── move/           # Move/Resize overlay + input daemons
+│   ├── widgets/        # panel charts, context menu + quick toggles, About / weather dialogs
+│   ├── move/           # Move/Resize + Panel-gap control windows, input daemons
 │   └── bin/            # start.sh, stop.sh, install.sh, setup.sh, hard-reset.sh
 ├── assets/
 │   ├── themes/         # appearance + per-city weather YAMLs
