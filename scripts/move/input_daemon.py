@@ -12,13 +12,17 @@ small file generated/input_session.json:
 
   {"mode": "ctx"}                          <- ctx.py / about.py (popup open)
   {"mode": "move", "widget": "clock", "monitor": 0}   <- move.py (Move/Resize)
+  {"mode": "gap", "widget": "clock", "monitor": 0}    <- gap_ctl.py (Panel gap)
+  {"mode": "weather", "widget": "clock", "monitor": 0} <- weather_ctl.py
 
 Actions (only while that file exists):
-  ctx:
-    ESC                -> scripts/close_popup.py (closes the popups)
-  gap:
-    ESC                -> scripts/close_popup.py (closes the panel-gap session)
-  move:
+  UNIVERSAL ESC (any mode, also while an entry of a GTK form owns the
+  keyboard mid-typing - ESC is never captured by a field):
+    move               -> move_ctl.py --action cancel (discard without saving)
+    everything else    -> scripts/close_popup.py (ctx / gap / weather /
+                           about and ANY future session mode that signals
+                           itself through the session file)
+  move (non-ESC keys):
     Arrow keys         -> move_ctl.py --action left/right/up/down
     Shift+3 / numpad + -> move_ctl.py --action zoom_in   (Hungarian layout)
     Minus / numpad -   -> move_ctl.py --action zoom_out
@@ -27,7 +31,9 @@ Actions (only while that file exists):
     Shift+Right/Left   -> move_ctl.py --action zoom_in_x / zoom_out_x
                           (width only)
     Enter              -> move_ctl.py --action save
-    ESC                -> move_ctl.py --action cancel
+    (all ignored while session["typing"] is set - an edit field of the GTK
+     control panel owns the keyboard mid-typing; Enter would SAVE and -/+
+     would zoom while the user just types a percentage. ESC is exempt.)
 
 move_ctl.py --action save/cancel and close_popup.py delete the session file, so
 the daemon goes back to idle. Key auto-repeat (holding a key) is ignored: one
@@ -156,27 +162,35 @@ def run_script(args):
 
 
 def handle_key(code, shift, session):
-    mode = session.get("mode")
-    if mode in ("ctx", "gap"):
-        # While a hand-typed value entry of the gap control panel owns the
-        # keyboard (gap_panel.py sets session["typing"] on entry focus), every
-        # key incl. ESC is ignored here - ESC would otherwise close the whole
-        # session mid-typing; click outside the entry first, then ESC closes.
-        if mode == "gap" and session.get("typing"):
-            return
-        # ESC closes the popups / the panel-gap session; close_popup.py also
-        # clears the session file, so the GTK windows watching it quit too.
-        if code == KEY_ESC:
+    # UNIVERSAL ESC: closes EVERY active session, in every mode and ALWAYS -
+    # also while an entry of a GTK form owns the keyboard mid-typing
+    # (session["typing"] only guards the non-ESC move keys; ESC is reserved
+    # for closing and is never captured by a field). move keeps its
+    # cancel-on-ESC semantics (move_ctl.py discards without saving), every
+    # other mode - ctx/gap/weather/about and ANY future session that signals
+    # itself through the session file - goes through close_popup.py. The rule
+    # is deliberately mode-agnostic besides the move special case, so a future
+    # window needs ZERO daemon changes to be closable by ESC.
+    if code == KEY_ESC:
+        if session.get("mode") == "move":
+            widget = str(session.get("widget", "clock"))
+            monitor = str(session.get("monitor", 0))
+            run_script([
+                os.path.join(SCRIPT_DIR, "move_ctl.py"),
+                "--widget", widget, "--monitor", monitor, "--action", "cancel",
+            ])
+        else:
             run_script([os.path.join(SCRIPTS_DIR, "widgets", "close_popup.py")])
         return
-    if mode != "move":
+
+    # Only the move session maps anything else.
+    if session.get("mode") != "move":
         return
 
     # While the hand-typed resize field of the GTK control panel owns the
     # keyboard (move_panel.py sets session["typing"] on entry focus), every
-    # key is ignored here: Enter would otherwise SAVE the session and -/+
-    # would zoom in/out while the user is just typing a percentage. ESC is
-    # ignored too -- click outside the entry first, then ESC cancels.
+    # non-ESC key is ignored here: Enter would otherwise SAVE the session and
+    # -/+ would zoom in/out while the user is just typing a percentage.
     if session.get("typing"):
         return
 
@@ -205,8 +219,6 @@ def handle_key(code, shift, session):
         action = "zoom_out"
     elif code in (KEY_ENTER, KEY_KPENTER):
         action = "save"
-    elif code == KEY_ESC:
-        action = "cancel"
     if action:
         run_script([
             os.path.join(SCRIPT_DIR, "move_ctl.py"),

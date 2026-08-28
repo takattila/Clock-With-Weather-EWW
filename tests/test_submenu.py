@@ -104,6 +104,104 @@ def test_split_three_columns_balanced():
 def test_pane_top_offsets_follow_row_order():
     for key, row in submenu.ROWS.items():
         assert submenu.pane_top_for(key) == int(submenu.MENU_PAD + row * submenu.ROW_H)
+    for widget, rows in submenu.CONTEXT_ROWS.items():
+        for key, row in rows.items():
+            assert submenu.pane_top_for(key, widget) == \
+                int(submenu.MENU_PAD + row * submenu.ROW_H)
+
+
+def test_context_rows_match_collapsed_column():
+    # These indices back the widget_ctx_menu column as it renders COLLAPSED
+    # (the hidden :visible wrappers take no space - see the yuck). Clock
+    # shows AM/PM(4)+Theme(5)+sep(6)+Units(7); the panel menu DROPS the
+    # clock-only rows, so Theme is one row higher (4) and Panel/Side are 6/7.
+    assert submenu.CONTEXT_ROWS["clock"]["appearance"] == 5
+    assert submenu.CONTEXT_ROWS["panel"]["appearance"] == 4
+    assert submenu.CONTEXT_ROWS["clock"]["hour_format"] == 4
+    assert submenu.CONTEXT_ROWS["clock"]["units"] == 7
+    assert submenu.CONTEXT_ROWS["panel"]["panel_enabled"] == 6
+    assert submenu.CONTEXT_ROWS["panel"]["panel_alignment"] == 7
+    # each menu only carries its own rows; the union is the full picker set
+    assert set(submenu.CONTEXT_ROWS["clock"]) == {"hour_format", "appearance", "units"}
+    assert set(submenu.CONTEXT_ROWS["panel"]) == {"appearance", "panel_enabled",
+                                                  "panel_alignment"}
+    assert set(submenu.KEYS) == {"hour_format", "appearance", "units",
+                                 "panel_enabled", "panel_alignment"}
+    # both menus report the same count (12 visible rows) -> the column height
+    # is the same for both, even though the Theme row differs by one.
+    assert submenu.VISIBLE_ROW_COUNTS["clock"] == submenu.VISIBLE_ROW_COUNTS["panel"] == 12
+
+
+def test_theme_row_offset_depends_on_widget_column():
+    # THEME_ROW_TOP anchors the clock column (Theme at visible row 5 = 220px).
+    # The panel column drops the AM/PM row, so its Theme pane opens one row
+    # higher - this is the "Panel/Side somewhere else" bug guard: the pane
+    # must track the COLLAPSED column position, not the markup index.
+    assert submenu.THEME_ROW_TOP == submenu.pane_top_for("appearance", "clock")
+    panel_top = submenu.pane_top_for("appearance", "panel")
+    assert panel_top == int(submenu.MENU_PAD +
+                            submenu.CONTEXT_ROWS["panel"]["appearance"] *
+                            submenu.ROW_H)
+    assert panel_top < submenu.THEME_ROW_TOP
+    assert submenu.pane_top_for("panel_enabled", "panel") > \
+        submenu.pane_top_for("appearance", "panel")
+
+
+# --- menu content height / window layout (never-clip + bottom anchoring) ---
+
+def test_menu_content_height_scopes_to_widget():
+    assert submenu.menu_content_height("clock") == \
+        int(12 * submenu.ROW_H + 2 * submenu.MENU_PAD)
+    assert submenu.menu_content_height("panel") == \
+        int(12 * submenu.ROW_H + 2 * submenu.MENU_PAD)
+    assert submenu.menu_content_height() == submenu.menu_content_height("clock")
+    # unknown widget falls back to the clock menu (both are 12 rows)
+    assert submenu.menu_content_height("bogus") == submenu.menu_content_height("clock")
+
+
+def test_menu_layout_top_of_screen_keeps_y_and_sizes_window():
+    content_h = submenu.menu_content_height("clock")
+    needed_h = submenu.THEME_ROW_TOP + submenu.max_pane_height(2) + submenu.MENU_PAD
+    y, window_h = submenu.menu_layout(100, 1080, content_h, needed_h)
+    assert y == 100                                  # plenty of room below
+    # window grows up to needed_h (theme picker worst case) but never below
+    # the column content
+    assert window_h == needed_h
+    assert window_h >= content_h
+    assert y + window_h <= 1080 - submenu.EDGE_MARGIN
+
+
+def test_menu_layout_near_bottom_anchors_to_screen_bottom():
+    content_h = submenu.menu_content_height("clock")
+    # 900 of 1080 -> the column would cross the bottom edge by far
+    y, window_h = submenu.menu_layout(900, 1080, content_h, 865)
+    available = 1080 - submenu.EDGE_MARGIN
+    assert y == available - content_h                # anchored flush to the bottom
+    assert y + content_h == available
+    assert window_h == content_h                     # never below the content
+    assert window_h <= content_h + 1
+
+
+def test_menu_layout_exact_boundary_keeps_y():
+    content_h = submenu.menu_content_height("clock")
+    available = 1080 - submenu.EDGE_MARGIN
+    # y is exactly where the content ends flush with the bottom -> unchanged
+    y, window_h = submenu.menu_layout(available - content_h, 1080, content_h, 865)
+    assert y == available - content_h
+    assert y + content_h == available
+    assert window_h == content_h
+
+
+def test_menu_layout_tiny_monitor_clamps_y_and_keeps_content():
+    content_h = submenu.menu_content_height("clock")
+    # Monitors smaller than the column (320px) cannot fit the content at all:
+    # y never goes negative and the window never shrinks below the content.
+    y, window_h = submenu.menu_layout(0, 320, content_h, 865)
+    assert y == 0
+    assert window_h == content_h
+    y, window_h = submenu.menu_layout(80, 320, content_h, 865)
+    assert y == 0
+    assert window_h == content_h
 
 
 def test_pane_height_rows_and_padding():

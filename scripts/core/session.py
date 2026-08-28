@@ -8,6 +8,7 @@ it so the daemon goes back to idle:
   {"mode": "ctx"}                          -- ctx.py / about.py (popup open)
   {"mode": "move", "widget": "clock", "monitor": 0}   -- move.py (Move/Resize)
   {"mode": "gap", "widget": "clock", "monitor": 0}    -- gap_ctl.py (panel gap)
+  {"mode": "weather", "widget": "clock", "monitor": 0} -- weather_ctl.py
 
 They also make sure the daemon is running: start.sh starts it via passwordless
 sudo at startup, and these helpers restart it (lazy fallback) if it died.

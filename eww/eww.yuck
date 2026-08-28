@@ -6,11 +6,12 @@
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
 ;;   3. ctx_menu        -> right-click quick-settings menu (Move / Resize /
 ;;                         Reset / AM-PM switch / Theme / Units / Panel on-off /
-;;                         Side / Panel gap / Hard reset / About)
+;;                         Side / Panel gap / Weather / Hard reset / About)
 ;;
-;; The Move/Resize rectangle + control panel and the About dialog are GTK3
-;; windows (scripts/move/move_rect.py + move/move_panel.py + widgets/about_win.py), not eww
-;; windows.
+;; The Move/Resize rectangle + the GTK control panels (Move/Resize, Panel
+;; gap, Weather settings) and the About dialog are GTK3 windows
+;; (scripts/move/move_rect.py + move/move_panel.py + move/gap_panel.py +
+;; move/weather_panel.py + widgets/about_win.py), not eww windows.
 ;; ===========================================================================
 
 ;; --- Context menu state (see scripts/move/move.py) -------------------------------
@@ -264,13 +265,31 @@
 ;; Context menu (quick settings: Move / Resize / Reset / toggles / About)
 ;; ===========================================================================
 
-;; The five selectable rows (AM/PM switch, Theme, Units, Panel, Side) are
-;; hover-only: an eventbox opens scripts/widgets/submenu.py --item <key> when
-;; the pointer enters. The submenu lives exactly as long as this menu — every
-;; dismissal path (option click, outside click, ESC, another right-click) goes
-;; through close_popup.py. Move / Resize / Reset keep their click behavior.
-;; Slower actions are nohup-backgrounded to keep the click instant, exactly
-;; like Move / Resize.
+;; The four (hover) selectable/action columns are grouped by domain and
+;; context-sensitive: the menu shows only the rows that belong to the widget
+;; it was opened on. Layout (16 markup rows, 12 visible per widget):
+;;
+;;   0 Move            4 AM/PM ▸  ONLY-clock    10 Panel ▸      ONLY-panel
+;;   1 Resize          5 Theme ▸  BOTH          11 Side ▸       ONLY-panel
+;;   2 Reset           6 sep      ONLY-clock    12 Panel gap    ONLY-panel
+;;   3 sep             7 Units ▸  ONLY-clock    13 sep
+;;                    8 Weather  ONLY-clock    14 Hard reset
+;;                    9 sep      ONLY-panel    15 About
+;;
+;; The context-filtered rows are wrapped in plain :visible boxes so the
+;; hidden rows COLLAPSE from the column (a bare :visible eventbox keeps its
+;; layout slot) - the ROW indices for the picker-pane math are therefore the
+;; COLLAPSED (visible) positions: in the clock column Theme is row 5, in the
+;; panel column row 4 (AM/PM hidden) with Panel=6 / Side=7. These are
+;; duplicated in CONTEXT_ROWS in scripts/widgets/submenu.py, which MUST stay
+;; in sync. The hover-only rows (AM/PM, Theme, Units, Panel, Side) open
+;; scripts/widgets/submenu.py --item <key> --widget ${widget} when the
+;; pointer enters; submenu.py scopes its row-offset math to the open widget's
+;; menu. The submenu lives exactly as long as this menu — every dismissal
+;; path (option click, outside click, ESC, another right-click) goes through
+;; close_popup.py. Move / Resize / Reset keep their click behavior. Slower
+;; actions are nohup-backgrounded to keep the click instant, exactly like
+;; Move / Resize.
 (defwidget widget_ctx_menu [widget monitor]
   (box :orientation "h" :space-evenly false
     ;; LEFT picker pane — only visible in the flipped layout (sub_left=true,
@@ -307,45 +326,67 @@
             (box :class "ctx-btn-box" (label :text "Reset")))
     ;; --- group separator: actions | settings -----------------------------
     (label :class "ctx-sep" :text "───────────────────────────")
-    ;; AM/PM switch: system.hour_format 24h / 12h picker.
+    ;; AM/PM switch (clock only): system.hour_format 24h / 12h picker.
     ;; NOTE: deliberately NOT a button — a nested GTK button owns its own
     ;; input window, which swallows the enter/leave events the eventbox
     ;; needs; a plain box+label keeps hover working.
-    (eventbox :class "ctx-btn"
-              :onhover "../scripts/widgets/submenu.py --item hour_format"
-      (box :class "ctx-btn-box"
-           (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"})))
+    (box :visible {widget == "clock"}
+      (eventbox :class "ctx-btn"
+                :onhover "../scripts/widgets/submenu.py --item hour_format --widget ${widget}"
+        (box :class "ctx-btn-box"
+             (label :text {config.hour_format == "12" ? "AM/PM: 12h ▸" : "AM/PM: 24h ▸"}))))
     ;; Theme: every theme under assets/themes/appearance/, two columns.
     (eventbox :class "ctx-btn"
-              :onhover "../scripts/widgets/submenu.py --item appearance"
+              :onhover "../scripts/widgets/submenu.py --item appearance --widget ${widget}"
       (box :class "ctx-btn-box"
            (label :text {"Theme: " + config.appearance_name + " ▸"})))
-    ;; Units metric <-> imperial; picking one also refreshes weather_info
-    ;; instantly so °C/°F does not wait for the 10-minute defpoll.
-    (eventbox :class "ctx-btn"
-              :onhover "../scripts/widgets/submenu.py --item units"
-      (box :class "ctx-btn-box"
-           (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"})))
-    ;; Panel visibility: panel.enabled shown / hidden.
-    (eventbox :class "ctx-btn"
-              :onhover "../scripts/widgets/submenu.py --item panel_enabled"
-      (box :class "ctx-btn-box"
-           (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"})))
-    ;; Panel side: panel.window.alignment right / left.
-    (eventbox :class "ctx-btn"
-              :onhover "../scripts/widgets/submenu.py --item panel_alignment"
-      (box :class "ctx-btn-box"
-           (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"})))
-    ;; Panel gap: top/right/bottom/left spacing between the panel and the
-    ;; screen/taskbar edges (panel.gap). gap_ctl.py opens the draggable GTK
-    ;; control panel NEXT TO THE PANEL WIDGET (10px, on the side with more
+    (box :visible {widget == "clock"}
+      (label :class "ctx-sep" :text "───────────────────────────"))
+    ;; Units (clock only): metric <-> imperial; picking one also refreshes
+    ;; weather_info instantly so °C/°F does not wait for the 10-minute defpoll.
+    (box :visible {widget == "clock"}
+      (eventbox :class "ctx-btn"
+                :onhover "../scripts/widgets/submenu.py --item units --widget ${widget}"
+        (box :class "ctx-btn-box"
+             (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"}))))
+    ;; Weather settings (clock only): city / language_code / lang / units /
+    ;; api_url / api_key (the draggable GTK form opens CENTERED ON this
+    ;; monitor - like the About dialog). Editing is draft-only; the Save
+    ;; button validates and writes the changed values in one go
+    ;; (config.local.yaml via config_set.py + the .api_key file) and refreshes
+    ;; weather_info instantly (no 10-minute defpoll wait); the Reset button
+    ;; drops the local weather overrides so the config.yaml/theme defaults win
+    ;; again; both are backgrounded (nohup ... &) so the click returns
+    ;; instantly.
+    (box :visible {widget == "clock"}
+      (button :class "ctx-btn" :timeout "5s"
+              :onclick "nohup ../scripts/move/weather_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
+              (box :class "ctx-btn-box" (label :text "Weather"))))
+    (box :visible {widget == "panel"}
+      (label :class "ctx-sep" :text "───────────────────────────"))
+    ;; Panel visibility (panel only): panel.enabled shown / hidden.
+    (box :visible {widget == "panel"}
+      (eventbox :class "ctx-btn"
+                :onhover "../scripts/widgets/submenu.py --item panel_enabled --widget ${widget}"
+        (box :class "ctx-btn-box"
+             (label :text {config.panel_enabled == "true" ? "Panel: shown ▸" : "Panel: hidden ▸"}))))
+    ;; Panel side (panel only): panel.window.alignment right / left.
+    (box :visible {widget == "panel"}
+      (eventbox :class "ctx-btn"
+                :onhover "../scripts/widgets/submenu.py --item panel_alignment --widget ${widget}"
+        (box :class "ctx-btn-box"
+             (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"}))))
+    ;; Panel gap (panel only): top/right/bottom/left spacing between the panel
+    ;; and the screen/taskbar edges (panel.gap). gap_ctl.py opens the draggable
+    ;; GTK control panel NEXT TO THE PANEL WIDGET (10px, on the side with more
     ;; free space - like move.py opens the Move/Resize panel); +/- and typing
     ;; only change the draft values there, the Save button commits them all
     ;; in one go; it is backgrounded (nohup ... &) so the click returns
     ;; instantly.
-    (button :class "ctx-btn" :timeout "5s"
-            :onclick "nohup ../scripts/move/gap_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
-            (box :class "ctx-btn-box" (label :text "Panel gap")))
+    (box :visible {widget == "panel"}
+      (button :class "ctx-btn" :timeout "5s"
+              :onclick "nohup ../scripts/move/gap_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
+              (box :class "ctx-btn-box" (label :text "Panel gap"))))
     ;; --- group separator: settings | system -------------------------------
     (label :class "ctx-sep" :text "───────────────────────────")
     ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and

@@ -26,9 +26,10 @@ same mechanics as scripts/move_panel.py / about_win.py:
 The editable fields are handled exactly like move_panel.py's percentage
 fields: while one owns the keyboard the file generated/input_session.json is
 marked "typing": true so the evdev daemon (scripts/input_daemon.py) ignores
-every key (ESC would otherwise close the session while typing); on X11 the
-override-redirect toplevel never gains the X focus, so the entry takes a GDK
-KEYBOARD GRAB on click and all keystrokes are routed into this window.
+every OTHER key - ESC specifically stays live and closes the session even
+mid-typing; on X11 the override-redirect toplevel never gains the X focus, so
+the entry takes a GDK KEYBOARD GRAB on click and all keystrokes are routed
+into this window.
 
 Closing works three ways, exactly like the About window:
 
@@ -467,9 +468,8 @@ class GapPanel:
         """(Re)write the session file with/without the "typing" marker.
 
         While a value entry owns the keyboard the evdev daemon must ignore
-        every key (ESC would otherwise close the session and Enter would
-        arrive as a stray press); it skips all handling while set, including
-        ESC - click outside the entry first, then ESC closes.
+        every non-ESC key (Enter would otherwise arrive as a stray press);
+        ESC always closes the session, even mid-typing.
         """
         try:
             with open(SESSION_FILE) as fh:
