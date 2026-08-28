@@ -1,4 +1,4 @@
-# Screenshots — Theme Gallery (v3.0.0)
+# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 context menu & windows)
 
 Every ready-made appearance theme, captured on a 1920×1080 monitor —
 **42 themes: 9 style themes and 12 classic color themes, each in a fully
@@ -147,15 +147,36 @@ The full-height side panel with live CPU / Memory / Network charts
 |---|---|
 | ![Panel light orange](images/screenshots/panel-light-orange.png) | ![Panel dark orange bg](images/screenshots/panel-dark-orange-bg.png) |
 
-## Context menu
+## Full desktop
+
+The clock & weather widget with the system monitor panel on the main
+display:
+
+| Main display |
+|---|
+| ![Main display](images/screenshots/main-display.png) |
+
+## Context menu (v3.1.0)
 
 Right-click quick settings: Move / Resize / Reset, hover submenus (AM/PM,
 Theme, Units, Panel, Side — the theme picker adapts its column count and
-flips to the left side of the menu near the right screen edge), Hard reset
-and About.
+flips to the left side of the menu near the right screen edge), Weather
+settings, Panel gap, Hard reset and About. The menu is a fixed width on
+every compositor, the picker never pops open by itself, and hovering any
+non-submenu row closes a still-open picker:
 
-| Right click | Resize Weather |
+| Right click (no picker) | Theme picker |
 |---|---|
-| ![Right click](images/screenshots/context-menu-01.png) | ![Resize Weather](images/screenshots/context-menu-02.png) |
-| **Resize Panel** | **About** |
-| ![Resize Panel](images/screenshots/context-menu-03.png) | ![About](images/screenshots/context-menu-04.png) |
+| ![Right click](images/screenshots/context-menu-open.png) | ![Theme picker](images/screenshots/context-menu-theme.png) |
+
+## Settings windows (v3.1.0)
+
+Move / Resize, the Weather settings form, the Panel gap control and the
+About dialog open as dedicated windows (draft edits, Save commits in one
+go):
+
+| Weather settings | Move / Resize |
+|---|---|
+| ![Weather settings](images/screenshots/window-weather-settings.png) | ![Move / Resize](images/screenshots/window-move-resize.png) |
+| **Panel gap** | **About** |
+| ![Panel gap](images/screenshots/window-panel-gap.png) | ![About](images/screenshots/window-about.png) |

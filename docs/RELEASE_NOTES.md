@@ -1,3 +1,105 @@
+# Clock-With-Weather-EWW — v3.1.0
+
+**A beautiful, fully customizable clock & weather widget with a live system
+monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
+layer-shell) and also works on **X11**. Powered by the
+[OpenWeatherMap](https://openweathermap.org) API.
+
+> **Recommendation: v3.1.0** — the current recommended release. It builds on
+> the v3.0.0 style-aware theme system and turns the right-click menu into a
+> complete on-screen control center with dedicated settings windows.
+
+**v3.1.0 makes the right-click context menu a full settings center and adds
+dedicated control windows for the weather and the panel gap**, plus a single
+universal ESC that closes every popup. The context menu itself gets several
+fixes that make it behave identically on KDE/Wayland and Cinnamon/X11.
+
+---
+
+## What changed in v3.1.0
+
+### New: Weather settings window
+
+`Weather` in the clock's context menu opens a draggable GTK form (centered on
+the same monitor) that edits the **city, language code, display language,
+units (°C/°F), API URL and API key** as a draft. **Save** validates and
+commits the changed values in one go (`config.local.yaml` + the `.api_key`
+file) and refreshes the weather instantly — no 10-minute config-poll wait.
+**Reset** drops the local weather overrides so the `config.yaml`/theme
+defaults win again.
+
+### New: Panel gap control window
+
+`Panel gap` in the panel's context menu opens a draggable control window next
+to the panel widget (10px away, on the side with more free space — like the
+Move/Resize window). It edits the **top / right / bottom / left** spacing
+between the panel and the screen / taskbar edges (`panel.gap`): `+`/`−`
+steppers and typed values only change the draft, and **Save** commits them all
+in one go.
+
+### New: one universal ESC
+
+The input daemon now treats ESC as global and mode-agnostic: it closes the
+context menu, any picker pane, the dismiss layers and the control windows
+from **every** mode — and while Move / Resize is editing geometry it
+**cancels that editing** (even mid-typing) instead of closing everything.
+
+### Changed: context menu quality
+
+- **The picker never opens by itself.** Opening the menu resets the pane state
+  (`sub_show=false` / empty `sub_yuck`), and the close paths clear it too — the
+  last hovered picker (e.g. AM/PM) no longer reappears on the next right-click.
+- **The pane never gets stuck.** Every row without a submenu (Move / Resize /
+  Reset / Weather / Panel gap / Hard reset / About) hides a still-open picker
+  when the pointer enters it. These rows are `eventbox`es because eww buttons
+  never fire `:onhover`.
+- **Same width on every compositor.** The menu column is pinned to a fixed
+  290px (= `MENU_COL_W`) and the window to 1040px (375 + 290 + 375). The old
+  window sized itself from the label text, which GTK measures differently
+  under KDE/Wayland (narrower) and Cinnamon/X11 (wider).
+- The rows are regrouped per widget: the clock menu shows Move / Resize /
+  Reset / AM/PM / Theme / Units / Weather / Hard reset / About; the panel menu
+  Move / Resize / Reset / Theme / Panel / Side / Panel gap / Hard reset /
+  About.
+- Move / Resize and the new control windows open beside the widget (10px gap,
+  the side with more free space) instead of centered over it.
+
+### Fixed
+
+- The context menu and the hover picker could open at slightly different
+  sizes/positions depending on the compositor.
+- Hovering between submenu rows could leave a picker pane dangling after the
+  pointer moved onto an action row.
+
+### Upgrade from v3.0.0
+
+1. Pull / check out `v3.1.0`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Nothing else to do — the new windows and the menu fixes are additive; your
+   themes and `config.local.yaml` keep working unchanged.
+
+---
+
+## Screenshots (v3.1.0)
+
+| Main display |
+|---|
+| ![Main display](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/main-display.png) |
+
+| Right click (no picker) | Theme picker |
+|---|---|
+| ![Right click](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/context-menu-open.png) | ![Theme picker](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/context-menu-theme.png) |
+
+| Weather settings | Move / Resize |
+|---|---|
+| ![Weather settings](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/window-weather-settings.png) | ![Move / Resize](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/window-move-resize.png) |
+| **Panel gap** | **About** |
+| ![Panel gap](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/window-panel-gap.png) | ![About](https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/master/docs/images/screenshots/window-about.png) |
+
+---
+
+---
+
 # Clock-With-Weather-EWW — v3.0.0
 
 **A beautiful, fully customizable clock & weather widget with a live system
@@ -280,8 +382,9 @@ section for the full recipe.
 - Every v3.0.0 style feature (per-chart colors, gradient panel background,
   text/chart glow) is plain GTK3 CSS + SVG rendering, identical on both
   compositors — verified on X11/Cinnamon and Wayland/KDE.
-- Python 3.11+, eww 0.5.0+, `PyYAML`, `psutil`, `requests`, `pillow`
-  (see the WIKI for the full dependency table).
+- Python 3.11+, **eww 0.6.0 recommended** (0.5.0+ works), `PyYAML`,
+  `psutil`, `requests`, `pillow` (see the WIKI for the full dependency
+  table).
 
 ## Project structure (highlights)
 

@@ -45,7 +45,7 @@ What the installer does, in order:
 
 | Dependency | Minimum / tested version | Role |
 |---|---|---|
-| `eww` | 0.5.0+ (tested: `0.5.0 d87c2fd`) | renders the windows and the widget tree |
+| `eww` | 0.5.0+ (**recommended: 0.6.0**, tested: `0.6.0 48f5aa8b`) | renders the windows and the widget tree |
 | `python3` | 3.14+ (tested: 3.14.6) | the data-producing scripts |
 | `python3-requests` | 2.x (tested: 2.34.2) | OpenWeatherMap API call (`weather.py`) |
 | `python3-psutil` | 5.x–7.x (tested: 7.2.2) | CPU/RAM/SWAP/HDD/network (`system.py`, `panel.py`) |
