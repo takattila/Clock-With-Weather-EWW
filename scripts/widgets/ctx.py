@@ -328,6 +328,18 @@ def main():
             "ctx_menu",
         ]
     )
+    # Measure the REAL row offsets of the just-opened menu while the column is
+    # still clean (no hover pane): submenu.py then anchors the picker to the
+    # actual pixel geometry instead of the ROW_BTN/ROW_SEP model, whose guess
+    # drifts wherever the desktop's label metrics differ. Detached + no wait:
+    # if it lands after the first hover, that hover falls back to the model.
+    subprocess.Popen(
+        [sys.executable,
+         os.path.join(SCRIPT_DIR, "measure_menu.py"),
+         "--widget", widget],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdin=subprocess.DEVNULL, start_new_session=True,
+    )
     # The invisible keyboard daemon (scripts/input_daemon.py) reads the session
     # file: while it exists, ESC closes the popups. The menu position is stored
     # as well so the hover submenus (scripts/widgets/submenu.py) can anchor

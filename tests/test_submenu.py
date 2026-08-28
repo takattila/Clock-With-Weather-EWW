@@ -5,6 +5,24 @@ import pytest
 import submenu
 
 
+@pytest.fixture(autouse=True)
+def no_measured_rows(tmp_path, monkeypatch):
+    """Isolate submenu.py from a generated/menu_rows.json on disk.
+
+    measure_menu.py only runs against a LIVE X11 ctx_menu window (tests never
+    open one), but a leftover file from a desktop session would silently skew
+    every row-offset test. Point MEASURED_FILE at a missing file, drop the
+    cached read and re-derive THEME_ROW_TOP from the model pitches.
+    """
+    monkeypatch.setattr(submenu, "MEASURED_FILE", str(tmp_path / "menu_rows.json"))
+    monkeypatch.setattr(submenu, "_measured_tops", None)
+    monkeypatch.setattr(submenu, "_measured_loaded", False)
+    monkeypatch.setattr(
+        submenu, "THEME_ROW_TOP",
+        submenu.row_top("clock", submenu.CONTEXT_ROWS["clock"]["appearance"]),
+    )
+
+
 @pytest.fixture
 def themes(tmp_path, monkeypatch):
     """A fake assets/themes/appearance tree."""
@@ -41,6 +59,42 @@ def test_options_appearance_missing_dir_falls_back_to_light(tmp_path, monkeypatc
 def test_unknown_item_exits():
     with pytest.raises(SystemExit):
         submenu.options_for("bogus", {})
+
+
+# --- live-measured row offsets -------------------------------------------------
+
+def _load_measured(tmp_path, monkeypatch, payload):
+    """Point submenu at a menu_rows.json `payload` (and re-arm the cache)."""
+    monkeypatch.setattr(submenu, "MEASURED_FILE", str(tmp_path / "menu_rows.json"))
+    monkeypatch.setattr(submenu, "_measured_tops", None)
+    monkeypatch.setattr(submenu, "_measured_loaded", False)
+    (tmp_path / "menu_rows.json").write_text(json.dumps(payload))
+
+
+def test_measured_tops_override_model_pitch(tmp_path, monkeypatch):
+    # A desktop whose ctx-menu rows really render at a uniform 38px pitch.
+    tops = [int(9 + 38 * i) for i in range(12)]
+    _load_measured(tmp_path, monkeypatch, {"tops": tops, "pitch": 38, "pad": 7})
+    assert submenu.measured_tops() == tuple(tops)
+    assert submenu.row_top("clock", 0) == 9
+    assert submenu.row_top("clock", 4) == 161          # AM/PM row
+    assert submenu.row_top("clock", 11) == 427
+    assert submenu.pane_top_for("appearance", "clock") == tops[5]
+
+
+def test_measured_tops_rejected_when_malformed(tmp_path, monkeypatch):
+    # Wrong row count, missing pad or non-numeric entries -> model fallback.
+    _load_measured(tmp_path, monkeypatch, {"tops": [0, 1], "pad": 7})
+    assert submenu.measured_tops() is None
+    assert submenu.row_top("clock", 4) == submenu.MENU_PAD + sum(
+        submenu.row_heights("clock")[:4]
+    )
+    _load_measured(tmp_path, monkeypatch, {"tops": list(range(12)), "pad": 3})
+    assert submenu.measured_tops() is None
+    _load_measured(tmp_path, monkeypatch, {"tops": list("x" * 12), "pad": 7})
+    assert submenu.measured_tops() is None
+    _load_measured(tmp_path, monkeypatch, {"appearance": 4})
+    assert submenu.measured_tops() is None
 
 
 # --- active value highlighting --------------------------------------------------
@@ -102,12 +156,48 @@ def test_split_three_columns_balanced():
 # --- pane top offset / height -------------------------------------------------------
 
 def test_pane_top_offsets_follow_row_order():
-    for key, row in submenu.ROWS.items():
-        assert submenu.pane_top_for(key) == int(submenu.MENU_PAD + row * submenu.ROW_H)
+    # Offsets are computed from the REAL per-row heights (buttons and
+    # separators differ!), which is what lines the pane up with the parent.
+    assert submenu.pane_top_for("hour_format") == submenu.row_top(
+        "clock", submenu.CONTEXT_ROWS["clock"]["hour_format"])
     for widget, rows in submenu.CONTEXT_ROWS.items():
         for key, row in rows.items():
             assert submenu.pane_top_for(key, widget) == \
-                int(submenu.MENU_PAD + row * submenu.ROW_H)
+                submenu.row_top(widget, row)
+
+
+def test_row_sequences_match_collapsed_column():
+    # The sequences mirror widget_ctx_menu as it renders COLLAPSED (the
+    # hidden :visible wrappers take no space - see the yuck). Clock:
+    # Move Resize Reset | sep | AM/PM Theme sep Units Weather | sep |
+    # Hard reset About. Panel drops the clock-only rows and adds its own.
+    assert submenu.ROW_SEQUENCES["clock"] == ["B", "B", "B", "S",
+                                              "B", "B", "S", "B", "B",
+                                              "S", "B", "B"]
+    assert submenu.ROW_SEQUENCES["panel"] == ["B", "B", "B", "S",
+                                              "B", "S", "B", "B", "B",
+                                              "S", "B", "B"]
+    for widget, seq in submenu.ROW_SEQUENCES.items():
+        assert len(seq) == submenu.VISIBLE_ROW_COUNTS[widget] == 12
+        assert set(seq) <= {"B", "S"}          # every slot is a known row type
+        assert seq[3] == "S"                   # the Always group separator sits
+        assert seq[-3] == "S"                  # after row 3 and the last gap
+        assert seq[-1] == "B"                  # About is the last row
+    # each selectable row's index points at a BUTTON slot (never a sep)
+    for widget, rows in submenu.CONTEXT_ROWS.items():
+        for key, row in rows.items():
+            assert submenu.ROW_SEQUENCES[widget][row] == "B"
+
+
+def test_separators_are_shorter_than_buttons():
+    # The whole reason offsets cannot be a uniform pitch: a .ctx-sep row is
+    # much smaller than a .ctx-btn row, so the pane math must be cumulative.
+    assert submenu.ROW_SEP < submenu.ROW_BTN
+    # Theme sits below the first separator: uniform ROW_BTN pitch would be
+    # wrong, the cumulative offset must skip the short sep after Resize.
+    assert submenu.pane_top_for("appearance", "clock") < \
+        submenu.MENU_PAD + submenu.CONTEXT_ROWS["clock"]["appearance"] * \
+        submenu.ROW_BTN
 
 
 def test_context_rows_match_collapsed_column():
@@ -133,29 +223,35 @@ def test_context_rows_match_collapsed_column():
 
 
 def test_theme_row_offset_depends_on_widget_column():
-    # THEME_ROW_TOP anchors the clock column (Theme at visible row 5 = 220px).
-    # The panel column drops the AM/PM row, so its Theme pane opens one row
-    # higher - this is the "Panel/Side somewhere else" bug guard: the pane
-    # must track the COLLAPSED column position, not the markup index.
+    # THEME_ROW_TOP anchors the clock column (Theme sits at visible row 5,
+    # after Move/Resize/Reset + the short sep). The panel column drops the
+    # AM/PM row, so its Theme pane opens one row higher - this is the
+    # "Panel/Side somewhere else" bug guard: the pane must track the
+    # COLLAPSED column position, not the markup index.
     assert submenu.THEME_ROW_TOP == submenu.pane_top_for("appearance", "clock")
     panel_top = submenu.pane_top_for("appearance", "panel")
-    assert panel_top == int(submenu.MENU_PAD +
-                            submenu.CONTEXT_ROWS["panel"]["appearance"] *
-                            submenu.ROW_H)
+    assert panel_top == submenu.row_top(
+        "panel", submenu.CONTEXT_ROWS["panel"]["appearance"])
     assert panel_top < submenu.THEME_ROW_TOP
+    # the panel's extra rows stack BELOW its Theme row in order
     assert submenu.pane_top_for("panel_enabled", "panel") > \
         submenu.pane_top_for("appearance", "panel")
+    assert submenu.pane_top_for("panel_alignment", "panel") > \
+        submenu.pane_top_for("panel_enabled", "panel")
 
 
 # --- menu content height / window layout (never-clip + bottom anchoring) ---
 
-def test_menu_content_height_scopes_to_widget():
+def test_menu_content_height_matches_real_row_sum():
     assert submenu.menu_content_height("clock") == \
-        int(12 * submenu.ROW_H + 2 * submenu.MENU_PAD)
+        int(sum(submenu.row_heights("clock")) + 2 * submenu.MENU_PAD)
     assert submenu.menu_content_height("panel") == \
-        int(12 * submenu.ROW_H + 2 * submenu.MENU_PAD)
+        int(sum(submenu.row_heights("panel")) + 2 * submenu.MENU_PAD)
+    # both columns stack the same 12 rows -> the same column height
+    assert submenu.menu_content_height("clock") == \
+        submenu.menu_content_height("panel")
     assert submenu.menu_content_height() == submenu.menu_content_height("clock")
-    # unknown widget falls back to the clock menu (both are 12 rows)
+    # unknown widget falls back to the clock menu
     assert submenu.menu_content_height("bogus") == submenu.menu_content_height("clock")
 
 
@@ -347,9 +443,11 @@ def test_open_item_keeps_row_alignment_when_window_is_tall(themes, tmp_path, mon
 
 def test_open_item_slides_pane_up_to_the_screen_edge(themes, tmp_path, monkeypatch):
     # Menu opened low on the screen (y=441 of 1080): the window only reaches
-    # to the bottom edge (631px), so two columns (638px) cannot fit at all —
-    # the picker goes to three columns AND slides up from its row until the
-    # bottom aligns with the screen edge.
+    # to the bottom edge (631px), so two columns cannot fit at all — the
+    # picker goes to three columns. With the real (separator-aware) row
+    # offset the three-column pane fits exactly at the Theme row and stays
+    # row-aligned (the old uniform-pitch offset sat lower and left the pane
+    # only sliding up).
     _many_themes(monkeypatch, 42)
     payload, _ = _open(monkeypatch, tmp_path, session={
         "x": 100, "y": 441, "screen": 0, "menu_h": 631, "monitor_h": 1080,
@@ -360,8 +458,10 @@ def test_open_item_slides_pane_up_to_the_screen_edge(themes, tmp_path, monkeypat
     top = int(payload["sub_top"])
     assert payload["sub_cols"] == "3"
     assert top == max(submenu.MENU_PAD, min(submenu.THEME_ROW_TOP, limit - pane3))
-    assert top < submenu.THEME_ROW_TOP                     # slid up
     assert 441 + top + pane3 <= 1080 - submenu.EDGE_MARGIN  # fully on-screen
+    # the corrected offset leaves enough room below the parent row, so the
+    # pane stays in line with it instead of drifting.
+    assert top == submenu.THEME_ROW_TOP
 
 
 def test_open_item_adds_a_column_when_height_is_tight(themes, tmp_path, monkeypatch):

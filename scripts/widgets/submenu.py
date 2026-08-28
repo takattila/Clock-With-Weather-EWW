@@ -46,7 +46,13 @@ APPEARANCE_THEMES_DIR = os.path.join(CONFIG_DIR, "assets", "themes", "appearance
 
 # Pane geometry (kept in sync with eww.yuck / eww.scss).
 MENU_PAD = 7     # ctx_menu top padding (+border)
-ROW_H = 42.6     # calibrated pitch of one context-menu row
+# The ctx-menu COLUMN rows are NOT a uniform pitch: the action/select rows
+# (.ctx-btn) are much taller than the group separators (.ctx-sep). Sizing the
+# pane with one ROW_H would shove every submenu below the first separator
+# away from its parent row, so the pane offsets are computed per row from the
+# actual heights below (pinned in eww.scss: min-height + 2px margins).
+ROW_BTN = 42     # one .ctx-btn row incl. 2px margins (min-height 38px)
+ROW_SEP = 15     # one .ctx-sep row incl. 2px margins (min-height 11px)
 SUB_ROW_H = 30   # one picker row (deliberate over-estimate: clamps fire early)
 SUB_PAD_V = 8    # picker vertical padding (top+bottom)
 
@@ -107,6 +113,22 @@ CONTEXT_ROWS = {
         "panel_alignment": 7,
     },
 }
+# Height sequence of the COLLAPSED ctx-menu column, PER widget, in the order
+# the rows actually stack (the visible slots only - keep in sync with
+# widget_ctx_menu in eww.yuck and the heights pinned in eww.scss):
+#   B = one .ctx-btn row (ROW_BTN), S = one .ctx-sep row (ROW_SEP).
+# The clock menu is Move Resize Reset | sep | AM/PM Theme sep Units Weather |
+# sep | Hard reset About; the panel menu drops AM/PM/sep/Units/Weather and
+# adds sep + Panel/Side/gap.
+ROW_SEQUENCES = {
+    # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 AM/PM, 5 Theme, 6 sep, 7 Units,
+    # 8 Weather, 9 sep, 10 Hard reset, 11 About
+    "clock": "B B B S B B S B B S B B".split(),
+    # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 Theme, 5 sep, 6 Panel, 7 Side,
+    # 8 Panel gap, 9 sep, 10 Hard reset, 11 About
+    "panel": "B B B S B S B B B S B B".split(),
+}
+ROW_TYPE_H = {"B": ROW_BTN, "S": ROW_SEP}
 # Default scope for bare callers / the legacy ROWS accessor.
 ROWS = CONTEXT_ROWS["clock"]
 KEYS = tuple(sorted({key for rows in CONTEXT_ROWS.values() for key in rows}))
@@ -220,27 +242,80 @@ def build_yuck(key, options, active, columns):
     return " ".join(parts)
 
 
+def row_heights(widget="clock"):
+    """Pixel pitch of every collapsed ctx-menu row for `widget`'s column."""
+    return [
+        ROW_TYPE_H[t]
+        for t in (ROW_SEQUENCES.get(widget) or ROW_SEQUENCES["clock"])
+    ]
+
+
+MEASURED_FILE = os.path.join(CONFIG_DIR, "generated", "menu_rows.json")
+_measured_tops = None
+_measured_loaded = False
+
+
+def measured_tops():
+    """Pixel top of every collapsed ctx-menu row from the live measurement.
+
+    measure_menu.py captures the just-opened ctx_menu window (X11) and writes
+    generated/menu_rows.json with the REAL row offsets for the running
+    compositor's label metrics; those are exact, while the ROW_BTN/ROW_SEP
+    model below is a fallback that drifts whenever the font stack differs.
+    Returns a 12-tuple or None (not measured / failure).
+    """
+    global _measured_tops, _measured_loaded
+    if _measured_loaded:
+        return _measured_tops
+    _measured_loaded = True
+    try:
+        with open(MEASURED_FILE) as fh:
+            data = json.load(fh)
+        tops = [int(t) for t in (data.get("tops") or [])]
+        if (
+            len(tops) == len(ROW_SEQUENCES["clock"])
+            and all(t >= 0 for t in tops)
+            and int(data.get("pad", -1)) == int(MENU_PAD)
+        ):
+            _measured_tops = tuple(tops)
+    except Exception:
+        pass
+    return _measured_tops
+
+
+def row_top(widget="clock", row=0):
+    """Y offset (inside the ctx_menu window) of the top of column `row`."""
+    tops = measured_tops()
+    if tops:
+        return int(tops[min(row, len(tops) - 1)])
+    return int(MENU_PAD + sum(row_heights(widget)[:row]))
+
+
 def pane_top_for(key, widget="clock"):
     """Vertical offset of the picker inside the ctx_menu window."""
-    return int(MENU_PAD + rows_for(widget)[key] * ROW_H)
+    return row_top(widget, rows_for(widget)[key])
 
 
-THEME_ROW_TOP = int(MENU_PAD + CONTEXT_ROWS["clock"]["appearance"] * ROW_H)
+THEME_ROW_TOP = row_top("clock", CONTEXT_ROWS["clock"]["appearance"])
 
-# Number of ctx-menu column rows VISIBLE per widget (markup rows minus the
-# context-filtered ones). Drives menu_content_height() so ctx.py never sizes
-# the window below its column content - keep in sync with widget_ctx_menu.
-VISIBLE_ROW_COUNTS = {"clock": 12, "panel": 12}
+# Number of ctx-menu column rows VISIBLE per widget (the collapsed columns
+# in ROW_SEQUENCES). Drives menu_content_height() so ctx.py never sizes the
+# window below its column content - keep in sync with widget_ctx_menu.
+VISIBLE_ROW_COUNTS = {
+    widget: len(seq) for widget, seq in ROW_SEQUENCES.items()
+}
 
 
 def menu_content_height(widget="clock"):
-    """Height the ctx-menu COLUMN occupies: visible rows + vertical padding.
+    """Height the ctx-menu COLUMN occupies: real row heights + the 2 paddings.
 
-    Both menus show 12 rows; the helper stays widget-scoped so a future
-    layout drift cannot silently clip one menu's content.
+    Sums the per-row pitches (buttons and separators differ!), so it matches
+    what the column really measures. Both menus stack 12 rows; the helper
+    stays widget-scoped so a future layout drift cannot silently clip one
+    menu's content.
     """
-    rows = VISIBLE_ROW_COUNTS.get(widget, VISIBLE_ROW_COUNTS["clock"])
-    return int(rows * ROW_H + 2 * MENU_PAD)
+    heights = row_heights(widget)
+    return int(sum(heights) + 2 * MENU_PAD)
 
 
 def menu_layout(y, monitor_h, content_h, needed_h):
