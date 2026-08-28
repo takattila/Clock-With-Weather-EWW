@@ -16,6 +16,8 @@ small file generated/input_session.json:
 Actions (only while that file exists):
   ctx:
     ESC                -> scripts/close_popup.py (closes the popups)
+  gap:
+    ESC                -> scripts/close_popup.py (closes the panel-gap session)
   move:
     Arrow keys         -> move_ctl.py --action left/right/up/down
     Shift+3 / numpad + -> move_ctl.py --action zoom_in   (Hungarian layout)
@@ -155,7 +157,15 @@ def run_script(args):
 
 def handle_key(code, shift, session):
     mode = session.get("mode")
-    if mode == "ctx":
+    if mode in ("ctx", "gap"):
+        # While a hand-typed value entry of the gap control panel owns the
+        # keyboard (gap_panel.py sets session["typing"] on entry focus), every
+        # key incl. ESC is ignored here - ESC would otherwise close the whole
+        # session mid-typing; click outside the entry first, then ESC closes.
+        if mode == "gap" and session.get("typing"):
+            return
+        # ESC closes the popups / the panel-gap session; close_popup.py also
+        # clears the session file, so the GTK windows watching it quit too.
         if code == KEY_ESC:
             run_script([os.path.join(SCRIPTS_DIR, "widgets", "close_popup.py")])
         return

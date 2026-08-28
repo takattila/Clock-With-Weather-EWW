@@ -40,6 +40,7 @@ EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
 sys.path.insert(0, os.path.join(SCRIPTS_DIR, "core"))
 
 import session
+from panel_pos import panel_position
 
 MC_W = 200
 MC_H = 320
@@ -56,10 +57,6 @@ def run(cmd, capture=False):
         return ""
 
 
-def clamp(value, lo, hi):
-    return max(lo, min(value, hi))
-
-
 def eww(*args):
     run(["eww", "--config", EWW_CONFIG_DIR] + list(args))
 
@@ -73,8 +70,6 @@ def widget_rect(widget, monitor):
         return json.loads(out)
     except Exception:
         sys.exit("ERROR: widget_rect.py failed:\n%s" % out)
-
-
 
 
 def main():
@@ -146,21 +141,15 @@ def main():
 
     # Control panel just outside the current widget: on the horizontal side
     # with MORE free space (right vs left of the widget), GAP px away from its
-    # edge, vertically centered on the widget. It is a GTK window
-    # (scripts/move_panel.py) so it can still be dragged around with the mouse
-    # after it opens. The coordinate space matches the panel's own positioning
-    # code:
+    # edge, vertically centered on the widget (see panel_pos.py). It is a GTK
+    # window (scripts/move_panel.py) so it can still be dragged around with
+    # the mouse after it opens. The coordinate space matches the panel's own
+    # positioning code:
     #   * Wayland: layer-shell margins are frame/workarea-local -> frame coords.
     #   * X11    : win.move() uses ABSOLUTE screen coordinates, so the frame's
     #              absolute top-left (abs - frame-local, i.e. the widget's
     #              monitor origin) is added afterwards.
-    left = int(round(rect["left"]))
-    top = int(round(rect["top"]))
-    py = clamp(top + (h - MC_H) // 2, 0, max(0, frame_h - MC_H))
-    if frame_w - (left + w) >= left:
-        px = min(left + w + GAP, max(0, frame_w - MC_W))
-    else:
-        px = max(0, left - GAP - MC_W)
+    px, py = panel_position(rect, MC_W, MC_H, GAP)
     WAYLAND = "WAYLAND_DISPLAY" in os.environ \
         and os.environ.get("GDK_BACKEND", "wayland") != "x11"
     if not WAYLAND:

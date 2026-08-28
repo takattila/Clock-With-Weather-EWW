@@ -6,7 +6,7 @@
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
 ;;   3. ctx_menu        -> right-click quick-settings menu (Move / Resize /
 ;;                         Reset / AM-PM switch / Theme / Units / Panel on-off /
-;;                         Side / Hard reset / About)
+;;                         Side / Panel gap / Hard reset / About)
 ;;
 ;; The Move/Resize rectangle + control panel and the About dialog are GTK3
 ;; windows (scripts/move/move_rect.py + move/move_panel.py + widgets/about_win.py), not eww
@@ -336,6 +336,16 @@
               :onhover "../scripts/widgets/submenu.py --item panel_alignment"
       (box :class "ctx-btn-box"
            (label :text {config.panel_alignment == "left" ? "Side: left ▸" : "Side: right ▸"})))
+    ;; Panel gap: top/right/bottom/left spacing between the panel and the
+    ;; screen/taskbar edges (panel.gap). gap_ctl.py opens the draggable GTK
+    ;; control panel NEXT TO THE PANEL WIDGET (10px, on the side with more
+    ;; free space - like move.py opens the Move/Resize panel); +/- and typing
+    ;; only change the draft values there, the Save button commits them all
+    ;; in one go; it is backgrounded (nohup ... &) so the click returns
+    ;; instantly.
+    (button :class "ctx-btn" :timeout "5s"
+            :onclick "nohup ../scripts/move/gap_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
+            (box :class "ctx-btn-box" (label :text "Panel gap")))
     ;; --- group separator: settings | system -------------------------------
     (label :class "ctx-sep" :text "───────────────────────────")
     ;; Hard reset: deletes git-ignored config.local.yaml (no backup) and
