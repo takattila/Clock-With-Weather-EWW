@@ -1,13 +1,46 @@
-# Clock-With-Weather-EWW — v3.1.0
+# Clock-With-Weather-EWW — v3.1.1
 
 **A beautiful, fully customizable clock & weather widget with a live system
 monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
 layer-shell) and also works on **X11**. Powered by the
 [OpenWeatherMap](https://openweathermap.org) API.
 
-> **Recommendation: v3.1.0** — the current recommended release. It builds on
-> the v3.0.0 style-aware theme system and turns the right-click menu into a
-> complete on-screen control center with dedicated settings windows.
+> **Recommendation: v3.1.1** — the current recommended release. A small,
+> focused fix that keeps the right-click hover picker exactly aligned with the
+> menu row it belongs to.
+
+**v3.1.1 fixes the hover picker alignment.** Every time the context menu opens
+it now measures its own real row positions and anchors the hover picker
+(Theme / AM/PM / °C/°F / Panel / Side) to those pixels, instead of assuming
+per-row heights that drift with the desktop's fonts and DPI.
+
+---
+
+## What changed in v3.1.1
+
+### Fixed
+
+- **The hover picker stays on its parent row.** The old code positioned the
+  picker with assumed row heights (42 px actions + 15 px separators); real
+  desktops render them differently (here: a uniform ~38 px), so the picker sat
+  too high — the further down the row, the worse. The menu now measures its
+  actual layout every time it opens (`measure_menu.py`) and lines the picker up
+  with the real row top. When measuring isn't possible, the previous behavior
+  is kept.
+- The Theme picker's on-screen fit still holds with 40+ themes: when the list
+  is too tall to start at its row it clamps to the screen bottom edge as
+  before, only now computed from the measured geometry.
+
+### Upgrade from v3.1.0
+
+1. Pull / check out `v3.1.1`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Nothing else to do — the fix is automatic; your themes and
+   `config.local.yaml` keep working unchanged.
+
+---
+
+# Clock-With-Weather-EWW — v3.1.0
 
 **v3.1.0 makes the right-click context menu a full settings center and adds
 dedicated control windows for the weather and the panel gap**, plus a single
