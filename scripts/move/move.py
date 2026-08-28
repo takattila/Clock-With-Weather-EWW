@@ -59,10 +59,6 @@ def eww(*args):
     run(["eww", "--config", EWW_CONFIG_DIR] + list(args))
 
 
-def clamp(value, lo, hi):
-    return max(lo, min(value, hi))
-
-
 def widget_rect(widget, monitor):
     out = run(
         ["python3", os.path.join(SCRIPT_DIR, "widget_rect.py"), "--widget", widget, "--monitor", str(monitor)],
@@ -74,17 +70,6 @@ def widget_rect(widget, monitor):
         sys.exit("ERROR: widget_rect.py failed:\n%s" % out)
 
 
-def cursor_position():
-    out = run(["xdotool", "getmouselocation"], capture=True)
-    m = {}
-    for part in out.split():
-        if ":" in part:
-            k, v = part.split(":", 1)
-            m[k] = v
-    try:
-        return int(m.get("x", 0)), int(m.get("y", 0))
-    except ValueError:
-        return 0, 0
 
 
 def main():
@@ -154,15 +139,24 @@ def main():
         stdin=subprocess.DEVNULL, start_new_session=True, cwd=CONFIG_DIR,
     )
 
-    # Control panel near the cursor (the user just clicked the menu button);
-    # fall back to the widget's corner when the cursor cannot be read. It is a
-    # GTK window (scripts/move_panel.py) so it can be dragged around with the
-    # mouse; its position is clamped to the monitor frame.
-    px, py = cursor_position()
-    if px <= 0 and py <= 0:
-        px, py = int(round(rect["left"])), int(round(rect["top"]))
-    px = clamp(px, 0, max(0, frame_w - MC_W))
-    py = clamp(py, 0, max(0, frame_h - MC_H))
+    # Control panel centered on the CURRENT monitor/wa frame every time. It is
+    # a GTK window (scripts/move_panel.py) so it can still be dragged around
+    # with the mouse after it opens. The centering coordinate space matches the
+    # panel's own positioning code:
+    #   * Wayland: layer-shell margins are frame/workarea-local -> plain center.
+    #   * X11    : win.move() uses ABSOLUTE screen coordinates, so the frame's
+    #              absolute top-left (abs - frame-local, i.e. the widget's
+    #              monitor origin) is added to the center -- otherwise the panel
+    #              lands near the primary monitor's top-left corner whenever the
+    #              widget lives on a non-origin screen.
+    WAYLAND = "WAYLAND_DISPLAY" in os.environ \
+        and os.environ.get("GDK_BACKEND", "wayland") != "x11"
+    px = max(0, (frame_w - MC_W) // 2)
+    py = max(0, (frame_h - MC_H) // 2)
+    if not WAYLAND:
+        px += int(round(rect["abs_x"] - rect["left"]))
+        py += int(round(rect["abs_y"] - rect["top"]))
+
     subprocess.Popen(
         [
             sys.executable, os.path.join(SCRIPT_DIR, "move_panel.py"),
