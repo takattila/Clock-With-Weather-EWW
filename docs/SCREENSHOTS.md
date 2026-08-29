@@ -1,11 +1,12 @@
 # Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor)
 
 Every ready-made appearance theme, captured on a 1920×1080 monitor —
-**42 themes: 9 style themes and 12 classic color themes, each in a fully
+**45 themes: 9 style themes and 12 classic color themes (each in a fully
 transparent base variant and a `-bg` variant with visible widget/panel
-backgrounds.** Pick any of them live from the right-click menu's Theme
-submenu — or use them as recipes for your own (see the WIKI's "Creating
-style themes" section).
+backgrounds) plus three new monochrome accents — green, grey and orange.**
+Pick any of them live from the right-click menu's Theme submenu — or use
+them as recipes for your own (see the WIKI's "Creating style themes"
+section).
 
 ## Overview
 
@@ -99,6 +100,15 @@ dark steel gradient panels.
 | titanium | titanium-bg |
 |---|---|
 | ![titanium](images/screenshots/theme-titanium.png) | ![titanium-bg](images/screenshots/theme-titanium-bg.png) |
+
+## New monochrome accent themes
+
+Three standalone accent themes (no `-bg` variant) covering the green /
+grey / orange spectrum of `config.local.yaml`'s `appearance`:
+
+| green | grey | orange |
+|---|---|---|
+| ![green](images/screenshots/theme-green.png) | ![grey](images/screenshots/theme-grey.png) | ![orange](images/screenshots/theme-orange.png) |
 
 ## Classic themes — light family
 

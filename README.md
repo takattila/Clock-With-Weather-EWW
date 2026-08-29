@@ -65,8 +65,9 @@ bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/hard-reset.sh # factory-reset the
 ### Style Themes (new in v3.0.0)
 
 Nine styles × two variants (transparent / `-bg`) — a representative selection
-below (sunset, neon glow, aurora glow, metallic gradient). The full gallery
-with **all 42 themes** lives in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+below (sunset, neon glow, aurora glow, metallic gradient), plus new
+monochrome accents (green / grey / orange). The full gallery with **all 45
+themes** lives in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 
 <table>
     <tr>
