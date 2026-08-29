@@ -16,8 +16,14 @@ commit it:
   * Save As -> asks for a name, creates assets/themes/appearance/<name>/
                appearance.yaml (minimalized like the checked-in themes),
                activates it and closes,
-  * Reset   -> refills the form from the loaded source,
-  * Cancel  -> discards and closes.
+  * Preview -> applies the DRAFT to the LIVE widget right now (colors, fonts,
+               radius, glow, panel + re-tinted icons) WITHOUT saving;
+               config.local.yaml stays untouched, so only Save makes it
+               permanent (theme_preview.py). Un-saved previews revert on
+               Reset / Cancel / editor close,
+  * Reset   -> refills the form from the loaded source (and reverts any
+               un-saved Preview),
+  * Cancel  -> discards (reverting any un-saved Preview) and closes.
 
 Like weather_ctl.py this script does NOT run an interactive loop: it resolves
 the monitor the menu was opened on, centers the form on it, closes the context
@@ -28,6 +34,11 @@ exists).
 
 The per-monitor dismiss layers deliberately STAY OPEN like in Move/Resize /
 Weather settings (the click-outside-to-cancel surface for the whole session).
+
+The window HEIGHT is adapted so it also fits the smallest connected screen
+(screen height minus taskbar; see monitors.adaptive_window_height) and the
+editor is centered using that resolved height, so it can be dragged onto any
+monitor.
 
 Usage:
   ./theme_ctl.py --widget clock --monitor 0
@@ -48,6 +59,7 @@ SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
 sys.path.insert(0, os.path.join(CR_DIR, "core"))
 
 import session
+import monitors as monmod
 
 POSE_W = 560
 POSE_H = 760
@@ -119,8 +131,13 @@ def main():
     if mon is None:
         mon = {"index": args.monitor, "x": 0, "y": 0, "width": 1920, "height": 1080}
     frame_w, frame_h = mon["width"], mon["height"]
+    # Adapt the window height so it also fits the smallest connected screen
+    # (its usable height minus the taskbar) -> it can be dragged to every
+    # monitor. Centering uses the RESOLVED height, not the natural POSE_H.
+    win_h = monmod.adaptive_window_height(
+        monitors, POSE_H, monmod.get_net_workarea())
     px = clamp((frame_w - POSE_W) // 2, 0, max(0, frame_w - POSE_W))
-    py = clamp((frame_h - POSE_H) // 2, 0, max(0, frame_h - POSE_H))
+    py = clamp((frame_h - win_h) // 2, 0, max(0, frame_h - win_h))
 
     # Close the context menu; the per-monitor dismiss layers stay open (the
     # click-outside-to-cancel surface), like the other GTK panels.
@@ -146,6 +163,7 @@ def main():
             "--monitor", str(args.monitor),
             "--x", str(px), "--y", str(py),
             "--frame-w", str(frame_w), "--frame-h", str(frame_h),
+            "--win-h", str(win_h),
         ],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL, start_new_session=True, cwd=CONFIG_DIR,

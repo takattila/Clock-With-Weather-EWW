@@ -1,3 +1,4 @@
+import json
 import textwrap
 
 import pytest
@@ -304,3 +305,47 @@ def test_generate_icons_copy_without_color(config_dir):
         config_dir / "generated" / "icons" / "dark" / "weather" / "dovora" / "01d.png"
     ).convert("RGB")
     assert out.getpixel((0, 0)) == (10, 20, 30)
+
+
+def test_write_theme_files_writes_json_and_scss(config_dir):
+    data = {
+        "theme": "light",
+        "icon_set": "dovora",
+        "icon_alpha": 0.9,
+        "icon_color": None,
+        "font_face": "Noto Sans",
+        "color_light": "#ffffff",
+        "color_dark": "#9e9e9e",
+        "color_light_alpha": 0.8,
+        "color_dark_alpha": 1.0,
+        "bg_color": "#000000",
+        "bg_alpha": 0.2,
+        "bg_radius": 18,
+        "chart_cpu": "#ff0000",
+        "chart_memory": "#00ff00",
+        "chart_down": "#0000ff",
+        "chart_up": "#ffff00",
+        "chart_glow": True,
+        "panel_bg_color": "#111111",
+        "panel_bg_alpha": 0.5,
+        "panel_bg_image": "none",
+        "text_shadow": "none",
+        "menu_ink": "#ffffff",
+        "panel_ink": "#ffffff",
+    }
+    theme.write_theme_files(str(config_dir), data)
+
+    written = json.loads((config_dir / "eww" / "eww.theme.json").read_text())
+    assert written == data  # JSON reproduces the input dict exactly
+
+    scss = (config_dir / "eww" / "eww.theme.scss").read_text()
+    assert '$theme: "light";' in scss
+    assert '$icon-set: "dovora";' in scss
+    assert "$icon-alpha: 0.9;" in scss
+    assert '$font-face: "Noto Sans";' in scss
+    assert "$color-light: #ffffff;" in scss
+    assert "$bg-radius: 18px;" in scss
+    assert "$chart-cpu: #ff0000;" in scss
+    assert "$chart-glow: true;" in scss
+    assert "$panel-bg-color: #111111;" in scss
+    assert "$text-shadow: none;" in scss

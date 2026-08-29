@@ -256,6 +256,169 @@ makes every knob visual and live:
 
 ---
 
+# Follow-up — adaptive window height + cross-monitor drag (after v4.0.0)
+
+> The theme editor (and the Weather-settings window) should adapt to the
+> current screen height — if the screen is shorter than the window, the window
+> becomes as tall as the screen minus the taskbar — and it should be possible
+> to drag the windows from one monitor to another.
+
+## Design decisions
+
+- **"Screen" = the smallest connected monitor's usable height.** Per the user's
+  choice, the height basis is the *smallest-resolution monitor*; the usable
+  height subtracts the taskbar via `_NET_WORKAREA` (the same work area the
+  widget already respects — here a 30px top panel over all monitors). So the
+  resolved height `win_h = min(natural, min(usable heights))` lets the window
+  fit *every* monitor and therefore be dragged to the smallest one.
+- **Sizing/centering live in the launcher** (`theme_ctl.py` /
+  `weather_ctl.py`): they compute `win_h`, pass `--win-h` to the panel, and
+  center using the *resolved* height (not the natural `POSE_H`/`PANEL_H`).
+- **Cross-monitor drag on X11** = clamp to the union of all monitors (computed
+  from `Gdk.Display.get_monitors()`), not the single monitor it opened on.
+  Wayland keeps its single-monitor layer-shell clamp (best-effort only).
+- **Shrunk content scrolls** instead of clipping: the theme editor already
+  wrapped its body in a `Gtk.ScrolledWindow`; the Weather form now does the
+  same (fields still stretch when there is room).
+
+## Implementation steps
+
+1. `scripts/core/monitors.py`: add `get_net_workarea()`, `usable_height(mon,
+   workarea)`, `adaptive_window_height(monitors, natural_h, workarea)` and
+   `desktop_bounds(monitors)`.
+2. `theme_ctl.py` / `weather_ctl.py`: compute `win_h = adaptive_window_height(...)`,
+   center with it, pass `--win-h`; new docstrings.
+3. `theme_panel.py` / `weather_panel.py`: accept `--win-h`, store
+   `self.win_h`/`self.win_w`, use them for the size request + geometry hints,
+   clamp the X11 drag to the full-desktop box (`desk_*`); Weather wraps its
+   fields in a scroll window; new docstrings.
+
+## Verification
+
+- `tests/test_monitors.py` (9 cases) covers the adaptive-height math and the
+  desktop bounding box; full suite `342 passed` (was 333).
+- Live (X11/Cinnamon, eDP-1 1368×768 + DP-1 1920×1080, 30px top panel): the
+  theme editor opens **588×738** (not 760) and its drag moves it from monitor 0
+  to monitor 1 (x 300 → 1450) instead of clamping to the origin monitor.
+
+---
+
+# Follow-up — live theme preview without saving (after v4.0.0)
+
+> "Can there be a preview in the theme editor without saving?" — apply the
+> settings to the live widget without clicking Save; a later Save makes the
+> values permanent. Answers (chosen): a dedicated **Preview** footer button,
+> **including icon re-tinting** (full fidelity), and an un-saved preview
+> **reverts on Reset / Cancel / editor close**.
+
+## The problem
+
+Today the widget only updates through the inotify watcher (`watch.py`), which
+fires ONLY when `config.local.yaml` / the theme dirs change and deliberately
+ignores the runtime outputs `eww/eww.theme.json` + `eww.theme.scss` (to avoid a
+reload loop). So a live preview must drive the same `theme.py` + `eww reload`
+pipeline itself, from an in-memory draft, WITHOUT writing `config.local.yaml` —
+and must be able to undo.
+
+## Implementation
+
+- `scripts/core/theme.py`: extracted `write_theme_files(config_dir, data)` so
+  `theme.py:main()` and the preview worker emit the identical theme files from
+  the same resolved appearance dict (single source of truth).
+- `scripts/move/theme_preview.py` (NEW, detached worker):
+  - `--apply <appearance.json> <radius>` → `parse_appearance` + `bg_radius` →
+    `generate_icons` (re-tint) → `write_theme_files` → `eww reload` (5-attempt
+    retry) → writes `generated/preview.json` marker with an undo snapshot.
+  - `--restore` → regenerate from the REAL merged config (`theme.py` normal
+    run) + `eww reload`, clear the marker (idempotent no-op without a marker).
+  - Never touches `config.local.yaml` / the theme dirs → the watcher is NOT
+    triggered, no reload loop.
+- `scripts/move/theme_panel.py`:
+  - New **Preview** footer button → `on_preview()` reuses `validate_draft`/font
+    guards (no config write), serializes `normalize_appearance(draft)` to a temp
+    JSON, spawns the worker detached, sets `preview_active`.
+  - `_revert_preview()` spawns `--restore`; called from `destroy`, `tick` (covers
+    ESC/click-outside), `on_close` (Cancel) and `on_reset`.
+  - Save keeps its existing `config.local.yaml` path and clears `preview_active`
+    (never reverts). Docstring updated.
+
+## Verification
+
+- `tests/test_theme_preview.py` (5 cases): apply writes the same generated
+  theme files as `parse_appearance` + marker with snapshot; invalid input
+  rejected; restore clears the marker and is idempotent. Plus a
+  `write_theme_files` JSON/SCSS parity test in `test_theme.py`. Suite
+  `348 passed` (was 342).
+- Live (X11/Cinnamon): open editor → change a font/background color + an icon
+  tint → **Preview** → widget + icons update within ~1–2 s; `config.local.yaml`
+  remains untouched; **Cancel**/close reverts; then **Preview** + **Save**
+  persists.
+
+---
+
+# Follow-up — Save As dialog + color chooser follow the editor (after v4.0.0)
+
+> The Save As (and color) dialog should move together with the Theme editor
+> when it is dragged. "Save As doesn't work" turned out to describe the same
+> expectation: the dialog must reliably appear, take the typed theme name, and
+> stay glued to the editor wherever it is dragged (clamped to the whole
+> virtual desktop, so it follows onto another monitor).
+
+## The problem
+
+`on_motion` repositioned the editor and the open *dropdown* during a drag but
+never the `self.child` *dialogs* (Save As + color chooser), which were anchored
+once at open time (`_child_move` using `EDITOR_W + 12` and clamped to the
+ORIGIN monitor). So a dialog stayed behind (or bounced back) when the editor
+moved.
+
+"Save As doesn't open" was a separate, harder bug: `Gtk.MessageDialog.new(...)`
+is a C-only factory that PyGObject rejects on a Gtk.Dialog subclass
+(`TypeError: Dialog constructor cannot be used to create instances of a
+subclass MessageDialog`), so constructing the dialog always raised — the GTK
+signal handler swallowed it, leaving the impression that "nothing happened".
+It also used `dialog.run()`, a blocking nested main loop that fights the
+editor's own session poll.
+
+"Can't type the theme name" was the last bug: the dialog is override-redirect
+(like the editor), so `present()` cannot steer the window manager into giving
+it the keyboard focus. The editor's own entry fields work because they call
+`Gdk.keyboard_grab` on X11 — the dialog did not.
+
+## Implementation
+
+- `theme_panel.py`:
+  - Extracted pure `_child_position(w, h)` — CENTERS the dialog on the editor
+    (`win_x + (win_w-w)//2`, `win_y + (win_h-h)//2`) and clamps to the WHOLE
+    virtual desktop (`desk_*`), so dialogs follow across monitors.
+    `_child_move()` now uses it.
+  - `on_motion`: when a dialog child is open (not a dropdown), call
+    `_child_move(self.child)` after moving the editor, so it follows the drag.
+  - Save As dialog: fixed the constructor to the PyGObject builder form
+    (`Gtk.MessageDialog(parent=..., flags=..., type=..., buttons=...,
+    text=...)`), dropped the blocking `dialog.run()` in favour of the same
+    non-blocking `connect("response")` + `present()` pattern the color dialog
+    uses, and added a `_grab_dialog_keyboard` helper that does
+    `Gdk.keyboard_grab(dialog.get_window(), ...)` on X11 (exactly like the
+    editor's own fields) plus `entry.grab_focus()` /
+    `entry.set_activates_default(True)` (Enter = OK). `_save_as_response`
+    releases the grab and saves via the unchanged `save_as_theme`.
+- Tests: `test_child_position_follows_editor` and
+  `test_child_position_clamps_to_virtual_desktop` cover the centered follow +
+  clamp math headlessly. Suite `350 passed`.
+
+## Verification
+
+- Live (X11/Cinnamon): `on_save_as()` returns with no TypeError; the dialog is
+  centered on the editor (measured `245,362` vs editor `100,80,560,738`, i.e.
+  `+(560-270)//2`, `+(738-174)//2`) — and `xdotool type rosegold` lands
+  `rosegold` in the entry with `toplevel_focus: true`. Drag the editor → the
+  (centered) dialog follows and lands on the target monitor; Enter writes
+  `assets/themes/appearance/<name>/appearance.yaml` and the theme appears in
+  the right-click Theme submenu on the next open.
+
+---
+
 # Style-Aware Theme System Plan (v3.0.0)
 
 > Executed plan behind the v3.0.0 release: per-chart colors, panel

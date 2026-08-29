@@ -23,8 +23,14 @@ Editing is DRAFT-ONLY: nothing is written until a footer button is pressed.
                 to the non-default keys, the way the shipped themes are
                 written) and activates it through config.local.yaml, so it
                 appears in the right-click Theme picker immediately.
-    Reset    -> refills the form from the LOADED source; writes nothing.
-    Cancel   -> discards and closes.
+    Preview  -> applies the DRAFT to the LIVE widget right now (colors, fonts,
+                radius, glow, panel and the re-tinted icon PNGs) WITHOUT
+                saving: config.local.yaml stays untouched, so only Save makes
+                it permanent. An un-saved preview reverts to the original look
+                on Reset / Cancel / editor close (via theme_preview.py).
+    Reset    -> refills the form from the LOADED source and reverts any
+                un-saved Preview; writes nothing.
+    Cancel   -> discards, reverts any un-saved Preview and closes.
 
 Every color field has a swatch button (custom GTK color dialog, override-
 redirect so it floats ABOVE the editor and the click-outside overlay), a hex
@@ -41,8 +47,20 @@ per-entry keyboard grab with the "typing" session marker, and the session
 poll that quits once the "theme" session disappears (ESC through the evdev
 daemon, click-outside through dismiss_overlay, or the footer buttons).
 
+The window HEIGHT adapts to the desktop: the controller (theme_ctl.py) sizes
+it to fit the smallest connected screen's usable height (screen minus
+taskbar), so it can be dragged onto any monitor. On X11 the drag is clamped to
+the WHOLE virtual desktop (union of all monitors), letting the window be moved
+from one monitor to another. Child dialogs (the Save As name prompt and the
+color chooser) are CENTERED on the editor, follow it during a drag, and are
+clamped to the same virtual desktop, so they come along to whichever monitor
+the editor lands on. On X11 the Save As dialog takes the keyboard focus with a
+Gdk.keyboard_grab exactly like the editor's own entry fields, so the name can
+be typed straight in.
+
 Usage:
-  ./theme_panel.py --monitor 0 --x 300 --y 200 --frame-w 1920 --frame-h 1080
+  ./theme_panel.py --monitor 0 --x 300 --y 200 --frame-w 1920 --frame-h 1080 \
+                   --win-h 738
 """
 
 import argparse
@@ -64,6 +82,8 @@ CR_DIR = os.path.dirname(SCRIPT_DIR)  # scripts/
 CONFIG_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
 EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
 SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
+PREVIEW_FILE = os.path.join(CONFIG_DIR, "generated", "preview.json")
+PREVIEW_SCRIPT = os.path.join(SCRIPT_DIR, "theme_preview.py")
 sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "core"))
 
 import yaml  # noqa: E402
@@ -617,10 +637,14 @@ class ColorField:
 # ---------------------------------------------------------------------------
 
 class ThemePanel:
-    def __init__(self, monitor, x, y, frame_w, frame_h):
+    def __init__(self, monitor, x, y, frame_w, frame_h, win_h=EDITOR_H):
         self.monitor = monitor
         self.frame_w = frame_w
         self.frame_h = frame_h
+        # Resolved window size: the controller adapts win_h so the window also
+        # fits the smallest connected screen (screen height minus taskbar).
+        self.win_w = EDITOR_W
+        self.win_h = max(0, int(win_h or EDITOR_H))
         self.win_x = x
         self.win_y = y
         self.drag = False
@@ -634,6 +658,8 @@ class ThemePanel:
         self.name, self.committed, self.radius, self.source = load_source(CONFIG_DIR)
         self.draft = dict(self.committed)
         self.editing = None       # key whose entry owns the keyboard
+        self.preview_active = False  # a live (unsaved) preview is applied
+        self._preview_file = None    # temp JSON handed to the worker
         self.status_label = None
         self.entries = {}         # text-entry key -> Gtk.Entry
         self.sliders = {}         # pct-key -> Gtk.Scale
@@ -659,6 +685,28 @@ class ThemePanel:
         except Exception:
             pass
 
+        # Bounding box of the WHOLE virtual desktop, so the window can be
+        # dragged from one monitor to another instead of being pinned to the
+        # monitor it opened on (X11; absolute coordinate space).
+        self.desk_x0, self.desk_y0, self.desk_w, self.desk_h = (
+            self.mon_ox, self.mon_oy, frame_w, frame_h)
+        try:
+            display = Gdk.Display.get_default()
+            if display is not None:
+                x0 = y0 = None
+                x1 = y1 = 0
+                for i in range(display.get_n_monitors()):
+                    g = display.get_monitor(i).get_geometry()
+                    x1 = max(x1, g.x + g.width)
+                    y1 = max(y1, g.y + g.height)
+                    x0 = g.x if x0 is None else min(x0, g.x)
+                    y0 = g.y if y0 is None else min(y0, g.y)
+                if x0 is not None:
+                    self.desk_x0, self.desk_y0 = x0, y0
+                    self.desk_w, self.desk_h = x1 - x0, y1 - y0
+        except Exception:
+            pass
+
         self.win = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
         self.win.set_title("Theme editor")
         self.win.set_decorated(False)
@@ -668,11 +716,11 @@ class ThemePanel:
         self.win.set_keep_above(True)
         self.win.set_resizable(False)
         self.win.set_accept_focus(True)
-        self.win.set_size_request(EDITOR_W, EDITOR_H)
-        self.win.set_default_size(EDITOR_W, EDITOR_H)
+        self.win.set_size_request(self.win_w, self.win_h)
+        self.win.set_default_size(self.win_w, self.win_h)
         geometry = Gdk.Geometry()
-        geometry.min_width = geometry.max_width = EDITOR_W
-        geometry.min_height = geometry.max_height = EDITOR_H
+        geometry.min_width = geometry.max_width = self.win_w
+        geometry.min_height = geometry.max_height = self.win_h
         self.win.set_geometry_hints(
             None, geometry,
             Gdk.WindowHints.MIN_SIZE | Gdk.WindowHints.MAX_SIZE,
@@ -698,7 +746,8 @@ class ThemePanel:
 
         self.build_ui()
         self.win.connect("destroy",
-                         lambda *_: (self._release_keyboard(), Gtk.main_quit()))
+                         lambda *_: (self._revert_preview(),
+                                     self._release_keyboard(), Gtk.main_quit()))
         self.win.connect("realize", self.on_realize)
         self.win.connect("button-press-event", self.on_press)
         self.win.connect("button-release-event", self.on_release)
@@ -837,6 +886,7 @@ class ThemePanel:
         action_row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
         for text, cls, cb in (("Cancel", "close", self.on_close),
                               ("Reset", "reset", self.on_reset),
+                              ("Preview", "preview", self.on_preview),
                               ("Save", "save", self.on_save),
                               ("Save As…", "save", self.on_save_as)):
             btn = Gtk.Button.new_with_label(text)
@@ -1078,14 +1128,26 @@ class ThemePanel:
             except Exception:
                 pass
 
+    def _child_position(self, w, h):
+        """(x, y) for a child dialog, centered on the editor.
+
+        Centers the dialog on the editor's current top-left, then clamps to
+        the WHOLE virtual desktop (self.desk_*) so the dialog follows the
+        editor even when it is dragged to another monitor.
+        """
+        w = max(w or 0, 1)
+        h = max(h or 0, 1)
+        px = clamp(self.win_x + (self.win_w - w) // 2, self.desk_x0,
+                   self.desk_x0 + max(0, self.desk_w - w))
+        py = clamp(self.win_y + (self.win_h - h) // 2, self.desk_y0,
+                   self.desk_y0 + max(0, self.desk_h - h))
+        return px, py
+
     def _child_move(self, win):
         try:
             w = win.get_allocated_width() or 0
             h = win.get_allocated_height() or 0
-            px = clamp(self.win_x + EDITOR_W + 12, self.mon_ox,
-                       self.mon_ox + max(0, self.frame_w - max(w, 1)))
-            py = clamp(self.win_y, self.mon_oy,
-                       self.mon_oy + max(0, self.frame_h - max(h, 1)))
+            px, py = self._child_position(w, h)
             set_position(win, px, py)
         except Exception:
             pass
@@ -1267,11 +1329,13 @@ class ThemePanel:
     # -- footer actions -------------------------------------------------------
     def on_close(self, *_):
         self._end_editing(self.editing)
+        self._revert_preview()
         close_popup()
         Gtk.main_quit()
 
     def on_reset(self, *_):
         self._end_editing(self.editing)
+        self._revert_preview()
         self.draft = dict(self.committed)
         self.load_widgets(self.draft)
         self.set_status("")
@@ -1292,10 +1356,76 @@ class ThemePanel:
             return False
         return True
 
+    def _spawn_preview_worker(self, argv):
+        """Detached theme_preview.py run (never blocks the GTK loop)."""
+        run([sys.executable, PREVIEW_SCRIPT] + argv)
+
+    def on_preview(self, *_):
+        """Apply the DRAFT to the live widget without saving.
+
+        Writes the generated theme files + tinted icons from the in-memory
+        draft via the detached worker, so the change shows on screen but is
+        NOT persisted (config.local.yaml untouched) until Save is pressed.
+        """
+        self._end_editing(self.editing)
+        draft = self.collect_draft()
+        ok, msg = validate_draft(draft)
+        if not ok:
+            self.set_status(msg)
+            return False
+        if "'" in (str(draft.get("font_face", "")) or ""):
+            self.set_status("font must not contain quotes")
+            return False
+        radius = self.spins["corner_radius"].get_value()
+        try:
+            appearance = normalize_appearance(draft)
+        except Exception as exc:
+            self.set_status("Preview failed: %s" % exc)
+            return False
+        try:
+            fd, path = tempfile.mkstemp(prefix="wo-prev-", suffix=".json")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(appearance, fh)
+        except Exception as exc:
+            self.set_status("Preview failed: %s" % exc)
+            return False
+        self._preview_file = path
+        self.preview_active = True
+        self._spawn_preview_worker(["--apply", path, "--radius", str(int(radius))])
+        self.set_status("Previewing — Save keeps it, Cancel/Reset discards")
+        return True
+
+    def _revert_preview(self):
+        """Undo a live preview (if any), restoring the committed look.
+
+        Idempotent; the worker's --restore is a no-op when no preview marker
+        exists. Called on Cancel / Reset / editor close (every exit path that
+        does NOT persist the draft).
+        """
+        if not getattr(self, "preview_active", False):
+            return
+        self.preview_active = False
+        self._spawn_preview_worker(["--restore"])
+        f = getattr(self, "_preview_file", None)
+        if f:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+            self._preview_file = None
+
     def on_save(self, *_):
         self._end_editing(self.editing)
         if not self._apply_save(self.collect_draft(), self.spins["corner_radius"].get_value()):
             return False
+        self.preview_active = False  # persisted now; never revert
+        f = getattr(self, "_preview_file", None)
+        if f:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+            self._preview_file = None
         self.committed = self.collect_draft()
         close_popup()
         Gtk.main_quit()
@@ -1308,9 +1438,11 @@ class ThemePanel:
         if not ok:
             self.set_status(msg)
             return False
-        dialog = Gtk.MessageDialog.new(
-            None, Gtk.DialogFlags.MODAL, Gtk.MessageType.QUESTION,
-            Gtk.ButtonsType.OK_CANCEL, "Save theme as…")
+        dialog = Gtk.MessageDialog(
+            parent=None, flags=Gtk.DialogFlags.MODAL,
+            type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.OK_CANCEL,
+            text="Save theme as…")
         dialog.set_title("Save theme as…")
         dialog.set_modal(True)
         if WAYLAND:
@@ -1326,28 +1458,54 @@ class ThemePanel:
             dialog.connect("realize", self._child_override_redirect)
         entry = Gtk.Entry.new()
         entry.set_placeholder_text("theme-name (rose-gold, my-pastel, …)")
+        entry.set_activates_default(True)
         area = dialog.get_content_area()
         area.pack_start(entry, True, True, 6)
         dialog.set_default_response(Gtk.ResponseType.OK)
+        dialog.connect("response",
+                       lambda d, r: self._save_as_response(d, r, entry, draft))
+        dialog.connect("destroy", lambda *_: self._child_destroyed(dialog))
         self.child = dialog
         dialog.show_all()
-        self._child_move(dialog)
+        GLib.idle_add(self._child_move, dialog)
         dialog.present()
-        name = None
-        if dialog.run() == Gtk.ResponseType.OK:
-            name = entry.get_text().strip()
+        entry.grab_focus()
+        self._grab_dialog_keyboard(dialog)
+        return False
+
+    def _grab_dialog_keyboard(self, dialog):
+        """Give the dialog the X keyboard focus, exactly like the editor does
+        (it is override-redirect, so a plain present() cannot steer the WM)."""
+        if not WAYLAND:
+            try:
+                window = dialog.get_window()
+                if window is not None:
+                    Gdk.keyboard_grab(window, True, Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        GLib.idle_add(dialog.get_focus().grab_focus if dialog.get_focus()
+                      else lambda: None)
+
+    def _save_as_response(self, dialog, response, entry, draft):
         if self.child is dialog:
             self.child = None
+        try:
+            if not WAYLAND:
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+        except Exception:
+            pass
+        if response == Gtk.ResponseType.OK:
+            name = entry.get_text().strip()
+            if name:
+                ok, msg = save_as_theme(CONFIG_DIR, name, draft)
+                if ok:
+                    close_popup()
+                    Gtk.main_quit()
+                else:
+                    self.set_status(msg)
         dialog.destroy()
-        if not name:
-            return False
-        ok, msg = save_as_theme(CONFIG_DIR, name, draft)
-        if not ok:
-            self.set_status(msg)
-            return False
-        close_popup()
-        Gtk.main_quit()
-        return True
+        if self.child is dialog:
+            self.child = None
 
     # -- on-screen color picker ---------------------------------------------
     def pick_into(self, field):
@@ -1603,6 +1761,7 @@ class ThemePanel:
 
     def tick(self):
         if not session_active():
+            self._revert_preview()
             Gtk.main_quit()
             return False
         child = getattr(self, "child", None)
@@ -1657,15 +1816,20 @@ class ThemePanel:
         else:
             nx = self.start_x + int(event.x_root - self.grab_root_x)
             ny = self.start_y + int(event.y_root - self.grab_root_y)
-            nx = max(self.mon_ox, min(nx, self.mon_ox
-                                      + max(0, self.frame_w - EDITOR_W)))
-            ny = max(self.mon_oy, min(ny, self.mon_oy
-                                      + max(0, self.frame_h - EDITOR_H)))
+            # Clamp to the WHOLE virtual desktop so the window can be dragged
+            # from one monitor to another (win_w/win_h = resolved size).
+            nx = max(self.desk_x0, min(nx, self.desk_x0
+                                       + max(0, self.desk_w - self.win_w)))
+            ny = max(self.desk_y0, min(ny, self.desk_y0
+                                       + max(0, self.desk_h - self.win_h)))
         if nx != self.win_x or ny != self.win_y:
             self.win_x, self.win_y = nx, ny
             set_position(self.win, nx, ny)
             if self.dropdown_open is not None:
                 self._position_menu(self.dropdown_open)
+            elif getattr(self, "child", None) is not None:
+                # A dialog (Save As / color) follows the editor during the drag.
+                self._child_move(self.child)
         return False
 
     def on_release(self, widget, event):
@@ -1739,6 +1903,8 @@ def _build_css():
     button.save:hover { background-color: rgba(78, 154, 6, 0.4); }
     button.reset { background-color: rgba(200, 150, 0, 0.25); }
     button.reset:hover { background-color: rgba(200, 150, 0, 0.4); }
+    button.preview { background-color: rgba(69, 133, 136, 0.28); }
+    button.preview:hover { background-color: rgba(69, 133, 136, 0.45); }
     scale trough { min-height: 4px; }
     .status {
       font-size: 11px;
@@ -1788,12 +1954,14 @@ def main():
     ap.add_argument("--y", type=int, default=0)
     ap.add_argument("--frame-w", type=int, default=0)
     ap.add_argument("--frame-h", type=int, default=0)
+    ap.add_argument("--win-h", type=int, default=EDITOR_H)
     args = ap.parse_args()
 
     if not session_active():
         sys.exit(0)
 
-    panel = ThemePanel(args.monitor, args.x, args.y, args.frame_w, args.frame_h)
+    panel = ThemePanel(args.monitor, args.x, args.y,
+                       args.frame_w, args.frame_h, args.win_h)
     panel.win.show_all()
     panel.win.present()
     GLib.timeout_add(250, panel.tick)

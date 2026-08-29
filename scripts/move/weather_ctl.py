@@ -26,6 +26,11 @@ exists).
 The per-monitor dismiss layers deliberately STAY OPEN like in Move/Resize /
 Panel-gap: they are the click-outside-to-cancel surface for the whole session.
 
+The window HEIGHT is adapted so it also fits the smallest connected screen
+(screen height minus taskbar; see monitors.adaptive_window_height) and the
+form is centered using that resolved height, so it can be dragged onto any
+monitor.
+
 Usage:
   ./weather_ctl.py --widget clock --monitor 0
 """
@@ -45,6 +50,7 @@ SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
 sys.path.insert(0, os.path.join(CR_DIR, "core"))
 
 import session
+import monitors as monmod
 
 POSE_W = 300
 POSE_H = 380
@@ -122,8 +128,10 @@ def main():
     if mon is None:
         mon = {"index": args.monitor, "x": 0, "y": 0, "width": 1920, "height": 1080}
     frame_w, frame_h = mon["width"], mon["height"]
+    win_h = monmod.adaptive_window_height(
+        monitors, POSE_H, monmod.get_net_workarea())
     px = clamp((frame_w - POSE_W) // 2, 0, max(0, frame_w - POSE_W))
-    py = clamp((frame_h - POSE_H) // 2, 0, max(0, frame_h - POSE_H))
+    py = clamp((frame_h - win_h) // 2, 0, max(0, frame_h - win_h))
 
     # Close the context menu; the per-monitor dismiss layers stay open (the
     # click-outside-to-cancel surface), like in the Move/Resize session.
@@ -151,6 +159,7 @@ def main():
             "--monitor", str(args.monitor),
             "--x", str(px), "--y", str(py),
             "--frame-w", str(frame_w), "--frame-h", str(frame_h),
+            "--win-h", str(win_h),
         ],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL, start_new_session=True, cwd=CONFIG_DIR,

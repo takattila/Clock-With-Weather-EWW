@@ -227,10 +227,22 @@ one go**:
   a draggable visual editor for every appearance field: theme, icon
   set/tint/opacity, fonts, background, per-chart colors, glow, panel
   background/gradient and corner radius. Colors come from a swatch, a hex
-  entry or the screen itself (eyedropper). Save writes the whole theme
-  inline into config.local.yaml (the shipped theme files stay untouched and
-  the watcher applies it live); Save As creates a new theme that appears in
-  the Theme picker immediately.
+  entry or the screen itself (eyedropper). **Preview** applies the current
+  draft to the live widget right away (colors, fonts, radius, glow, panel and
+  the re-tinted icons) WITHOUT saving, so you can try looks before committing;
+  the un-saved preview reverts on Reset / Cancel / closing the editor. Save
+  writes the whole theme inline into config.local.yaml (the shipped theme
+  files stay untouched and the watcher applies it live); Save As creates a new
+  theme that appears in the Theme picker immediately. The editor (and the
+  Weather settings window) adapts its **height to fit the smallest connected
+  screen** (monitor height minus the taskbar) and can be **dragged from one
+  monitor to another** on X11, shrinking its content into a scrollbar when the
+  screen is short. Its child dialogs — the **Save As** name prompt and the
+  color chooser — are **centered on the editor** and **follow it** when it is
+  dragged (clamped to the whole virtual desktop, so they come along to the
+  other monitor). Save As opens reliably, takes the keyboard focus like the
+  editor itself (type the name straight in, Enter to save) and floats above
+  the editor/overlay.
 - **Panel gap control** (new in v3.1.0) — top / right / bottom / left spacing
   between the panel and the screen / taskbar edges, edited in a draggable
   window next to the panel (± and typed values as a draft), saved in one go.

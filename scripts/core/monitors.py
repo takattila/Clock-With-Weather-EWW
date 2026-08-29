@@ -209,6 +209,71 @@ def enumerate_monitors(compositor):
     return fallback_monitors()
 
 
+def get_net_workarea():
+    """Read the _NET_WORKAREA rectangle(s) (EWMH) from the X11 root.
+
+    Returns (x, y, w, h) of the first rectangle, or None when unavailable
+    (no X / no EWMH-compliant window manager). The work area is the desktop
+    minus the taskbar/panel exclusive zone, so it can be used to size a
+    floating window as "screen height minus taskbar height".
+    """
+    try:
+        out = subprocess.check_output(
+            ["xprop", "-root", "_NET_WORKAREA"],
+            stderr=subprocess.DEVNULL, text=True, timeout=3,
+        )
+        m = re.search(r"=\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)", out)
+        if m:
+            x, y, w, h = (int(v) for v in m.groups())
+            if w > 0 and h > 0:
+                return x, y, w, h
+    except Exception:
+        pass
+    return None
+
+
+def usable_height(mon, workarea=None):
+    """Usable display height of one monitor = full height minus the taskbar
+    inset it overlaps, derived from the _NET_WORKAREA rectangle.
+
+    A work area that does not reach a monitor horizontally means that monitor
+    sits outside the taskbar's span and keeps its full height.
+    """
+    height = int(mon.get("height", 0))
+    if not height or not workarea:
+        return height
+    wax, way, waw, wah = (int(v) for v in workarea)
+    mleft, mright = int(mon.get("x", 0)), int(mon.get("x", 0)) + int(mon.get("width", 0))
+    if mleft >= wax + waw or mright <= wax:
+        return height
+    mtop, mbottom = int(mon.get("y", 0)), int(mon.get("y", 0)) + height
+    top = max(0, way - mtop)
+    bottom = max(0, mbottom - (way + wah))
+    return max(0, height - top - bottom)
+
+
+def adaptive_window_height(monitors, natural_h, workarea=None):
+    """Window height that fits EVERY monitor.
+
+    Uses the smallest per-monitor usable height as the basis (per the design,
+    so a draggable window can be placed on the smallest screen), capped by the
+    window's own natural height so a tall-enough desktop never stretches it.
+    """
+    heights = [usable_height(m, workarea) for m in monitors] or [natural_h]
+    return min(int(natural_h), min(heights))
+
+
+def desktop_bounds(monitors):
+    """Bounding box (x0, y0, w, h) covering all monitors in global coords."""
+    if not monitors:
+        return 0, 0, 0, 0
+    x0 = min(int(m.get("x", 0)) for m in monitors)
+    y0 = min(int(m.get("y", 0)) for m in monitors)
+    x1 = max(int(m.get("x", 0)) + int(m.get("width", 0)) for m in monitors)
+    y1 = max(int(m.get("y", 0)) + int(m.get("height", 0)) for m in monitors)
+    return x0, y0, x1 - x0, y1 - y0
+
+
 def signature():
     parts = []
     for c in drm_connectors():

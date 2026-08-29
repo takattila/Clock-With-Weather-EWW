@@ -335,3 +335,46 @@ def test_save_as_theme_via_minimalize_roundtrip(tmp_path):
     assert d1["font_shadow_blur"] == 5
     assert d1["chart_cpu"] == "#e8a87c"
     assert d1["panel_color"] == ""
+
+
+# ---------------------------------------------------------------------------
+# child dialog positioning (Save As / color dialog follows the editor on drag)
+# ---------------------------------------------------------------------------
+
+def _child_panel(**kw):
+    """A minimal ThemePanel-like object exposing only what _child_position uses."""
+    obj = object.__new__(theme_panel.ThemePanel)
+    defaults = dict(win_x=100, win_y=80, win_w=560, win_h=700,
+                    desk_x0=0, desk_y0=0, desk_w=3288, desk_h=1080)
+    defaults.update(kw)
+    for k, v in defaults.items():
+        setattr(obj, k, v)
+    return obj
+
+
+def test_child_position_follows_editor():
+    p = _child_panel(win_x=100, win_y=80, win_w=560, win_h=700)
+    # dialog w=300 h=200 -> centered on the editor
+    x, y = p._child_position(300, 200)
+    assert x == 100 + (560 - 300) // 2  # 230
+    assert y == 80 + (700 - 200) // 2  # 330
+    # moving the editor moves the dialog the same relative way
+    p.win_x, p.win_y = 1450, 220
+    x2, y2 = p._child_position(300, 200)
+    assert x2 == 1450 + (560 - 300) // 2
+    assert y2 == 220 + (700 - 200) // 2
+
+
+def test_child_position_clamps_to_virtual_desktop():
+    p = _child_panel(win_x=100, win_y=80, win_w=560, win_h=700,
+                     desk_x0=0, desk_y0=0, desk_w=3288, desk_h=1080)
+    # A huge dialog at the desktop edge is clamped inside the desk box.
+    x, y = p._child_position(5000, 3000)
+    assert x <= p.desk_x0 + p.desk_w - 1
+    assert y <= p.desk_y0 + p.desk_h - 1
+    # A dialog follows when the editor moves to another monitor (positive x,
+    # no longer clamped back to the origin monitor).
+    p.win_x = 2500
+    x2, _ = p._child_position(300, 200)
+    assert x2 == 2500 + (560 - 300) // 2  # 2630
+    assert x2 > 1368  # lands on the second monitor, not the origin one

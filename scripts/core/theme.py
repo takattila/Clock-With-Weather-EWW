@@ -248,20 +248,14 @@ def generate_icons(config_dir, data):
     return "\n".join(notes) or None
 
 
-def main():
-    config_dir = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
+def write_theme_files(config_dir, data):
+    """Write eww.theme.json + eww.theme.scss next to eww.yuck for `data`.
 
-    config = load_config(config_dir)
-    appearance = config.get("appearance", "light")
-
-    data = parse_appearance(load_appearance(config_dir, appearance))
-
-    system = config.get("system", {}) or {}
-    data["bg_radius"] = int(system.get("corner_radius", 20))
-
-    icon_notes = generate_icons(config_dir, data)
-
-    # The generated theme files live next to eww.yuck in the eww config dir.
+    Shared by theme.py's own main() and the live-preview worker
+    (scripts/move/theme_preview.py) so both generate the identical theme files
+    from the same resolved appearance dict. Expects `data` already fully
+    populated (parse_appearance + bg_radius set).
+    """
     eww_dir = os.path.join(config_dir, "eww")
     os.makedirs(eww_dir, exist_ok=True)
 
@@ -291,6 +285,22 @@ def main():
         f.write("$text-shadow: %s;\n" % data["text_shadow"])
         f.write("$menu-ink: %s;\n" % data["menu_ink"])
         f.write("$panel-ink: %s;\n" % data["panel_ink"])
+
+
+def main():
+    config_dir = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.getcwd())
+
+    config = load_config(config_dir)
+    appearance = config.get("appearance", "light")
+
+    data = parse_appearance(load_appearance(config_dir, appearance))
+
+    system = config.get("system", {}) or {}
+    data["bg_radius"] = int(system.get("corner_radius", 20))
+
+    icon_notes = generate_icons(config_dir, data)
+
+    write_theme_files(config_dir, data)
 
     if isinstance(appearance, dict):
         appearance_label = "custom"

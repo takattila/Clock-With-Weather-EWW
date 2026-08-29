@@ -27,10 +27,27 @@ Theme picker right away.
 ### New: Theme editor
 
 - Right-click menu gains **Theme editor** (both the clock and the panel
-  column), opening `theme_ctl.py` → `theme_panel.py`: a 560×760 draggable
+  column), opening `theme_ctl.py` → `theme_panel.py`: a 560-wide draggable
   window centered on the monitor the menu was raised on, same session
   mechanics as the Weather-settings form (draft-only, title-strip drag,
   keyboard grab while typing, ESC / click-outside cancels).
+- **Adaptive window height + cross-monitor drag** (theme editor *and*
+  Weather settings): the window's height is capped to fit the **smallest
+  connected screen's usable height** (monitor height minus the taskbar, via
+  `_NET_WORKAREA`), so it can be placed on every monitor. On X11 the drag is
+  clamped to the **whole virtual desktop** (union of all monitors) instead of
+  the single monitor where it opened, so a window can be dragged from one
+  monitor to another; when the shorter height clips the form, the content
+  becomes scrollable (the theme editor already scrolled; the Weather form now
+  wraps its fields in a scrolled window too).
+- **Live theme preview** (`theme_preview.py`): the editor's new **Preview**
+  footer button applies the current draft to the live widget right away —
+  colors, fonts, radius, glow, panel and the re-tinted icon PNGs — **without
+  saving** (`config.local.yaml` stays untouched, so only **Save** makes it
+  permanent). The preview is generated from the in-memory draft via the shared
+  `theme.write_theme_files` helper and reloads eww directly (the watcher is
+  deliberately not involved, avoiding a reload loop). An un-saved preview
+  reverts to the original look on **Reset / Cancel / closing the editor**.
 - **Every appearance field** is editable: `theme`, `icon.set`,
   `icon.transparency{light,dark}`, `icon.color{light,dark}` (tint),
   `font.face`, `font.color`, `font.transparency`, `font.shadow{color,blur}`
@@ -53,6 +70,16 @@ Theme picker right away.
   `assets/themes/appearance/<name>/appearance.yaml` (the same "omit the
   trivial defaults" style the checked-in themes use) and activates it via
   `config.local.yaml`, so it shows up in the Theme picker immediately.
+- **Child dialogs follow the editor** — the **Save As** name prompt and the
+  color chooser are **centered on the editor** and re-anchored whenever it is
+  dragged, clamped to the **whole virtual desktop** (like the editor itself),
+  so they come along to whichever monitor the editor lands on. The Save As
+  dialog also **opens and types reliably**: its constructor was fixed (a
+  `Gtk.MessageDialog.new` call that always raised a PyGObject `TypeError`,
+  making the prompt never appear), it now uses the same non-blocking
+  `response` + `present()` pattern as the color dialog, and it takes the
+  keyboard focus via `Gdk.keyboard_grab` exactly like the editor's own entry
+  fields (so the name is typed straight in; Enter saves).
 - **Reset** refills the form from the loaded source; **Cancel** discards.
   Every commit is validated first (`#rrggbb`, 0–1 transparencies, blur /
   radius bounds, single-line gradient, no quotes in the font name).
