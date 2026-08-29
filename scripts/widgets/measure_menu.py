@@ -24,7 +24,7 @@ import sys
 import tempfile
 
 CONFIG_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ROWS = 12        # collapsed ctx-menu column rows (both widgets stack 12)
+ROWS = 13        # collapsed ctx-menu column rows (both widgets stack 13)
 PAD = 7           # ctx_menu top padding (+border) == submenu.MENU_PAD
 MARGIN = 2        # .ctx-btn margin (inset of the first button) == eww.scss
 MAX_ROWS = 18     # sanity: never trust a capture with more B bands than rows
@@ -32,8 +32,8 @@ TOL = 4           # px tolerance for the uniform-pitch consistency check
 
 # B-row indices in the collapsed column, per widget (== submenu.ROW_SEQUENCES).
 B_ROWS = {
-    "clock": [0, 1, 2, 4, 5, 7, 8, 10, 11],
-    "panel": [0, 1, 2, 4, 6, 7, 8, 10, 11],
+    "clock": [0, 1, 2, 4, 5, 6, 8, 9, 11, 12],
+    "panel": [0, 1, 2, 4, 5, 7, 8, 9, 11, 12],
 }
 
 

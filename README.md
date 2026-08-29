@@ -122,19 +122,20 @@ The context menu is a quick-settings panel: **Move / Resize / Reset**, hover
 submenus for the **AM/PM format** (12 ↔ 24 hour), the **theme** (all
 ready-made themes, adaptive two/three columns, active one highlighted),
 **°C/°F** (with instant weather refresh), **panel show/hide** and **panel
-side** — plus **Weather settings**, **Panel gap**, factory **Hard reset** and
-the **About** dialog. The menu opens instantly and always belongs to the
+side** — plus **Theme editor** (a visual theme editor, new in v4.0.0),
+**Weather settings**, **Panel gap**, factory **Hard reset** and the **About**
+dialog. The menu opens instantly and always belongs to the
 widget actually sitting under the pointer — even where their transparent
 edges overlap.
 
 The pane never gets stuck: hovering any row without a submenu (Move /
-Resize / Reset / Weather / Panel gap / Hard reset / About) closes the picker
-again, and the picker never pops open by itself. Long pickers clamp to the
-bottom screen edge, near the right edge the picker flips to the left side of
-the menu, and the menu is a fixed width on every compositor — nothing is
-ever clipped. **ESC closes any popup** (menu, picker or the control
-windows), even mid-typing. Every selection is written to the git-ignored
-`config.local.yaml` and applied live.
+Resize / Reset / Theme editor / Weather / Panel gap / Hard reset / About)
+closes the picker again, and the picker never pops open by itself. Long
+pickers clamp to the bottom screen edge, near the right edge the picker
+flips to the left side of the menu, and the menu is a fixed width on every
+compositor — nothing is ever clipped. **ESC closes any popup** (menu,
+picker or the control windows), even mid-typing. Every selection is written
+to the git-ignored `config.local.yaml` and applied live.
 
 <table>
     <tr>
@@ -147,28 +148,37 @@ windows), even mid-typing. Every selection is written to the git-ignored
     </tr>
 </table>
 
-### Settings windows (new in v3.1.0)
+### Settings windows (v3.1.0 + theme editor in v4.0.0)
 
-Move / Resize, the Weather settings form, the Panel gap control and the About
-dialog open as dedicated windows that hug the widget or the screen edge they
-control — editing is draft-only, **Save commits it in one go**:
+Move / Resize, the Weather settings form, the Panel gap control, the Theme
+editor and the About dialog open as dedicated windows that hug the widget or
+the screen edge they control — editing is draft-only, **Save commits it in
+one go**:
 
 <table>
     <tr>
         <th>Weather settings</th>
-        <th>Move / Resize</th>
+        <th>Theme editor (v4.0.0)</th>
     </tr>
     <tr>
         <td><img src="./docs/images/screenshots/window-weather-settings.png"></td>
-        <td><img src="./docs/images/screenshots/window-move-resize.png"></td>
+        <td><img src="./docs/images/screenshots/window-theme-editor.png"></td>
     </tr>
     <tr>
+        <th>Move / Resize</th>
         <th>Panel gap</th>
-        <th>About</th>
     </tr>
     <tr>
+        <td><img src="./docs/images/screenshots/window-move-resize.png"></td>
         <td><img src="./docs/images/screenshots/window-panel-gap.png"></td>
+    </tr>
+    <tr>
+        <th>About</th>
+        <th></th>
+    </tr>
+    <tr>
         <td><img src="./docs/images/screenshots/window-about.png"></td>
+        <td></td>
     </tr>
 </table>
 
@@ -213,6 +223,14 @@ control — editing is draft-only, **Save commits it in one go**:
   city, language, units, API URL and key as a draft; Save validates and
   commits them in one go (config.local.yaml + `.api_key`) and refreshes the
   weather immediately, Reset drops the local weather overrides.
+- **Theme editor** (new in v4.0.0) — "Theme editor" in the right-click menu opens
+  a draggable visual editor for every appearance field: theme, icon
+  set/tint/opacity, fonts, background, per-chart colors, glow, panel
+  background/gradient and corner radius. Colors come from a swatch, a hex
+  entry or the screen itself (eyedropper). Save writes the whole theme
+  inline into config.local.yaml (the shipped theme files stay untouched and
+  the watcher applies it live); Save As creates a new theme that appears in
+  the Theme picker immediately.
 - **Panel gap control** (new in v3.1.0) — top / right / bottom / left spacing
   between the panel and the screen / taskbar edges, edited in a draggable
   window next to the panel (± and typed values as a draft), saved in one go.
@@ -255,7 +273,10 @@ including the nine **style themes** (`sunset-basic`, `neon`, `pastel`,
 gradient panel backgrounds and neon glow — plus per-city weather themes. Or
 define your own colors inline: per-chart colors (`chart.colors`), panel
 background/gradient (`panel.background`), text shadow (`font.shadow`) and
-more. See the
+more. The right-click **Theme editor** window edits every one of these visually
+(swatch, hex entry or screen eyedropper; **Save** writes it inline into
+`config.local.yaml`, **Save As…** turns the current draft into a new theme).
+See the
 [configuration docs](docs/WIKI.md#configuration-configyaml) for how to switch
 and customize them, and the WIKI's "Creating style themes" section for the
 full recipe.

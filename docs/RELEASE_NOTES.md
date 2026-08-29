@@ -1,13 +1,75 @@
-# Clock-With-Weather-EWW — v3.1.1
+# Clock-With-Weather-EWW — v4.0.0
 
 **A beautiful, fully customizable clock & weather widget with a live system
 monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
 layer-shell) and also works on **X11**. Powered by the
 [OpenWeatherMap](https://openweathermap.org) API.
 
-> **Recommendation: v3.1.1** — the current recommended release. A small,
-> focused fix that keeps the right-click hover picker exactly aligned with the
-> menu row it belongs to.
+> **Recommendation: v4.0.0** — the current recommended release. Adds a
+> visual **Theme editor** to the right-click menu.
+
+**v4.0.0 adds a theme editor: theme every color without touching YAML.**
+"Theme editor" next to the Theme picker opens a draggable editor (centered on
+the same monitor) that edits every field an appearance definition can carry
+— theme, icon set/tint/transparency, fonts, background, per-chart colors,
+glow, panel background/gradient and the corner radius. Colors come from a
+native swatch, a hex entry or the **screen itself** (eyedropper: on X11 a
+direct cursor pick with a live magnifier; on Wayland a best-effort
+KDE + screenshot flow). **Save** writes the whole appearance inline into
+`config.local.yaml` (the shipped theme files stay untouched, the watcher
+applies it live); **Save As** creates a brand-new theme that appears in the
+Theme picker right away.
+
+---
+
+## What changed in v4.0.0
+
+### New: Theme editor
+
+- Right-click menu gains **Theme editor** (both the clock and the panel
+  column), opening `theme_ctl.py` → `theme_panel.py`: a 560×760 draggable
+  window centered on the monitor the menu was raised on, same session
+  mechanics as the Weather-settings form (draft-only, title-strip drag,
+  keyboard grab while typing, ESC / click-outside cancels).
+- **Every appearance field** is editable: `theme`, `icon.set`,
+  `icon.transparency{light,dark}`, `icon.color{light,dark}` (tint),
+  `font.face`, `font.color`, `font.transparency`, `font.shadow{color,blur}`
+  (glow), `background{color,transparency}`, `chart.colors{cpu,memory,net,
+  up}` + `chart.glow`, `panel.background{color,transparency,gradient}` and
+  `system.corner_radius`.
+- **Color input three ways:** native GTK swatch, `#rrggbb` hex entry, and
+  on-screen **eyedropper** — on X11 a full-screen temporary capture + pointer
+  grab with a live hex readout and a 6× magnifier, applied on click; on
+  Wayland a best-effort fallback (KDE cursor position + grim /
+  gnome-screenshot sample in a confirmation dialog), with a graceful
+  message when neither is possible. A **palette strip** up top copies the
+  theme's own colors into the focused field.
+- **Save** (`save_inline_override`) commits the FULL normalized appearance
+  + `system.corner_radius` inline into the git-ignored `config.local.yaml`
+  (preserving every other key), so the shipped
+  `assets/themes/appearance/*` files stay untouched and the watcher reloads
+  the widget live.
+- **Save As…** (`save_as_theme`) asks for a name, writes a new minimalized
+  `assets/themes/appearance/<name>/appearance.yaml` (the same "omit the
+  trivial defaults" style the checked-in themes use) and activates it via
+  `config.local.yaml`, so it shows up in the Theme picker immediately.
+- **Reset** refills the form from the loaded source; **Cancel** discards.
+  Every commit is validated first (`#rrggbb`, 0–1 transparencies, blur /
+  radius bounds, single-line gradient, no quotes in the font name).
+- The context menu grows to **13 visible rows** per widget (17 markup rows);
+  the submenu-picker math and the row-measurer were updated to match.
+
+### Upgrade from v3.1.1
+
+1. Pull / check out `v4.0.0`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Right-click a widget → **Theme editor**. Nothing else to do — your themes
+   and `config.local.yaml` keep working unchanged. The editor's own
+   `window-theme-editor.png` screenshot is in the README / SCREENSHOTS.
+
+---
+
+# Clock-With-Weather-EWW — v3.1.1
 
 **v3.1.1 fixes the hover picker alignment.** Every time the context menu opens
 it now measures its own real row positions and anchors the hover picker

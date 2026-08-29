@@ -1,0 +1,1804 @@
+#!/usr/bin/env python3
+"""Draggable theme editor (GTK3).
+
+Opened by scripts/move/theme_ctl.py CENTERED ON the monitor the context-menu
+was opened on (same centering as the About dialog). Edits every field an
+appearance definition (appearance.yaml or the inline `appearance:` map) can
+carry, in the same structure theme.py parses:
+
+    theme | icon.set | icon.transparency{light,dark} | icon.color{light,dark}
+    font.face | font.color{light,dark} | font.transparency{light,dark}
+    font.shadow{color,blur} | background{transparency,color}
+    chart.colors{cpu,memory,net_down,net_up} | chart.glow
+    panel.background{color,transparency,gradient}     + system.corner_radius
+
+Editing is DRAFT-ONLY: nothing is written until a footer button is pressed.
+
+    Save     -> the WHOLE normalized appearance map + system.corner_radius is
+                written inline into the git-ignored config.local.yaml, so the
+                shipped theme files under assets/themes/appearance/ stay
+                untouched and the watcher reloads the widget live.
+    Save As  -> asks for a name and creates a NEW theme
+                assets/themes/appearance/<name>/appearance.yaml (minimalized
+                to the non-default keys, the way the shipped themes are
+                written) and activates it through config.local.yaml, so it
+                appears in the right-click Theme picker immediately.
+    Reset    -> refills the form from the LOADED source; writes nothing.
+    Cancel   -> discards and closes.
+
+Every color field has a swatch button (custom GTK color dialog, override-
+redirect so it floats ABOVE the editor and the click-outside overlay), a hex
+entry and an on-screen eyedropper ("Pick"). On X11 the picker grabs the pointer and
+wins: a full-screen capture is taken once, an overlay follows the cursor with
+a live hex readout and the picked pixel is applied on click. On Wayland there
+is no global grab, so the picker degrades to a best-effort KDE+capture flow
+(workarea.kde_cursor + grim/gnome-screenshot sampling into a confirmation
+window); when neither is available a message explains the fallback.
+
+The window mechanics mirror scripts/move/weather_panel.py exactly: draggable
+title strip, override-redirect toplevel (X11) / layer-shell OVERLAY (Wayland),
+per-entry keyboard grab with the "typing" session marker, and the session
+poll that quits once the "theme" session disappears (ESC through the evdev
+daemon, click-outside through dismiss_overlay, or the footer buttons).
+
+Usage:
+  ./theme_panel.py --monitor 0 --x 300 --y 200 --frame-w 1920 --frame-h 1080
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+try:
+    import cairo  # for cr.select_font_face constants
+except Exception:
+    cairo = None
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CR_DIR = os.path.dirname(SCRIPT_DIR)  # scripts/
+# scripts/move/ -> scripts/ -> repo (widget) root
+CONFIG_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+EWW_CONFIG_DIR = os.path.join(CONFIG_DIR, "eww")  # the eww --config target
+SESSION_FILE = os.path.join(CONFIG_DIR, "generated", "input_session.json")
+sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "core"))
+
+import yaml  # noqa: E402
+
+try:
+    import gi
+
+    gi.require_version("Gdk", "3.0")
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("GdkPixbuf", "2.0")
+    from gi.repository import Gdk, Gtk, GLib, GdkPixbuf
+except Exception as exc:
+    sys.exit("theme_panel: GTK3 unavailable: %s" % exc)
+
+WAYLAND = "WAYLAND_DISPLAY" in os.environ and os.environ.get("GDK_BACKEND", "wayland") != "x11"
+
+if WAYLAND:
+    try:
+        gi.require_version("GtkLayerShell", "0.1")
+        from gi.repository import GtkLayerShell
+    except Exception as exc:
+        sys.exit("theme_panel: GtkLayerShell unavailable: %s" % exc)
+
+EDITOR_W = 560
+EDITOR_H = 760
+TITLE_H = 30
+
+DEFAULT_FONT = "Noto Sans"
+DEFAULT_RADIUS = 15
+
+FIELD_KEYS = (
+    "theme",
+    "icon_set",
+    "icon_transparency_light", "icon_transparency_dark",
+    "icon_color_light", "icon_color_dark",
+    "font_face",
+    "font_color_light", "font_color_dark",
+    "font_transparency_light", "font_transparency_dark",
+    "font_shadow_color", "font_shadow_blur",
+    "background_color", "background_transparency",
+    "chart_cpu", "chart_memory", "chart_down", "chart_up", "chart_glow",
+    "panel_color", "panel_transparency", "panel_gradient",
+    "corner_radius",
+)
+
+# Keys whose value may be empty (meaning "omit the section").
+OPTIONAL_HEX_KEYS = ("icon_color_light", "icon_color_dark",
+                     "font_shadow_color", "panel_color")
+
+
+# ---------------------------------------------------------------------------
+# Pure, headless helpers (under tests/test_theme_panel.py).
+# ---------------------------------------------------------------------------
+
+def clamp(v, lo, hi):
+    return max(lo, min(hi, v))
+
+
+def _f(value, default):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    return clamp(v, 0.0, 1.0)
+
+
+def _i(value, default):
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return default
+    return v
+
+
+def normalize_hex(value):
+    """'#rrggbb' (also 3-digit / upper-case / without '#') -> '#rrggbb' or None."""
+    value = str(value).strip() if value is not None else ""
+    if not value:
+        return None
+    t = value.lstrip("#")
+    if len(t) == 3:
+        t = "".join(c * 2 for c in t)
+    if len(t) == 6 and all(c in "0123456789abcdefABCDEF" for c in t):
+        return "#" + t.lower()
+    return None
+
+
+def hex_or(value, default):
+    """normalize_hex() or `default` when empty/invalid."""
+    h = normalize_hex(value)
+    return h if h is not None else default
+
+
+def rgb_hex(r, g, b):
+    return "#%02x%02x%02x" % (
+        clamp(int(round(r)), 0, 255), clamp(int(round(g)), 0, 255),
+        clamp(int(round(b)), 0, 255),
+    )
+
+
+def pixel_color_at(pixels, rowstride, n_channels, x, y, width, height):
+    """RGB triple of the 8-bit pixel at (x, y), or None outside the surface.
+
+    Works on any PIL/GTK-style buffer (bytes, bytearray, memoryview):
+    `pixels[off]` is the byte at `y*rowstride + x*n_channels`; the first three
+    channels are the color (alpha, if any, sits at +3 and is ignored).
+    """
+    if x < 0 or y < 0 or x >= width or y >= height:
+        return None
+    off = y * rowstride + x * n_channels
+    return (int(pixels[off]), int(pixels[off + 1]), int(pixels[off + 2]))
+
+
+def raw_pixbuf(pixbuf):
+    """(pixels, rowstride, n_channels, width, height) snapshot of a Pixbuf."""
+    return (pixbuf.get_pixels(), pixbuf.get_rowstride(),
+            pixbuf.get_n_channels(), pixbuf.get_width(), pixbuf.get_height())
+
+
+def _transparency(d):
+    """Per-side {light, dark} transparency floats from an appearance map."""
+    source = d or {}
+    return {
+        "light": _f(source.get("light"), 1.0),
+        "dark": _f(source.get("dark"), 1.0),
+    }
+
+
+def to_draft(appearance, corner_radius=DEFAULT_RADIUS):
+    """Flatten an appearance map into the editor's flat draft model.
+
+    Every missing leaf takes the SAME default theme.py's parse_appearance
+    uses, so an empty map yields a valid, fully-populated draft.
+    """
+    a = appearance or {}
+    font = a.get("font") or {}
+    font_color = font.get("color") or {}
+    icon = a.get("icon") or {}
+    icon_color = icon.get("color") or {}
+    background = a.get("background") or {}
+    chart = a.get("chart") or {}
+    chart_colors = chart.get("colors") or {}
+    panel = a.get("panel") or {}
+    panel_background = panel.get("background") or {}
+
+    it = _transparency(icon.get("transparency"))
+    ft = _transparency(font.get("transparency"))
+    light = hex_or(font_color.get("light"), "#ffffff")
+    return {
+        "theme": str(a.get("theme", "light")),
+        "icon_set": str(icon.get("set", "dovora")),
+        "icon_transparency_light": it["light"],
+        "icon_transparency_dark": it["dark"],
+        "icon_color_light": hex_or(icon_color.get("light"), ""),
+        "icon_color_dark": hex_or(icon_color.get("dark"), ""),
+        "font_face": str(font.get("face", DEFAULT_FONT)) or DEFAULT_FONT,
+        "font_color_light": light,
+        "font_color_dark": hex_or(font_color.get("dark"), "#9e9e9e"),
+        "font_transparency_light": ft["light"],
+        "font_transparency_dark": ft["dark"],
+        "font_shadow_color": hex_or(font.get("shadow", {}).get("color"), ""),
+        "font_shadow_blur": _i(font.get("shadow", {}).get("blur"), 0),
+        "background_color": hex_or(background.get("color"), "#000000"),
+        "background_transparency": _f(background.get("transparency"), 0.0),
+        "chart_cpu": hex_or(chart_colors.get("cpu"), light),
+        "chart_memory": hex_or(chart_colors.get("memory"), light),
+        "chart_down": hex_or(chart_colors.get("net_down"), light),
+        "chart_up": hex_or(chart_colors.get("net_up"), light),
+        "chart_glow": bool(chart.get("glow", False)),
+        "panel_color": hex_or(panel_background.get("color"), ""),
+        "panel_transparency": _f(panel_background.get("transparency"), 0.0),
+        "panel_gradient": str(panel_background.get("gradient") or "").strip(),
+        "corner_radius": _i(corner_radius, DEFAULT_RADIUS),
+    }
+
+
+def normalize_appearance(draft):
+    """The FULL appearance map for `draft` (every section present and valid).
+
+    Empty icon colors omit the `icon.color` section ('' would otherwise make
+    generate() try to tint the PNGs with an empty color), an empty shadow
+    omits `font.shadow`, and an empty panel color omits `panel` (theme.py
+    falls back to the widget background). Writes the full inline map into
+    config.local.yaml for the editor's Save button.
+    """
+    light = hex_or(draft.get("font_color_light"), "#ffffff")
+    icon_color = {}
+    for side in ("light", "dark"):
+        v = hex_or(draft.get("icon_color_%s" % side), "")
+        if v:
+            icon_color[side] = v
+    font_shadow = {}
+    sc = hex_or(draft.get("font_shadow_color"), "")
+    if sc:
+        font_shadow = {"color": sc, "blur": max(1, _i(draft.get("font_shadow_blur"), 1))}
+    panel = {}
+    pc = hex_or(draft.get("panel_color"), "")
+    if pc:
+        panel_background = {
+            "color": pc,
+            "transparency": _f(draft.get("panel_transparency"), 0.0),
+        }
+        gradient = (draft.get("panel_gradient") or "").strip()
+        if gradient:
+            panel_background["gradient"] = gradient
+        panel = {"background": panel_background}
+    return {
+        "theme": "dark" if draft.get("theme") == "dark" else "light",
+        "icon": dict(
+            {"set": (draft.get("icon_set") or "dovora").strip() or "dovora",
+             "transparency": {
+                 "light": _f(draft.get("icon_transparency_light"), 1.0),
+                 "dark": _f(draft.get("icon_transparency_dark"), 1.0),
+             }},
+            **(dict(color=icon_color) if icon_color else {}),
+        ),
+        "font": dict(
+            {"face": (draft.get("font_face") or DEFAULT_FONT).strip() or DEFAULT_FONT,
+             "color": {
+                 "light": light,
+                 "dark": hex_or(draft.get("font_color_dark"), "#9e9e9e"),
+             },
+             "transparency": {
+                 "light": _f(draft.get("font_transparency_light"), 1.0),
+                 "dark": _f(draft.get("font_transparency_dark"), 1.0),
+             }},
+            **(dict(shadow=font_shadow) if font_shadow else {}),
+        ),
+        "background": {
+            "transparency": _f(draft.get("background_transparency"), 0.0),
+            "color": hex_or(draft.get("background_color"), "#000000"),
+        },
+        "chart": {
+            "colors": {
+                "cpu": hex_or(draft.get("chart_cpu"), light),
+                "memory": hex_or(draft.get("chart_memory"), light),
+                "net_down": hex_or(draft.get("chart_down"), light),
+                "net_up": hex_or(draft.get("chart_up"), light),
+            },
+            "glow": bool(draft.get("chart_glow", False)),
+        },
+        **({"panel": panel} if panel else {}),
+    }
+
+
+def minimalize_appearance(draft):
+    """normalize_appearance() minus the trivially-default `chart` section.
+
+    Shipped theme files omit the chart block entirely when all four chart
+    colors equal font.color.light and glow is off; `-bg` themes show it once
+    any value deviates. Used by Save As, so a new theme written to
+    assets/themes/appearance/ reads exactly like the checked-in ones.
+    """
+    m = normalize_appearance(draft)
+    colors = m["chart"]["colors"]
+    light = m["font"]["color"]["light"]
+    if not m["chart"]["glow"] and all(v == light for v in colors.values()):
+        m.pop("chart", None)
+    return m
+
+
+def validate(key, value):
+    """(ok, error_msg) for ONE flat draft field (pure/testable)."""
+    value = "" if value is None else str(value)
+    if key == "theme":
+        if value in ("light", "dark"):
+            return True, None
+        return False, "theme must be light or dark"
+    if key == "icon_set":
+        if value.strip():
+            return True, None
+        return False, "icon set must not be empty"
+    if key == "font_face":
+        if value.strip():
+            return True, None
+        return False, "font must not be empty"
+    if key in ("icon_transparency_light", "icon_transparency_dark",
+               "font_transparency_light", "font_transparency_dark",
+               "background_transparency", "panel_transparency"):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return False, "%s must be between 0 and 1" % key
+        if 0.0 <= v <= 1.0:
+            return True, None
+        return False, "%s must be between 0 and 1" % key
+    if key == "font_shadow_blur":
+        try:
+            v = int(value)
+        except ValueError:
+            return False, "glow blur must be a whole number"
+        if 0 <= v <= 120:
+            return True, None
+        return False, "glow blur must be between 0 and 120"
+    if key == "corner_radius":
+        try:
+            v = int(value)
+        except ValueError:
+            return False, "corner radius must be a whole number"
+        if 0 <= v <= 200:
+            return True, None
+        return False, "corner radius must be between 0 and 200"
+    if key in ("icon_color_light", "icon_color_dark", "font_color_light",
+               "font_color_dark", "font_shadow_color", "background_color",
+               "chart_cpu", "chart_memory", "chart_down", "chart_up",
+               "panel_color"):
+        if not value and key in OPTIONAL_HEX_KEYS:
+            return True, None
+        if normalize_hex(value) is None:
+            return False, "%s must be #rrggbb" % key
+        return True, None
+    if key == "panel_gradient":
+        if len(value) > 200:
+            return False, "gradient must be 200 chars or fewer"
+        if "\n" not in value:
+            return True, None
+        return False, "gradient must stay on one line"
+    if key == "chart_glow":
+        return True, None
+    return False, "unknown field: %s" % key
+
+
+def validate_draft(draft):
+    """(ok, first_error_msg) over every field of a draft dict."""
+    for key in FIELD_KEYS:
+        ok, msg = validate(key, draft.get(key))
+        if not ok:
+            return False, msg
+    return True, None
+
+
+def available_icon_sets(config_dir):
+    """Sorted icon-set names present under assets/icons-src/{light,dark}/weather."""
+    sets = set()
+    for side in ("light", "dark"):
+        base = os.path.join(config_dir, "assets", "icons-src", side, "weather")
+        try:
+            for name in os.listdir(base):
+                if os.path.isdir(os.path.join(base, name)):
+                    sets.add(name)
+        except OSError:
+            continue
+    return sorted(sets)
+
+
+def load_source(config_dir):
+    """(name, draft, corner_radius, source_label) of the EFFECTIVE appearance.
+
+    `appearance` is either a string (a theme directory) or an inline map in
+    config.local.yaml; the merged config (config_io) decides. corner_radius
+    comes from system.corner_radius (config.yaml default 15).
+    """
+    import config_io
+
+    cfg = config_io.load_merged(config_dir)
+    appearance = cfg.get("appearance", "light")
+    radius = _i(((cfg.get("system") or {}).get("corner_radius")
+                 or DEFAULT_RADIUS), DEFAULT_RADIUS)
+    if isinstance(appearance, dict):
+        return ("custom", to_draft(appearance, radius), radius,
+                "inline (config.local.yaml)")
+    name = str(appearance)
+    path = os.path.join(config_dir, "assets", "themes", "appearance",
+                        name, "appearance.yaml")
+    if not os.path.isfile(path):
+        return (name, to_draft({}, radius), radius,
+                "%s (missing file)" % name)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+    except Exception:
+        data = {}
+    a = data.get("appearance") if isinstance(data, dict) else None
+    return (name, to_draft(a or {}, radius), radius, "%s (theme file)" % name)
+
+
+def save_inline_override(config_dir, draft, corner_radius):
+    """Write the FULL appearance map + system.corner_radius into config.local.yaml.
+
+    Preserves every other key of the local file. Returns (ok, error_msg).
+    """
+    try:
+        import config_io
+
+        path = config_io.local_path(config_dir)
+        if os.path.isfile(path):
+            data = config_io.load_file(config_dir, config_io.LOCAL_CONFIG_FILE)
+        else:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        data["appearance"] = normalize_appearance(draft)
+        system = data.get("system")
+        if not isinstance(system, dict):
+            system = {}
+            data["system"] = system
+        system["corner_radius"] = _i(corner_radius, DEFAULT_RADIUS)
+        config_io.save_local(config_dir, data)
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def save_as_theme(config_dir, name, draft):
+    """Create assets/themes/appearance/<name>/appearance.yaml and activate it.
+
+    The file is written minimalized (only the non-default keys, like the
+    checked-in themes) and then activated by setting `appearance: <name>` in
+    config.local.yaml, so it shows up in the right-click Theme picker right
+    away. Returns (ok, error_msg).
+    """
+    name = (name or "").strip()
+    if not name or not NAME_RE.match(name):
+        return False, "invalid theme name (letters, digits, . _ - only)"
+    themes_dir = os.path.join(config_dir, "assets", "themes", "appearance")
+    target = os.path.join(themes_dir, name)
+    if os.path.isdir(target):
+        return False, "a theme named '%s' already exists" % name
+    try:
+        os.makedirs(target, exist_ok=True)
+        with open(os.path.join(target, "appearance.yaml"), "w",
+                  encoding="utf-8") as fh:
+            yaml.safe_dump({"appearance": minimalize_appearance(draft)}, fh,
+                           sort_keys=False, allow_unicode=True,
+                           default_flow_style=False)
+    except Exception as exc:
+        return False, str(exc)
+    try:
+        import config_io
+
+        path = config_io.local_path(config_dir)
+        if os.path.isfile(path):
+            data = config_io.load_file(config_dir, config_io.LOCAL_CONFIG_FILE)
+        else:
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        data["appearance"] = name
+        config_io.save_local(config_dir, data)
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Color field: swatch (native dialog) + hex entry + eyedropper (+ optional
+# "use" toggle for the fields that may be left empty).
+# ---------------------------------------------------------------------------
+
+class ColorField:
+    def __init__(self, panel, key, label="", optional=False):
+        self.panel = panel
+        self.key = key
+        self.box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
+        self._loading = False
+        self._hex = ""
+
+        self.toggle = None
+        if optional:
+            self.toggle = Gtk.CheckButton.new()
+            self.toggle.set_tooltip_text("apply this color")
+            self.toggle.connect("toggled", self._on_toggle)
+            self.box.pack_start(self.toggle, False, False, 0)
+
+        self.swatch = Gtk.Button.new()
+        self.swatch.set_size_request(44, 30)
+        self.swatch.set_tooltip_text("open the color dialog")
+        self.swatch.connect("clicked", lambda *_: panel.open_color_dialog(self))
+        self.box.pack_start(self.swatch, False, False, 0)
+
+        self.entry = Gtk.Entry.new()
+        self.entry.set_width_chars(9)
+        self.entry.set_max_width_chars(8)
+        self.entry.connect("changed", self._on_entry_changed)
+        self.entry.connect("button-press-event", panel.make_entry_press(self.key))
+        self.entry.connect("focus-in-event",
+                           lambda w, e: panel.on_entry_focus_in(w, e, self.key))
+        self.entry.connect("focus-out-event",
+                           lambda w, e: panel.on_entry_focus_out(w, e, self.key))
+        self.box.pack_start(self.entry, True, True, 0)
+
+        pick = Gtk.Button.new_with_label("Pick")
+        pick.set_tooltip_text("pick a color from the screen")
+        pick.connect("clicked", lambda *_: panel.pick_into(self))
+        self.box.pack_start(pick, False, False, 0)
+
+    # -- widget plumbing ------------------------------------------------
+    def set_hex(self, value):
+        self._loading = True
+        self._hex = normalize_hex(value) or ""
+        self.entry.set_text(self._hex)
+        self._set_swatch(self._hex)
+        if self.toggle is not None:
+            self.toggle.handler_block_by_func(self._on_toggle)
+            self.toggle.set_active(bool(self._hex))
+            self.toggle.handler_unblock_by_func(self._on_toggle)
+        self._set_enabled(bool(self._hex) or self.toggle is None
+                          or not self.toggle.get_active())
+        self._loading = False
+
+    def get_hex(self):
+        return self.entry.get_text().strip()
+
+    def _set_swatch(self, value):
+        h = normalize_hex(value)
+        col = Gdk.RGBA()
+        if h:
+            col.red = int(h[1:3], 16) / 255.0
+            col.green = int(h[3:5], 16) / 255.0
+            col.blue = int(h[5:7], 16) / 255.0
+            col.alpha = 1.0
+        else:
+            col.red = col.green = col.blue = 0.25
+            col.alpha = 0.35
+        for state in (Gtk.StateFlags.NORMAL, Gtk.StateFlags.PRELIGHT,
+                      Gtk.StateFlags.ACTIVE):
+            self.swatch.override_background_color(state, col)
+
+    def _set_enabled(self, enabled):
+        self.entry.set_sensitive(enabled)
+        self.swatch.set_sensitive(enabled)
+        for child in self.box.get_children():
+            if child is not self.toggle:
+                child.set_sensitive(enabled)
+
+    def _on_toggle(self, *_):
+        if self._loading:
+            return
+        if not self.toggle.get_active():
+            self._hex = ""
+            self.set_hex("")
+        else:
+            self._set_enabled(True)
+
+    def _on_entry_changed(self, *_):
+        if self._loading:
+            return
+        self._hex = normalize_hex(self.entry.get_text()) or ""
+        self._set_swatch(self._hex)
+        if self.toggle is not None:
+            self.toggle.handler_block_by_func(self._on_toggle)
+            self.toggle.set_active(bool(self._hex))
+            self.toggle.handler_unblock_by_func(self._on_toggle)
+
+
+# ---------------------------------------------------------------------------
+# The editor window.
+# ---------------------------------------------------------------------------
+
+class ThemePanel:
+    def __init__(self, monitor, x, y, frame_w, frame_h):
+        self.monitor = monitor
+        self.frame_w = frame_w
+        self.frame_h = frame_h
+        self.win_x = x
+        self.win_y = y
+        self.drag = False
+        self.grab_root_x = 0.0
+        self.grab_root_y = 0.0
+        self.grab_x = 0.0
+        self.grab_y = 0.0
+        self.start_x = x
+        self.start_y = y
+
+        self.name, self.committed, self.radius, self.source = load_source(CONFIG_DIR)
+        self.draft = dict(self.committed)
+        self.editing = None       # key whose entry owns the keyboard
+        self.status_label = None
+        self.entries = {}         # text-entry key -> Gtk.Entry
+        self.sliders = {}         # pct-key -> Gtk.Scale
+        self.spins = {}           # key -> Gtk.SpinButton
+        self.dropdowns = {}       # key -> Gtk.Button trigger
+        self.dropdowns_vals = {}  # key -> current value id
+        self.dropdown_opts = {}   # key -> [(label, value), ...]
+        self.dropdown_open = None  # key whose POPUP menu is open right now
+        self.child = None         # color dialog / dropdown popup while open
+        self.toggles = {}         # check-key -> Gtk.CheckButton
+        self.color_fields = {}    # color key -> ColorField
+        self.active_field = None  # last focused color field (swatch strip target)
+        self.pick = None          # {"overlay":…, "raw":…} while picking
+
+        # Absolute screen origin of the target monitor (drag clamp, X11).
+        self.mon_ox = 0
+        self.mon_oy = 0
+        try:
+            display = Gdk.Display.get_default()
+            if display is not None and monitor < display.get_n_monitors():
+                geo = display.get_monitor(monitor).get_geometry()
+                self.mon_ox, self.mon_oy = geo.x, geo.y
+        except Exception:
+            pass
+
+        self.win = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
+        self.win.set_title("Theme editor")
+        self.win.set_decorated(False)
+        self.win.set_skip_taskbar_hint(True)
+        self.win.set_skip_pager_hint(True)
+        self.win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        self.win.set_keep_above(True)
+        self.win.set_resizable(False)
+        self.win.set_accept_focus(True)
+        self.win.set_size_request(EDITOR_W, EDITOR_H)
+        self.win.set_default_size(EDITOR_W, EDITOR_H)
+        geometry = Gdk.Geometry()
+        geometry.min_width = geometry.max_width = EDITOR_W
+        geometry.min_height = geometry.max_height = EDITOR_H
+        self.win.set_geometry_hints(
+            None, geometry,
+            Gdk.WindowHints.MIN_SIZE | Gdk.WindowHints.MAX_SIZE,
+        )
+        if WAYLAND:
+            try:
+                GtkLayerShell.init_for_window(self.win)
+                GtkLayerShell.set_layer(self.win, GtkLayerShell.Layer.OVERLAY)
+                GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.TOP, True)
+                GtkLayerShell.set_anchor(self.win, GtkLayerShell.Edge.LEFT, True)
+                GtkLayerShell.set_keyboard_mode(
+                    self.win, GtkLayerShell.KeyboardMode.ON_DEMAND)
+                display = Gdk.Display.get_default()
+                if display is not None and monitor < display.get_n_monitors():
+                    GtkLayerShell.set_monitor(self.win,
+                                              display.get_monitor(monitor))
+                GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.LEFT, x)
+                GtkLayerShell.set_margin(self.win, GtkLayerShell.Edge.TOP, y)
+            except Exception:
+                pass
+        else:
+            self.win.move(x, y)
+
+        self.build_ui()
+        self.win.connect("destroy",
+                         lambda *_: (self._release_keyboard(), Gtk.main_quit()))
+        self.win.connect("realize", self.on_realize)
+        self.win.connect("button-press-event", self.on_press)
+        self.win.connect("button-release-event", self.on_release)
+        self.win.connect("motion-notify-event", self.on_motion)
+
+    def on_realize(self, widget):
+        if not WAYLAND:
+            try:
+                widget.get_window().set_override_redirect(True)
+            except Exception:
+                pass
+
+    def _raise_window(self, win):
+        if not WAYLAND:
+            try:
+                window = win.get_window()
+                if window is not None:
+                    window.raise_()
+            except Exception:
+                pass
+
+    def raise_above(self):
+        self._raise_window(self.win)
+
+    # -- build --------------------------------------------------------------
+    def build_ui(self):
+        provider = Gtk.CssProvider()
+        provider.load_from_data(_build_css().encode("utf-8"))
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+        root = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
+        root.get_style_context().add_class("panel")
+
+        title = Gtk.EventBox.new()
+        title.get_style_context().add_class("title")
+        tbox = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
+        label = Gtk.Label.new("Theme editor")
+        label.set_halign(Gtk.Align.CENTER)
+        tbox.pack_start(label, True, True, 0)
+        title.add(tbox)
+        title.set_events(Gdk.EventMask.BUTTON_PRESS_MASK
+                         | Gdk.EventMask.BUTTON_RELEASE_MASK
+                         | Gdk.EventMask.POINTER_MOTION_MASK)
+        title.connect("realize", lambda w: self._grab_cursor(w))
+        root.pack_start(title, False, False, 0)
+
+        info = Gtk.Label.new("Editing: %s  ·  source: %s" % (self.name, self.source))
+        info.get_style_context().add_class("source")
+        info.set_halign(Gtk.Align.CENTER)
+        root.pack_start(info, False, False, 0)
+
+        scrolled = Gtk.ScrolledWindow.new(None, None)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_shadow_type(Gtk.ShadowType.NONE)
+        content = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
+        content.set_margin_top(4)
+        content.set_margin_bottom(4)
+        content.set_margin_left(10)
+        content.set_margin_right(10)
+
+        content.pack_start(self._palette_row(), False, False, 0)
+        content.pack_start(self._section("Basics"), False, False, 0)
+        content.pack_start(self._row("Theme", self._dropdown("theme",
+                             [("Light", "light"), ("Dark", "dark")])), False, False, 0)
+        content.pack_start(self._row("Icon set", self._dropdown("icon_set",
+                             [(s, s) for s in available_icon_sets(CONFIG_DIR)]
+                             or [("dovora", "dovora")])), False, False, 0)
+        content.pack_start(self._row("Corner radius",
+                             self._spin("corner_radius", 0, 200, 5)), False, False, 0)
+
+        content.pack_start(self._section("Icons"), False, False, 0)
+        content.pack_start(self._row("Transparency · light",
+                             self._slider("icon_transparency_light")), False, False, 0)
+        content.pack_start(self._row("Transparency · dark",
+                             self._slider("icon_transparency_dark")), False, False, 0)
+        content.pack_start(self._row("Tint · light",
+                             self._color("icon_color_light", optional=True)), False, False, 0)
+        content.pack_start(self._row("Tint · dark",
+                             self._color("icon_color_dark", optional=True)), False, False, 0)
+
+        content.pack_start(self._section("Font"), False, False, 0)
+        content.pack_start(self._row("Face", self._entry("font_face")), False, False, 0)
+        content.pack_start(self._row("Color · light",
+                             self._color("font_color_light")), False, False, 0)
+        content.pack_start(self._row("Color · dark",
+                             self._color("font_color_dark")), False, False, 0)
+        content.pack_start(self._row("Transparency · light",
+                             self._slider("font_transparency_light")), False, False, 0)
+        content.pack_start(self._row("Transparency · dark",
+                             self._slider("font_transparency_dark")), False, False, 0)
+        glow_h = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 8)
+        glow = self._toggle("chart_glow")
+        glow.set_label("glow")
+        glow.connect("toggled", self._on_glow_toggled)
+        glow_h.pack_start(glow, False, False, 0)
+        glow_h_row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
+        glow_h_row.pack_start(self._label("Shadow color", 150), False, False, 0)
+        glow_h_row.pack_start(self._color("font_shadow_color",
+                                          optional=True).box, True, True, 0)
+        glow_h_row.pack_start(glow_h, False, False, 0)
+        content.pack_start(glow_h_row, False, False, 0)
+        content.pack_start(self._row("Shadow blur",
+                             self._spin("font_shadow_blur", 0, 120, 1)), False, False, 0)
+
+        content.pack_start(self._section("Background"), False, False, 0)
+        content.pack_start(self._row("Color",
+                             self._color("background_color")), False, False, 0)
+        content.pack_start(self._row("Opacity",
+                             self._slider("background_transparency")), False, False, 0)
+
+        content.pack_start(self._section("Charts"), False, False, 0)
+        content.pack_start(self._row("CPU", self._color("chart_cpu")), False, False, 0)
+        content.pack_start(self._row("Memory", self._color("chart_memory")), False, False, 0)
+        content.pack_start(self._row("Net down", self._color("chart_down")), False, False, 0)
+        content.pack_start(self._row("Net up", self._color("chart_up")), False, False, 0)
+
+        content.pack_start(self._section("Panel background"), False, False, 0)
+        content.pack_start(self._row("Custom",
+                             self._color("panel_color", optional=True)), False, False, 0)
+        content.pack_start(self._row("Opacity",
+                             self._slider("panel_transparency")), False, False, 0)
+        content.pack_start(self._row("Gradient",
+                             self._entry("panel_gradient")), False, False, 0)
+
+        scrolled.add(content)
+        root.pack_start(scrolled, True, True, 0)
+
+        self.status_label = Gtk.Label.new("")
+        self.status_label.set_visible(False)
+        self.status_label.set_halign(Gtk.Align.CENTER)
+        self.status_label.get_style_context().add_class("status")
+        root.pack_start(self.status_label, False, False, 0)
+
+        action_row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 0)
+        for text, cls, cb in (("Cancel", "close", self.on_close),
+                              ("Reset", "reset", self.on_reset),
+                              ("Save", "save", self.on_save),
+                              ("Save As…", "save", self.on_save_as)):
+            btn = Gtk.Button.new_with_label(text)
+            btn.get_style_context().add_class(cls)
+            btn.connect("clicked", lambda *_, c=cb: c())
+            action_row.pack_start(btn, True, True, 0)
+        root.pack_start(action_row, False, False, 0)
+
+        self.win.add(root)
+        self.load_widgets(self.draft)
+
+    def _label(self, text, width):
+        lab = Gtk.Label.new(text)
+        lab.get_style_context().add_class("field-label")
+        lab.set_size_request(width, -1)
+        lab.set_xalign(1.0)
+        return lab
+
+    def _section(self, text):
+        lab = Gtk.Label.new(text.upper())
+        lab.get_style_context().add_class("section")
+        lab.set_halign(Gtk.Align.START)
+        return lab
+
+    def _row(self, label, widget):
+        row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+        row.get_style_context().add_class("row")
+        lab = self._label(label, 150)
+        if isinstance(widget, ColorField):
+            widget = widget.box
+        widget_box = widget if isinstance(widget, Gtk.Box) else Gtk.Box.new(
+            Gtk.Orientation.HORIZONTAL, 4)
+        if not isinstance(widget, Gtk.Box):
+            widget_box.pack_start(widget, True, True, 0)
+        row.pack_start(lab, False, False, 0)
+        row.pack_start(widget_box, True, True, 0)
+        return row
+
+    def _palette_row(self):
+        """One swatch per theme color; clicking copies into the active field."""
+        row = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
+        pal = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
+        row.pack_start(self._label("Palette", 150), False, False, 0)
+        seen, colors = set(), []
+        for key in ("font_color_light", "font_color_dark", "background_color",
+                    "chart_cpu", "chart_memory", "chart_down", "chart_up",
+                    "panel_color", "icon_color_dark", "icon_color_light"):
+            h = hex_or(self.draft.get(key), "")
+            if h and h not in seen:
+                seen.add(h)
+                colors.append(h)
+        for h in colors:
+            btn = Gtk.Button.new()
+            rgba = Gdk.RGBA()
+            rgba.red = int(h[1:3], 16) / 255.0
+            rgba.green = int(h[3:5], 16) / 255.0
+            rgba.blue = int(h[5:7], 16) / 255.0
+            rgba.alpha = 1.0
+            for state in (Gtk.StateFlags.NORMAL, Gtk.StateFlags.PRELIGHT,
+                          Gtk.StateFlags.ACTIVE):
+                btn.override_background_color(state, rgba)
+            btn.set_size_request(26, 26)
+            btn.set_tooltip_text(h)
+            btn.connect("clicked", lambda *_, c=h: self._palette_click(c))
+            pal.pack_start(btn, False, False, 0)
+        row.pack_start(pal, True, True, 0)
+        return row
+
+    def _palette_click(self, color):
+        if self.active_field is None:
+            self.set_status("click a color field first, then a palette swatch")
+            return
+        self.active_field.set_hex(color)
+        self.set_status("copied %s into %s" % (color, self.active_field.key))
+
+    def _entry(self, key):
+        entry = Gtk.Entry.new()
+        entry.get_style_context().add_class("value-entry")
+        entry.connect("button-press-event", self.make_entry_press(key))
+        entry.connect("focus-in-event",
+                      lambda w, e, k=key: self.on_entry_focus_in(w, e, k))
+        entry.connect("focus-out-event",
+                      lambda w, e, k=key: self.on_entry_focus_out(w, e, k))
+        self.entries[key] = entry
+        return entry
+
+    def _slider(self, key):
+        adj = Gtk.Adjustment.new(100, 0, 100, 1, 10, 0)
+        scale = Gtk.Scale.new(Gtk.Orientation.HORIZONTAL, adj)
+        scale.set_digits(0)
+        scale.set_hexpand(True)
+        scale.set_value_pos(Gtk.PositionType.RIGHT)
+        self.sliders[key] = scale
+        return scale
+
+    def _spin(self, key, lo, hi, step):
+        adj = Gtk.Adjustment.new(0, lo, hi, step, step * 5, 0)
+        spin = Gtk.SpinButton.new(adj, step, 0)
+        spin.set_numeric(True)
+        self.spins[key] = spin
+        return spin
+
+    def _dropdown(self, key, options):
+        trigger = Gtk.Button.new()
+        trigger.set_relief(Gtk.ReliefStyle.NONE)
+        trigger.set_tooltip_text("choose…")
+        trigger.connect("clicked", lambda *_: self._open_menu(key))
+        self.dropdowns[key] = trigger
+        self.dropdown_opts[key] = options
+        trigger.set_label(self._dropdown_label(key))
+        return trigger
+
+    def _dropdown_label(self, key):
+        value = self.dropdowns_vals.get(key, "")
+        labels = {v: l for l, v in self.dropdown_opts.get(key, ())}
+        return ("%s  ▾" % labels.get(value, value)) if value else "▾"
+
+    def _set_dropdown(self, key, value):
+        self.dropdowns_vals[key] = value
+        self.dropdowns[key].set_label(self._dropdown_label(key))
+
+    def _open_menu(self, key):
+        if getattr(self, "child", None) is not None:
+            return
+        options = self.dropdown_opts.get(key, ())
+        if WAYLAND:
+            win = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
+            win.set_decorated(False)
+            win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+            win.set_keep_above(True)
+        else:
+            win = Gtk.Window.new(Gtk.WindowType.POPUP)
+        box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
+        box.get_style_context().add_class("menu-popup")
+        for label, value in options:
+            item = Gtk.Button.new_with_label(label)
+            item.get_style_context().add_class("menu-item")
+            item.set_relief(Gtk.ReliefStyle.NONE)
+            item.set_halign(Gtk.Align.FILL)
+            item.connect("clicked", lambda *_, v=value: self._pick_option(key, v))
+            box.pack_start(item, False, False, 0)
+        win.add(box)
+        win.set_resizable(False)
+        win.set_size_request(210, -1)
+        win.connect("realize", lambda w: self._menu_grab(w))
+        win.connect("destroy", lambda *_: self._child_destroyed(win))
+        win.connect("button-press-event", self._menu_press)
+        self.child = win
+        self.dropdown_open = key
+        win.show_all()
+        self._position_menu(key)
+        win.present()
+
+    def _position_menu(self, key):
+        try:
+            trigger = self.dropdowns.get(key)
+            win = self.child
+            if trigger is None or win is None:
+                return
+            ox, oy = trigger.translate_coordinates(self.win, 0, 0)
+            w = 210
+            h = max(win.get_allocated_height(),
+                    4 + 26 * len(self.dropdown_opts.get(key, ())))
+            px = self.win_x + ox
+            py = self.win_y + oy + trigger.get_allocated_height()
+            px = clamp(px, self.mon_ox, self.mon_ox + max(0, self.frame_w - w))
+            py = clamp(py, self.mon_oy, self.mon_oy + max(0, self.frame_h - h))
+            if WAYLAND:
+                try:
+                    GtkLayerShell.set_margin(win, GtkLayerShell.Edge.LEFT, px)
+                    GtkLayerShell.set_margin(win, GtkLayerShell.Edge.TOP, py)
+                except Exception:
+                    pass
+            else:
+                win.move(px, py)
+        except Exception:
+            pass
+
+    def _menu_grab(self, win, *_):
+        if not WAYLAND:
+            try:
+                Gdk.pointer_grab(win.get_window(), False,
+                                 Gdk.EventMask.BUTTON_PRESS_MASK
+                                 | Gdk.EventMask.BUTTON_RELEASE_MASK,
+                                 None, None, Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+
+    def _menu_press(self, win, event):
+        if not WAYLAND:
+            try:
+                gx, gy = win.get_position()
+                inside = (gx <= event.x_root <= gx + win.get_allocated_width()
+                          and gy <= event.y_root <= gy + win.get_allocated_height())
+                if not inside:
+                    self._close_menu()
+            except Exception:
+                pass
+        return True
+
+    def _pick_option(self, key, value):
+        self._close_menu()
+        self._set_dropdown(key, value)
+        self.set_status("")
+
+    def _close_menu(self):
+        if not WAYLAND:
+            try:
+                Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        child = getattr(self, "child", None)
+        self.child = None
+        self.dropdown_open = None
+        if child is not None:
+            try:
+                child.destroy()
+            except Exception:
+                pass
+        self.raise_above()
+
+    def _child_destroyed(self, win, *_):
+        if getattr(self, "child", None) is win:
+            self.child = None
+            self.dropdown_open = None
+        self.raise_above()
+
+    # -- child windows (Option A: the color dialog, dropdowns and the Save As
+    #    dialog all float ABOVE the editor and the dismiss overlay, exactly
+    #    like the editor itself, so nothing can render below or be eaten by
+    #    the click-outside overlay).
+    def _child_override_redirect(self, win):
+        if not WAYLAND:
+            try:
+                win.set_keep_above(True)
+                window = win.get_window()
+                if window is not None:
+                    window.set_override_redirect(True)
+            except Exception:
+                pass
+
+    def _child_move(self, win):
+        try:
+            w = win.get_allocated_width() or 0
+            h = win.get_allocated_height() or 0
+            px = clamp(self.win_x + EDITOR_W + 12, self.mon_ox,
+                       self.mon_ox + max(0, self.frame_w - max(w, 1)))
+            py = clamp(self.win_y, self.mon_oy,
+                       self.mon_oy + max(0, self.frame_h - max(h, 1)))
+            set_position(win, px, py)
+        except Exception:
+            pass
+
+    def _raise_child(self, win):
+        if WAYLAND:
+            try:
+                win.set_keep_above(True)
+            except Exception:
+                pass
+        self._raise_window(win)
+
+    # -- color dialog ------------------------------------------------------
+    def open_color_dialog(self, field):
+        if getattr(self, "child", None) is not None:
+            return False
+        h = normalize_hex(field.get_hex())
+        rgba = Gdk.RGBA()
+        if h:
+            rgba.red = int(h[1:3], 16) / 255.0
+            rgba.green = int(h[3:5], 16) / 255.0
+            rgba.blue = int(h[5:7], 16) / 255.0
+        dialog = Gtk.ColorChooserDialog.new("Pick a color")
+        dialog.set_use_alpha(False)
+        if h:
+            dialog.set_rgba(rgba)
+        dialog.set_modal(True)
+        dialog.set_resizable(False)
+        if WAYLAND:
+            try:
+                GtkLayerShell.init_for_window(dialog)
+                GtkLayerShell.set_layer(dialog, GtkLayerShell.Layer.OVERLAY)
+                GtkLayerShell.set_keyboard_mode(
+                    dialog, GtkLayerShell.KeyboardMode.ON_DEMAND)
+            except Exception:
+                pass
+        else:
+            dialog.set_keep_above(True)
+            dialog.connect("realize", self._child_override_redirect)
+        dialog.connect("destroy", lambda *_: self._child_destroyed(dialog))
+        dialog.connect("response",
+                       lambda d, r: self._color_dialog_response(d, r, field))
+        self.child = dialog
+        GLib.idle_add(self._child_move, dialog)
+        dialog.show_all()
+        dialog.present()
+        return False
+
+    def _color_dialog_response(self, dialog, response, field):
+        if response == Gtk.ResponseType.OK:
+            col = dialog.get_rgba()
+            field.set_hex(rgb_hex(
+                int(round(col.red * 255)),
+                int(round(col.green * 255)),
+                int(round(col.blue * 255))))
+            self.set_status("")
+        if self.child is dialog:
+            self.child = None
+        dialog.destroy()
+
+    def _toggle(self, key):
+        toggle = Gtk.CheckButton.new_with_label("")
+        self.toggles[key] = toggle
+        return toggle
+
+    def _color(self, key, optional=False):
+        field = ColorField(self, key, optional=optional)
+        self.color_fields[key] = field
+        return field
+
+    # -- load/collect the draft --------------------------------------------
+    def load_widgets(self, draft):
+        for key, entry in self.entries.items():
+            entry.set_text(str(draft.get(key, "") or ""))
+        for key, scale in self.sliders.items():
+            scale.set_value(_f(draft.get(key), 0.0) * 100)
+        for key, spin in self.spins.items():
+            spin.set_value(_i(draft.get(key), 0))
+        for key in self.dropdowns:
+            options = self.dropdown_opts[key]
+            values = [v for _, v in options]
+            value = str(draft.get(key, "") or "")
+            if value not in values:
+                value = options[0][1]
+            self.dropdowns_vals[key] = value
+            self.dropdowns[key].set_label(self._dropdown_label(key))
+        for key, toggle in self.toggles.items():
+            toggle.set_active(bool(draft.get(key, False)))
+        for key, field in self.color_fields.items():
+            field.set_hex(draft.get(key, ""))
+        if "font_color_light" in self.color_fields:
+            self.active_field = self.color_fields["font_color_light"]
+
+    def collect_draft(self):
+        draft = dict(self.draft)
+        for key, entry in self.entries.items():
+            draft[key] = entry.get_text()
+        for key, scale in self.sliders.items():
+            draft[key] = scale.get_value() / 100.0
+        for key, spin in self.spins.items():
+            draft[key] = int(spin.get_value())
+        for key in self.dropdowns:
+            draft[key] = self.dropdowns_vals.get(key, "")
+        for key, toggle in self.toggles.items():
+            draft[key] = toggle.get_active()
+        for key, field in self.color_fields.items():
+            draft[key] = field.get_hex()
+        return draft
+
+    # -- keyboard grab / typing marker (weather_panel.py pattern) -----------
+    def make_entry_press(self, key):
+        def handler(entry, event, _key=key):
+            self._begin_editing(_key)
+            if not WAYLAND:
+                try:
+                    Gdk.keyboard_grab(self.win.get_window(), True,
+                                      Gdk.CURRENT_TIME)
+                except Exception:
+                    pass
+            GLib.idle_add(entry.select_region, 0, -1)
+            return False
+        return handler
+
+    def on_entry_focus_in(self, entry, event, key):
+        self._begin_editing(key)
+        return False
+
+    def on_entry_focus_out(self, entry, event, key):
+        self._end_editing(key)
+        return False
+
+    def set_typing(self, flag):
+        try:
+            with open(SESSION_FILE) as fh:
+                data = json.load(fh)
+            if data.get("mode") != "theme":
+                return
+            if flag:
+                data["typing"] = True
+            else:
+                data.pop("typing", None)
+            with open(SESSION_FILE, "w") as fh:
+                json.dump(data, fh)
+        except Exception:
+            pass
+
+    def _begin_editing(self, key):
+        self.editing = key
+        self.set_typing(True)
+
+    def _end_editing(self, key=None):
+        if key is not None and self.editing != key:
+            return
+        self.editing = None
+        self.set_typing(False)
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+
+    def _release_keyboard(self, *_):
+        self.editing = None
+        if not WAYLAND:
+            try:
+                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+
+    def _on_glow_toggled(self, *_):
+        pass  # the shadow color field's own "use" toggle is the source of truth
+
+    def set_status(self, msg):
+        if self.status_label is None:
+            return
+        self.status_label.set_text(msg if len(msg) <= 56 else msg[:53] + "...")
+        self.status_label.set_visible(bool(msg))
+
+    # -- footer actions -------------------------------------------------------
+    def on_close(self, *_):
+        self._end_editing(self.editing)
+        close_popup()
+        Gtk.main_quit()
+
+    def on_reset(self, *_):
+        self._end_editing(self.editing)
+        self.draft = dict(self.committed)
+        self.load_widgets(self.draft)
+        self.set_status("")
+
+    def _apply_save(self, draft, radius):
+        ok, msg = validate_draft(draft)
+        if not ok:
+            self.set_status(msg)
+            return False
+        if "'" in (str(draft.get("font_face", "")) or ""):
+            self.set_status("font must not contain quotes")
+            return False
+        draft["font_face"] = (str(draft.get("font_face") or "")
+                              .strip() or DEFAULT_FONT)
+        ok, msg = save_inline_override(CONFIG_DIR, draft, radius)
+        if not ok:
+            self.set_status("Save failed: %s" % msg)
+            return False
+        return True
+
+    def on_save(self, *_):
+        self._end_editing(self.editing)
+        if not self._apply_save(self.collect_draft(), self.spins["corner_radius"].get_value()):
+            return False
+        self.committed = self.collect_draft()
+        close_popup()
+        Gtk.main_quit()
+        return True
+
+    def on_save_as(self, *_):
+        self._end_editing(self.editing)
+        draft = self.collect_draft()
+        ok, msg = validate_draft(draft)
+        if not ok:
+            self.set_status(msg)
+            return False
+        dialog = Gtk.MessageDialog.new(
+            None, Gtk.DialogFlags.MODAL, Gtk.MessageType.QUESTION,
+            Gtk.ButtonsType.OK_CANCEL, "Save theme as…")
+        dialog.set_title("Save theme as…")
+        dialog.set_modal(True)
+        if WAYLAND:
+            try:
+                GtkLayerShell.init_for_window(dialog)
+                GtkLayerShell.set_layer(dialog, GtkLayerShell.Layer.OVERLAY)
+                GtkLayerShell.set_keyboard_mode(
+                    dialog, GtkLayerShell.KeyboardMode.ON_DEMAND)
+            except Exception:
+                pass
+        else:
+            dialog.set_keep_above(True)
+            dialog.connect("realize", self._child_override_redirect)
+        entry = Gtk.Entry.new()
+        entry.set_placeholder_text("theme-name (rose-gold, my-pastel, …)")
+        area = dialog.get_content_area()
+        area.pack_start(entry, True, True, 6)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        self.child = dialog
+        dialog.show_all()
+        self._child_move(dialog)
+        dialog.present()
+        name = None
+        if dialog.run() == Gtk.ResponseType.OK:
+            name = entry.get_text().strip()
+        if self.child is dialog:
+            self.child = None
+        dialog.destroy()
+        if not name:
+            return False
+        ok, msg = save_as_theme(CONFIG_DIR, name, draft)
+        if not ok:
+            self.set_status(msg)
+            return False
+        close_popup()
+        Gtk.main_quit()
+        return True
+
+    # -- on-screen color picker ---------------------------------------------
+    def pick_into(self, field):
+        self._end_editing(self.editing)
+        self.pick_field = field
+        if WAYLAND:
+            self._pick_wayland()
+        else:
+            self._pick_x11()
+
+    def _pick_x11(self):
+        screen = Gdk.Screen.get_default()
+        root = screen.get_root_window()
+        w, h = root.get_width(), root.get_height()
+        if w <= 0 or h <= 0:
+            self.set_status("screen capture failed")
+            return
+        try:
+            pixbuf = Gdk.pixbuf_get_from_window(root, 0, 0, w, h)
+        except Exception:
+            pixbuf = None
+        if pixbuf is None:
+            self.set_status("screen capture failed")
+            return
+        self.pick = {"raw": raw_pixbuf(pixbuf),
+                     "bg": pixbuf,
+                     "overlay": None,
+                     "x": 0, "y": 0, "rgb": None}
+        self.win.hide()
+        overlay = Gtk.Window.new(Gtk.WindowType.POPUP)
+        overlay.set_app_paintable(True)
+        visual = Gdk.Screen.get_default().get_rgba_visual()
+        if visual is not None:
+            overlay.set_visual(visual)
+        overlay.set_size_request(w, h)
+        overlay.move(0, 0)
+        da = Gtk.DrawingArea.new()
+        da.set_size_request(w, h)
+        da.set_events(Gdk.EventMask.BUTTON_PRESS_MASK
+                      | Gdk.EventMask.BUTTON_RELEASE_MASK
+                      | Gdk.EventMask.POINTER_MOTION_MASK)
+        overlay.add(da)
+        overlay.connect("realize", self._pick_realize)
+        da.connect("draw", self._pick_draw)
+        da.connect("motion-notify-event", self._pick_motion)
+        da.connect("button-release-event", self._pick_release)
+        overlay.show_all()
+        overlay.present()
+        self.pick["overlay"] = overlay
+        da.queue_draw()
+
+    def _pick_realize(self, overlay, *_):
+        try:
+            Gdk.pointer_grab(
+                overlay.get_window(), False,
+                Gdk.EventMask.BUTTON_PRESS_MASK
+                | Gdk.EventMask.BUTTON_RELEASE_MASK
+                | Gdk.EventMask.POINTER_MOTION_MASK,
+                None, Gdk.Cursor.new_for_display(
+                    Gdk.Display.get_default(), Gdk.CursorType.CROSSHAIR),
+                Gdk.CURRENT_TIME)
+        except Exception:
+            pass
+
+    def _pick_sample(self, x, y):
+        """RGB at root (x, y), clamped to the captured surface."""
+        data = self.pick
+        if data is None or data.get("raw") is None:
+            return None
+        pixels, rowstride, nch, w, h = data["raw"]
+        return pixel_color_at(pixels, rowstride, nch,
+                              clamp(int(x), 0, w - 1),
+                              clamp(int(y), 0, h - 1), w, h)
+
+    def _pick_motion(self, da, event):
+        if not self.pick:
+            return False
+        rgb = self._pick_sample(event.x_root, event.y_root)
+        self.pick["rgb"] = rgb
+        self.pick["x"] = int(event.x_root)
+        self.pick["y"] = int(event.y_root)
+        da.queue_draw()
+        return False
+
+    def _pick_draw(self, da, cr):
+        bg = self.pick.get("bg") if self.pick else None
+        if bg is not None:
+            try:
+                Gdk.cairo_set_source_pixbuf(
+                    cr, bg, 0, 0)
+                cr.rectangle(0, 0, da.get_allocated_width(),
+                             da.get_allocated_height())
+                cr.fill()
+            except Exception:
+                pass
+        rgb = self.pick.get("rgb") if self.pick else None
+        if rgb is None:
+            return False
+        r, g, b = rgb
+        cx = clamp(self.pick["x"], 10, da.get_allocated_width() - 10)
+        cy = clamp(self.pick["y"], 10, da.get_allocated_height() - 10)
+        # corner readout: live color + hex
+        cr.set_source_rgb(r / 255.0, g / 255.0, b / 255.0)
+        cr.rectangle(12, 12, 110, 34)
+        cr.fill()
+        cr.set_source_rgb(0, 0, 0)
+        cr.rectangle(12, 12, 110, 34)
+        cr.stroke()
+        ink = (0, 0, 0) if (0.299 * r + 0.587 * g + 0.114 * b) > 140 else (255, 255, 255)
+        cr.set_source_rgb(*(v / 255.0 for v in ink))
+        try:
+            cr.select_font_face(
+                "Sans",
+                getattr(cairo, "FONT_SLANT_NORMAL", 0) if cairo else 0,
+                getattr(cairo, "FONT_WEIGHT_BOLD", 1) if cairo else 1)
+        except Exception:
+            pass
+        cr.set_font_size(18)
+        cr.move_to(20, 36)
+        cr.show_text("#%02x%02x%02x" % rgb)
+        # magnified viewfinder around the cursor: 16px logical square, 6x zoom
+        ox, oy = cx - 48, cy - 48
+        px, py = clamp(self.pick["x"] - 8, 0, da.get_allocated_width() - 1), \
+                 clamp(self.pick["y"] - 8, 0, da.get_allocated_height() - 1)
+        for fy in range(16):
+            for fx in range(16):
+                s = (px + fx, py + fy)
+                # pure sample -> approximate neighbors by same pixel color
+                q = self._pick_sample(*s)
+                if q:
+                    cr.set_source_rgb(q[0] / 255.0, q[1] / 255.0, q[2] / 255.0)
+                    cr.rectangle(ox + fx * 6, oy + fy * 6, 6, 6)
+                    cr.fill()
+        cr.set_source_rgb(1, 1, 1)
+        cr.rectangle(ox - 1, oy - 1, 98, 98)
+        cr.stroke()
+        return False
+
+    def _pick_release(self, da, event):
+        if not self.pick or event.button != 1:
+            return False
+        rgb = self._pick_sample(event.x_root, event.y_root)
+        field = getattr(self, "pick_field", None)
+        self._pick_finish()
+        if rgb is not None:
+            field = field or self.active_field
+            if field is not None:
+                field.set_hex(rgb_hex(*rgb))
+                self.set_status("")
+        return False
+
+    def _pick_finish(self):
+        try:
+            Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
+        except Exception:
+            pass
+        overlay = self.pick["overlay"] if self.pick else None
+        self.pick = None
+        if overlay is not None:
+            overlay.destroy()
+        self.win.show_all()
+        self.win.present()
+        self.raise_above()
+
+    def _pick_wayland(self):
+        """Best-effort KDE + capture flow (no global grab on Wayland)."""
+        try:
+            from workarea import kde_cursor  # scripts/core
+        except Exception:
+            kde_cursor = None
+        tool = None
+        for candidate in ("grim", "gnome-screenshot"):
+            if subprocess.run(["which", candidate], stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL).returncode == 0:
+                tool = candidate
+                break
+        if kde_cursor is None or tool is None:
+            self.set_status("screen pick needs X11 (or KDE + grim) here; "
+                            "use the swatch or hex entry")
+            return
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp.close()
+        try:
+            if tool == "grim":
+                ok = subprocess.run(["grim", tmp.name], stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL).returncode == 0
+            else:
+                ok = subprocess.run(["gnome-screenshot", "-f", tmp.name],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL).returncode == 0
+            if not ok:
+                raise OSError("screenshot failed")
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(tmp.name)
+        except Exception as exc:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+            self.set_status("screen pick failed: %s" % exc)
+            return
+        self.pick = {"raw": raw_pixbuf(pixbuf),
+                     "overlay": None, "x": 0, "y": 0, "rgb": None}
+        overlay = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
+        overlay.set_decorated(False)
+        overlay.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        overlay.set_keep_above(True)
+        overlay.set_title("Pick")
+        box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 6)
+        box.set_border_width(10)
+        self.pick_da = Gtk.DrawingArea.new()
+        self.pick_da.set_size_request(220, 24)
+        box.pack_start(self.pick_da, False, False, 0)
+        self.pick_label = Gtk.Label.new("")
+        box.pack_start(self.pick_label, False, False, 0)
+        actions = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
+        cancel = Gtk.Button.new_with_label("Cancel")
+        cancel.connect("clicked", lambda *_: self._pick_finish())
+        actions.pack_start(cancel, True, True, 0)
+        self.pick_confirm = Gtk.Button.new_with_label("Use this color")
+        self.pick_confirm.connect("clicked", self._pick_wayland_confirm)
+        self.pick_confirm.set_sensitive(False)
+        actions.pack_start(self.pick_confirm, True, True, 0)
+        box.pack_start(actions, False, False, 0)
+        overlay.add(box)
+        overlay.show_all()
+        self.pick["overlay"] = overlay
+        self.pick_pos = kde_cursor
+        GLib.timeout_add(300, self._pick_wayland_poll, overlay)
+
+    def _pick_wayland_poll(self, overlay):
+        if self.pick is None:
+            return False
+        pos = self.pick_pos() if self.pick_pos else None
+        if not pos:
+            return True
+        x, y = int(pos[0]), int(pos[1])
+        rgb = self._pick_sample(x, y)
+        self.pick["rgb"] = rgb
+        self.pick["x"], self.pick["y"] = x, y
+        if rgb is not None:
+            self.pick_label.set_text("#%02x%02x%02x" % rgb)
+            self.pick_confirm.set_sensitive(True)
+            self.pick_da.queue_draw()
+        return True
+
+    def _pick_wayland_confirm(self, *_):
+        rgb = self.pick.get("rgb") if self.pick else None
+        field = getattr(self, "pick_field", None) or self.active_field
+        self._pick_finish()
+        if rgb is not None and field is not None:
+            field.set_hex(rgb_hex(*rgb))
+            self.set_status("")
+
+    def tick(self):
+        if not session_active():
+            Gtk.main_quit()
+            return False
+        child = getattr(self, "child", None)
+        if child is not None:
+            self._raise_child(child)
+        else:
+            self.raise_above()
+        return True
+
+    @staticmethod
+    def _grab_cursor(widget):
+        try:
+            window = widget.get_window()
+            if window is not None:
+                window.set_cursor(Gdk.Cursor.new_from_name(
+                    Gdk.Display.get_default(), "grab"))
+        except Exception:
+            pass
+
+    # -- dragging (same mechanics as weather_panel.py / gap_ctl.py) ----------
+    def on_press(self, widget, event):
+        if event.button != 1 or event.y > TITLE_H:
+            return False
+        self.drag = True
+        self.grab_root_x = event.x_root
+        self.grab_root_y = event.y_root
+        self.grab_x = event.x
+        self.grab_y = event.y
+        self.start_x = self.win_x
+        self.start_y = self.win_y
+        if not WAYLAND:
+            try:
+                if self.win.get_window() is not None:
+                    Gdk.pointer_grab(
+                        self.win.get_window(), False,
+                        Gdk.EventMask.BUTTON_PRESS_MASK
+                        | Gdk.EventMask.BUTTON_RELEASE_MASK
+                        | Gdk.EventMask.POINTER_MOTION_MASK,
+                        None, None, Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        return False
+
+    def on_motion(self, widget, event):
+        if not self.drag:
+            return False
+        if WAYLAND:
+            nx = self.win_x + int(event.x - self.grab_x)
+            ny = self.win_y + int(event.y - self.grab_y)
+            nx = max(0, min(nx, max(0, self.frame_w - EDITOR_W)))
+            ny = max(0, min(ny, max(0, self.frame_h - EDITOR_H)))
+        else:
+            nx = self.start_x + int(event.x_root - self.grab_root_x)
+            ny = self.start_y + int(event.y_root - self.grab_root_y)
+            nx = max(self.mon_ox, min(nx, self.mon_ox
+                                      + max(0, self.frame_w - EDITOR_W)))
+            ny = max(self.mon_oy, min(ny, self.mon_oy
+                                      + max(0, self.frame_h - EDITOR_H)))
+        if nx != self.win_x or ny != self.win_y:
+            self.win_x, self.win_y = nx, ny
+            set_position(self.win, nx, ny)
+            if self.dropdown_open is not None:
+                self._position_menu(self.dropdown_open)
+        return False
+
+    def on_release(self, widget, event):
+        if event.button != 1:
+            return False
+        self.drag = False
+        if not WAYLAND:
+            try:
+                Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
+            except Exception:
+                pass
+        return False
+
+
+def _build_css():
+    return """
+    * { outline: none; }
+    .panel {
+      background-color: rgba(17, 17, 22, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+    }
+    .title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #ffffff;
+      padding: 6px 4px 2px 4px;
+    }
+    .source {
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.55);
+      padding: 0 4px 4px 4px;
+    }
+    .section {
+      font-size: 11px;
+      font-weight: bold;
+      color: rgba(255, 255, 255, 0.45);
+      padding: 8px 2px 2px 2px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      margin-bottom: 2px;
+    }
+    .row { margin: 1px 0; }
+    .field-label {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    entry {
+      font-size: 13px;
+      color: #ffffff;
+      background-color: rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+    entry:focus { background-color: rgba(255, 255, 255, 0.16); }
+    button {
+      min-height: 26px;
+      min-width: 28px;
+      margin: 2px;
+      border: none;
+      border-radius: 6px;
+      background-color: rgba(255, 255, 255, 0.10);
+      color: #ffffff;
+      font-size: 13px;
+      padding: 0 8px;
+    }
+    button:hover { background-color: rgba(255, 255, 255, 0.2); }
+    button:active { background-color: rgba(255, 255, 255, 0.3); }
+    button.close { background-color: rgba(204, 0, 0, 0.25); }
+    button.close:hover { background-color: rgba(204, 0, 0, 0.4); }
+    button.save { background-color: rgba(78, 154, 6, 0.25); }
+    button.save:hover { background-color: rgba(78, 154, 6, 0.4); }
+    button.reset { background-color: rgba(200, 150, 0, 0.25); }
+    button.reset:hover { background-color: rgba(200, 150, 0, 0.4); }
+    scale trough { min-height: 4px; }
+    .status {
+      font-size: 11px;
+      color: rgba(255, 120, 120, 0.95);
+      margin: 2px;
+    }
+    """
+
+
+def run(cmd):
+    try:
+        subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, start_new_session=True, cwd=CONFIG_DIR,
+        )
+    except Exception:
+        pass
+
+
+def close_popup():
+    run([sys.executable, os.path.join(CR_DIR, "widgets", "close_popup.py")])
+
+
+def session_active():
+    try:
+        with open(SESSION_FILE) as fh:
+            return json.load(fh).get("mode") == "theme"
+    except Exception:
+        return False
+
+
+def set_position(win, x, y):
+    if WAYLAND:
+        try:
+            GtkLayerShell.set_margin(win, GtkLayerShell.Edge.LEFT, x)
+            GtkLayerShell.set_margin(win, GtkLayerShell.Edge.TOP, y)
+        except Exception:
+            pass
+    else:
+        win.move(x, y)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--monitor", type=int, default=0)
+    ap.add_argument("--x", type=int, default=0)
+    ap.add_argument("--y", type=int, default=0)
+    ap.add_argument("--frame-w", type=int, default=0)
+    ap.add_argument("--frame-h", type=int, default=0)
+    args = ap.parse_args()
+
+    if not session_active():
+        sys.exit(0)
+
+    panel = ThemePanel(args.monitor, args.x, args.y, args.frame_w, args.frame_h)
+    panel.win.show_all()
+    panel.win.present()
+    GLib.timeout_add(250, panel.tick)
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()
