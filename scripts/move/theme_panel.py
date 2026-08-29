@@ -1196,7 +1196,6 @@ class ThemePanel:
                 pass
         else:
             dialog.set_keep_above(True)
-            dialog.connect("realize", self._child_override_redirect)
         dialog.connect("destroy", lambda *_: self._child_destroyed(dialog))
         color_w = Gtk.ColorChooserWidget.new()
         color_w.set_use_alpha(False)
@@ -1489,12 +1488,11 @@ class ThemePanel:
             self.set_status(msg)
             return False
         dialog = Gtk.MessageDialog(
-            parent=None, flags=Gtk.DialogFlags.MODAL,
-            type=Gtk.MessageType.QUESTION,
+            parent=None, modal=True,
+            message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.OK_CANCEL,
             text="Save theme as…")
         dialog.set_title("Save theme as…")
-        dialog.set_modal(True)
         if WAYLAND:
             try:
                 GtkLayerShell.init_for_window(dialog)
@@ -1505,7 +1503,6 @@ class ThemePanel:
                 pass
         else:
             dialog.set_keep_above(True)
-            dialog.connect("realize", self._child_override_redirect)
         entry = Gtk.Entry.new()
         entry.set_placeholder_text("theme-name (rose-gold, my-pastel, …)")
         entry.set_activates_default(True)
@@ -1520,7 +1517,8 @@ class ThemePanel:
         GLib.idle_add(self._child_move, dialog)
         dialog.present()
         entry.grab_focus()
-        self._grab_dialog_keyboard(dialog)
+        if WAYLAND:
+            self._grab_dialog_keyboard(dialog)
         return False
 
     def _grab_dialog_keyboard(self, dialog):
@@ -1539,11 +1537,11 @@ class ThemePanel:
     def _save_as_response(self, dialog, response, entry, draft):
         if self.child is dialog:
             self.child = None
-        try:
-            if not WAYLAND:
+        if WAYLAND:
+            try:
                 Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
-        except Exception:
-            pass
+            except Exception:
+                pass
         if response == Gtk.ResponseType.OK:
             name = entry.get_text().strip()
             if name:
