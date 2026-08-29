@@ -152,11 +152,8 @@ def main():
         "overlays": overlays,
     })
 
-    WAYLAND = "WAYLAND_DISPLAY" in os.environ \
-        and os.environ.get("GDK_BACKEND", "wayland") != "x11"
-    if not WAYLAND:
-        px += mon["x"]
-        py += mon["y"]
+    px += mon["x"]
+    py += mon["y"]
     subprocess.Popen(
         [
             sys.executable, os.path.join(SCRIPT_DIR, "theme_panel.py"),

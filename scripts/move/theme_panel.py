@@ -654,6 +654,7 @@ class ThemePanel:
         self.grab_y = 0.0
         self.start_x = x
         self.start_y = y
+        self._color_applied = False
 
         self.name, self.committed, self.radius, self.source = load_source(CONFIG_DIR)
         self.draft = dict(self.committed)
@@ -752,6 +753,7 @@ class ThemePanel:
         self.win.connect("button-press-event", self.on_press)
         self.win.connect("button-release-event", self.on_release)
         self.win.connect("motion-notify-event", self.on_motion)
+        self.win.connect("key-press-event", self.on_key_press)
 
     def on_realize(self, widget):
         if not WAYLAND:
@@ -1170,43 +1172,69 @@ class ThemePanel:
             rgba.red = int(h[1:3], 16) / 255.0
             rgba.green = int(h[3:5], 16) / 255.0
             rgba.blue = int(h[5:7], 16) / 255.0
-        dialog = Gtk.ColorChooserDialog.new("Pick a color")
-        dialog.set_use_alpha(False)
-        if h:
-            dialog.set_rgba(rgba)
+        dialog = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
+        dialog.set_title("Pick a color")
         dialog.set_modal(True)
         dialog.set_resizable(False)
+        dialog.set_default_size(400, 300)
+        dialog.set_destroy_with_parent(False)
         if WAYLAND:
             try:
                 GtkLayerShell.init_for_window(dialog)
                 GtkLayerShell.set_layer(dialog, GtkLayerShell.Layer.OVERLAY)
                 GtkLayerShell.set_keyboard_mode(
                     dialog, GtkLayerShell.KeyboardMode.ON_DEMAND)
+                GtkLayerShell.set_anchor(dialog,
+                                         GtkLayerShell.Edge.TOP, True)
+                GtkLayerShell.set_anchor(dialog,
+                                         GtkLayerShell.Edge.LEFT, True)
+                GtkLayerShell.set_margin(dialog,
+                                         GtkLayerShell.Edge.LEFT, 20)
+                GtkLayerShell.set_margin(dialog,
+                                         GtkLayerShell.Edge.TOP, 20)
             except Exception:
                 pass
         else:
             dialog.set_keep_above(True)
             dialog.connect("realize", self._child_override_redirect)
         dialog.connect("destroy", lambda *_: self._child_destroyed(dialog))
-        dialog.connect("response",
-                       lambda d, r: self._color_dialog_response(d, r, field))
+        color_w = Gtk.ColorChooserWidget.new()
+        color_w.set_use_alpha(False)
+        if h:
+            color_w.set_rgba(rgba)
+        box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 6)
+        box.pack_start(color_w, True, True, 0)
+        action_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+        btn_ok = Gtk.Button.new_with_label("OK")
+        btn_ok.get_style_context().add_class("save")
+        btn_ok.connect("clicked",
+                       lambda *_: self._color_dialog_ok(field, color_w))
+        btn_cancel = Gtk.Button.new_with_label("Mégsem")
+        btn_cancel.get_style_context().add_class("close")
+        btn_cancel.connect("clicked", lambda *_: self._child_destroyed(dialog))
+        action_box.pack_start(btn_cancel, True, True, 0)
+        action_box.pack_start(btn_ok, True, True, 0)
+        box.pack_start(action_box, False, False, 6)
+        dialog.add(box)
         self.child = dialog
         GLib.idle_add(self._child_move, dialog)
         dialog.show_all()
         dialog.present()
         return False
 
-    def _color_dialog_response(self, dialog, response, field):
-        if response == Gtk.ResponseType.OK:
-            col = dialog.get_rgba()
-            field.set_hex(rgb_hex(
-                int(round(col.red * 255)),
-                int(round(col.green * 255)),
-                int(round(col.blue * 255))))
-            self.set_status("")
-        if self.child is dialog:
-            self.child = None
-        dialog.destroy()
+    def _color_dialog_ok(self, field, color_w):
+        rgba = color_w.get_rgba()
+        field.set_hex(rgb_hex(
+            int(round(rgba.red * 255)),
+            int(round(rgba.green * 255)),
+            int(round(rgba.blue * 255))))
+        self.set_status("")
+        if getattr(self, "child", None) is not None:
+            try:
+                self.child.destroy()
+            except Exception:
+                pass
+        self.child = None
 
     def _toggle(self, key):
         toggle = Gtk.CheckButton.new_with_label("")
@@ -1334,11 +1362,14 @@ class ThemePanel:
         Gtk.main_quit()
 
     def on_reset(self, *_):
-        self._end_editing(self.editing)
-        self._revert_preview()
-        self.draft = dict(self.committed)
-        self.load_widgets(self.draft)
-        self.set_status("")
+        try:
+            self._end_editing(self.editing)
+            self._revert_preview()
+            self.draft = dict(self.committed)
+            self.load_widgets(self.draft)
+            self.set_status("")
+        except Exception as exc:
+            self.set_status("Reset error: %s" % exc)
 
     def _apply_save(self, draft, radius):
         ok, msg = validate_draft(draft)
@@ -1359,6 +1390,24 @@ class ThemePanel:
     def _spawn_preview_worker(self, argv):
         """Detached theme_preview.py run (never blocks the GTK loop)."""
         run([sys.executable, PREVIEW_SCRIPT] + argv)
+        # After eww reload, re-map the editor above the re-created overlays
+        GLib.timeout_add(1800, self._restack_after_reload)
+
+    def _restack_after_reload(self, *_):
+        if not WAYLAND:
+            return False
+        if not session_active():
+            return False  # session already gone
+        try:
+            self.win.present()
+            set_position(self.win, self.win_x, self.win_y)
+            child = getattr(self, "child", None)
+            if child is not None:
+                child.present()
+                self._child_move(child)
+        except Exception:
+            pass
+        return False
 
     def on_preview(self, *_):
         """Apply the DRAFT to the live widget without saving.
@@ -1406,6 +1455,7 @@ class ThemePanel:
             return
         self.preview_active = False
         self._spawn_preview_worker(["--restore"])
+        GLib.timeout_add(1800, self._restack_after_reload)
         f = getattr(self, "_preview_file", None)
         if f:
             try:
@@ -1517,6 +1567,7 @@ class ThemePanel:
             self._pick_x11()
 
     def _pick_x11(self):
+        self._color_applied = False
         screen = Gdk.Screen.get_default()
         root = screen.get_root_window()
         w, h = root.get_width(), root.get_height()
@@ -1529,6 +1580,7 @@ class ThemePanel:
             pixbuf = None
         if pixbuf is None:
             self.set_status("screen capture failed")
+            self.win.show_all()
             return
         self.pick = {"raw": raw_pixbuf(pixbuf),
                      "bg": pixbuf,
@@ -1583,10 +1635,10 @@ class ThemePanel:
     def _pick_motion(self, da, event):
         if not self.pick:
             return False
-        rgb = self._pick_sample(event.x_root, event.y_root)
-        self.pick["rgb"] = rgb
         self.pick["x"] = int(event.x_root)
         self.pick["y"] = int(event.y_root)
+        rgb = self._pick_sample(self.pick["x"], self.pick["y"])
+        self.pick["rgb"] = rgb
         da.queue_draw()
         return False
 
@@ -1603,16 +1655,35 @@ class ThemePanel:
                 pass
         rgb = self.pick.get("rgb") if self.pick else None
         if rgb is None:
+            # Draw a neutral gray placeholder with "Move to pick" text
+            cr.set_source_rgb(0.2, 0.2, 0.2)
+            cr.rectangle(12, 12, 110, 34)
+            cr.fill()
+            cr.set_source_rgb(0.6, 0.6, 0.6)
+            cr.rectangle(12, 12, 110, 34)
+            cr.stroke()
+            cr.set_source_rgb(0.8, 0.8, 0.8)
+            try:
+                cr.select_font_face(
+                    "Sans",
+                    getattr(cairo, "FONT_SLANT_NORMAL", 0) if cairo else 0,
+                    getattr(cairo, "FONT_WEIGHT_BOLD", 1) if cairo else 1)
+            except Exception:
+                pass
+            cr.set_font_size(11)
+            cr.move_to(20, 34)
+            cr.show_text("Move mouse to preview")
             return False
         r, g, b = rgb
         cx = clamp(self.pick["x"], 10, da.get_allocated_width() - 10)
         cy = clamp(self.pick["y"], 10, da.get_allocated_height() - 10)
-        # corner readout: live color + hex
+        # Color preview swatch (large, clearly visible)
         cr.set_source_rgb(r / 255.0, g / 255.0, b / 255.0)
-        cr.rectangle(12, 12, 110, 34)
+        cr.rectangle(12, 12, 140, 40)
         cr.fill()
         cr.set_source_rgb(0, 0, 0)
-        cr.rectangle(12, 12, 110, 34)
+        cr.rectangle(12, 12, 140, 40)
+        cr.set_line_width(2)
         cr.stroke()
         ink = (0, 0, 0) if (0.299 * r + 0.587 * g + 0.114 * b) > 140 else (255, 255, 255)
         cr.set_source_rgb(*(v / 255.0 for v in ink))
@@ -1623,9 +1694,12 @@ class ThemePanel:
                 getattr(cairo, "FONT_WEIGHT_BOLD", 1) if cairo else 1)
         except Exception:
             pass
-        cr.set_font_size(18)
-        cr.move_to(20, 36)
+        cr.set_font_size(14)
+        cr.move_to(20, 30)
         cr.show_text("#%02x%02x%02x" % rgb)
+        cr.set_font_size(10)
+        cr.move_to(20, 46)
+        cr.show_text("Release to apply")
         # magnified viewfinder around the cursor: 16px logical square, 6x zoom
         ox, oy = cx - 48, cy - 48
         px, py = clamp(self.pick["x"] - 8, 0, da.get_allocated_width() - 1), \
@@ -1647,14 +1721,15 @@ class ThemePanel:
     def _pick_release(self, da, event):
         if not self.pick or event.button != 1:
             return False
+        if self._color_applied:
+            return False
         rgb = self._pick_sample(event.x_root, event.y_root)
         field = getattr(self, "pick_field", None)
         self._pick_finish()
-        if rgb is not None:
-            field = field or self.active_field
-            if field is not None:
-                field.set_hex(rgb_hex(*rgb))
-                self.set_status("")
+        if rgb is not None and field is not None:
+            field.set_hex(rgb_hex(*rgb))
+            self.set_status("")
+        self._color_applied = True
         return False
 
     def _pick_finish(self):
@@ -1664,32 +1739,38 @@ class ThemePanel:
             pass
         overlay = self.pick["overlay"] if self.pick else None
         self.pick = None
+        self._color_applied = False
         if overlay is not None:
             overlay.destroy()
-        self.win.show_all()
-        self.win.present()
+        try:
+            self.win.show_all()
+            self.win.present()
+        except Exception:
+            pass
         self.raise_above()
 
     def _pick_wayland(self):
-        """Best-effort KDE + capture flow (no global grab on Wayland)."""
-        try:
-            from workarea import kde_cursor  # scripts/core
-        except Exception:
-            kde_cursor = None
+        """Best-effort capture flow (no global grab on Wayland)."""
         tool = None
-        for candidate in ("grim", "gnome-screenshot"):
+        for candidate in ("spectacle", "grim", "gnome-screenshot"):
             if subprocess.run(["which", candidate], stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL).returncode == 0:
                 tool = candidate
                 break
-        if kde_cursor is None or tool is None:
+        if tool is None:
             self.set_status("screen pick needs X11 (or KDE + grim) here; "
                             "use the swatch or hex entry")
             return
+        self._color_applied = False
         tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
         tmp.close()
         try:
-            if tool == "grim":
+            if tool == "spectacle":
+                ok = subprocess.run(["spectacle", "--background", "--fullscreen",
+                                     "--nonotify", "--output", tmp.name],
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL).returncode == 0
+            elif tool == "grim":
                 ok = subprocess.run(["grim", tmp.name], stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL).returncode == 0
             else:
@@ -1706,34 +1787,43 @@ class ThemePanel:
                 pass
             self.set_status("screen pick failed: %s" % exc)
             return
+        screen = Gdk.Screen.get_default()
+        w, h = screen.get_width(), screen.get_height()
         self.pick = {"raw": raw_pixbuf(pixbuf),
+                     "bg": pixbuf,
                      "overlay": None, "x": 0, "y": 0, "rgb": None}
+        self.win.hide()
         overlay = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
         overlay.set_decorated(False)
+        overlay.set_app_paintable(True)
         overlay.set_type_hint(Gdk.WindowTypeHint.UTILITY)
         overlay.set_keep_above(True)
-        overlay.set_title("Pick")
-        box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 6)
-        box.set_border_width(10)
-        self.pick_da = Gtk.DrawingArea.new()
-        self.pick_da.set_size_request(220, 24)
-        box.pack_start(self.pick_da, False, False, 0)
-        self.pick_label = Gtk.Label.new("")
-        box.pack_start(self.pick_label, False, False, 0)
-        actions = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 4)
-        cancel = Gtk.Button.new_with_label("Cancel")
-        cancel.connect("clicked", lambda *_: self._pick_finish())
-        actions.pack_start(cancel, True, True, 0)
-        self.pick_confirm = Gtk.Button.new_with_label("Use this color")
-        self.pick_confirm.connect("clicked", self._pick_wayland_confirm)
-        self.pick_confirm.set_sensitive(False)
-        actions.pack_start(self.pick_confirm, True, True, 0)
-        box.pack_start(actions, False, False, 0)
-        overlay.add(box)
+        if WAYLAND:
+            try:
+                GtkLayerShell.init_for_window(overlay)
+                GtkLayerShell.set_layer(overlay, GtkLayerShell.Layer.OVERLAY)
+                GtkLayerShell.set_anchor(overlay, GtkLayerShell.Edge.TOP, True)
+                GtkLayerShell.set_anchor(overlay, GtkLayerShell.Edge.LEFT, True)
+                GtkLayerShell.set_anchor(overlay, GtkLayerShell.Edge.RIGHT, True)
+                GtkLayerShell.set_anchor(overlay, GtkLayerShell.Edge.BOTTOM, True)
+                GtkLayerShell.set_keyboard_mode(
+                    overlay, GtkLayerShell.KeyboardMode.ON_FOCUS)
+            except Exception:
+                pass
+        da = Gtk.DrawingArea.new()
+        da.set_size_request(w, h)
+        da.set_events(Gdk.EventMask.BUTTON_PRESS_MASK
+                      | Gdk.EventMask.BUTTON_RELEASE_MASK
+                      | Gdk.EventMask.POINTER_MOTION_MASK)
+        overlay.add(da)
+        da.connect("draw", self._pick_draw)
+        da.connect("motion-notify-event", self._pick_motion)
+        da.connect("button-release-event", self._pick_release)
+        overlay.connect("key-press-event", self.on_key_press)
         overlay.show_all()
+        overlay.present()
         self.pick["overlay"] = overlay
-        self.pick_pos = kde_cursor
-        GLib.timeout_add(300, self._pick_wayland_poll, overlay)
+        da.queue_draw()
 
     def _pick_wayland_poll(self, overlay):
         if self.pick is None:
@@ -1742,6 +1832,9 @@ class ThemePanel:
         if not pos:
             return True
         x, y = int(pos[0]), int(pos[1])
+        # Only update preview when cursor position actually changes
+        if x == self.pick.get("x") and y == self.pick.get("y"):
+            return True
         rgb = self._pick_sample(x, y)
         self.pick["rgb"] = rgb
         self.pick["x"], self.pick["y"] = x, y
@@ -1750,6 +1843,66 @@ class ThemePanel:
             self.pick_confirm.set_sensitive(True)
             self.pick_da.queue_draw()
         return True
+
+    def _pick_wayland_draw(self, da, cr):
+        rgb = self.pick.get("rgb") if self.pick else None
+        if rgb is None:
+            return False
+        r, g, b = rgb
+        w = da.get_allocated_width()
+        h = da.get_allocated_height()
+        # Color swatch preview
+        cr.set_source_rgb(r / 255.0, g / 255.0, b / 255.0)
+        cr.rectangle(0, 0, w, h)
+        cr.fill()
+        cr.set_source_rgb(0, 0, 0)
+        cr.set_line_width(1)
+        cr.rectangle(0, 0, w, h)
+        cr.stroke()
+        # Hex label on top of swatch
+        ink = (0, 0, 0) if (0.299 * r + 0.587 * g + 0.114 * b) > 140 else (255, 255, 255)
+        cr.set_source_rgb(*(v / 255.0 for v in ink))
+        try:
+            cr.select_font_face(
+                "Sans",
+                getattr(cairo, "FONT_SLANT_NORMAL", 0) if cairo else 0,
+                getattr(cairo, "FONT_WEIGHT_BOLD", 1) if cairo else 1)
+        except Exception:
+            pass
+        cr.set_font_size(11)
+        cr.move_to(4, h - 4)
+        cr.show_text("#%02x%02x%02x" % rgb)
+        return False
+
+    def _pick_wayland_motion(self, da, event):
+        if self.pick is None:
+            return False
+        pos = self.pick_pos() if self.pick_pos else None
+        if not pos:
+            return True
+        x, y = int(pos[0]), int(pos[1])
+        rgb = self._pick_sample(x, y)
+        if rgb is not None and rgb != self.pick.get("rgb"):
+            self.pick["rgb"] = rgb
+            self.pick["x"], self.pick["y"] = x, y
+            self.pick_label.set_text("#%02x%02x%02x" % rgb)
+            self.pick_confirm.set_sensitive(True)
+            self.pick_da.queue_draw()
+        return False
+
+    def _pick_wayland_release(self, da, event):
+        if self.pick is None or event.button != 1:
+            return False
+        if self._color_applied:
+            return False
+        rgb = self.pick.get("rgb")
+        field = getattr(self, "pick_field", None) or self.active_field
+        self._pick_finish()
+        if rgb is not None and field is not None:
+            field.set_hex(rgb_hex(*rgb))
+            self.set_status("")
+        self._color_applied = True
+        return False
 
     def _pick_wayland_confirm(self, *_):
         rgb = self.pick.get("rgb") if self.pick else None
@@ -1769,6 +1922,7 @@ class ThemePanel:
             self._raise_child(child)
         else:
             self.raise_above()
+        _restack_after_reload(self)
         return True
 
     @staticmethod
@@ -1785,6 +1939,11 @@ class ThemePanel:
     def on_press(self, widget, event):
         if event.button != 1 or event.y > TITLE_H:
             return False
+        if getattr(self, "child", None) is not None:
+            try:
+                self.child.hide()
+            except Exception:
+                pass
         self.drag = True
         self.grab_root_x = event.x_root
         self.grab_root_y = event.y_root
@@ -1830,18 +1989,45 @@ class ThemePanel:
             elif getattr(self, "child", None) is not None:
                 # A dialog (Save As / color) follows the editor during the drag.
                 self._child_move(self.child)
+            elif self.pick is not None and self.pick.get("overlay") is not None:
+                self._child_move(self.pick["overlay"])
         return False
 
     def on_release(self, widget, event):
         if event.button != 1:
             return False
         self.drag = False
+        if getattr(self, "child", None) is not None:
+            try:
+                self.child.show()
+                self.raise_above()
+            except Exception:
+                pass
         if not WAYLAND:
             try:
                 Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
             except Exception:
                 pass
         return False
+
+
+    def on_key_press(self, widget, event):
+        if event.keyval != Gdk.KEY_Escape:
+            return False
+        if self.pick is not None:
+            self._pick_finish()
+            return True
+        if getattr(self, "child", None) is not None:
+            child = self.child
+            self.child = None
+            try:
+                child.destroy()
+            except Exception:
+                pass
+            self.raise_above()
+            return True
+        self.on_close()
+        return True
 
 
 def _build_css():
@@ -1932,8 +2118,10 @@ def session_active():
     try:
         with open(SESSION_FILE) as fh:
             return json.load(fh).get("mode") == "theme"
-    except Exception:
+    except FileNotFoundError:
         return False
+    except Exception:
+        return True  # átmeneti olvasási hiba: tartsa nyitva az editort
 
 
 def set_position(win, x, y):
