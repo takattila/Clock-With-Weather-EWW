@@ -133,6 +133,13 @@ system:
   #                AM/PM indicator under the hour digits)
   hour_format: "24"
 
+  # progress_mode -> how the HDD / RAM / CPU / SWAP data is shown in the clock
+  #                  widget (the right-hand column, rows y=178/192). Switchable
+  #                  live from the clock's right-click menu (Rendszer row).
+  #                  Options: "text"     -> the classic used/total string table
+  #                           "progress" -> percentage progress bars in the same spot
+  progress_mode: "text"
+
   # corner_radius -> background corner rounding in px for BOTH widgets.
   #                  Options: 0 (square) | any positive integer
   corner_radius: 15

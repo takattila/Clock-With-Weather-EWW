@@ -16,6 +16,7 @@ def test_defaults(cfg):
     merged = cfg.load_config()
     assert merged["appearance"] == "light"
     assert merged["hour_format"] == "24"
+    assert merged["progress_mode"] == "text"
     assert merged["weather"] == "custom"
     assert merged["city"] == "Tatabánya"
     assert merged["language_code"] == "hu"

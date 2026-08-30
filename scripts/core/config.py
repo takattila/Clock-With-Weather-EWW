@@ -24,10 +24,10 @@ the theme provides the baseline values and any inline fields present patch
 on top of it.
 
 Usage:
-  ./config.py             merged JSON (for the `config` defpoll)
-  ./config.py --key NAME  a single value
-                          (api_key | appearance | appearance_name | weather |
-                           hour_format |
+   ./config.py             merged JSON (for the `config` defpoll)
+   ./config.py --key NAME  a single value
+                           (api_key | appearance | appearance_name | weather |
+                            hour_format | progress_mode |
                            city | language_code | lang | units | api_url |
                            alignment | position_x | position_y | scale |
                            scale_x | scale_y |
@@ -153,6 +153,7 @@ def load_config():
         "appearance_name": appearance if isinstance(appearance, str) else "custom",
         "weather": weather_name,
         "hour_format": str(system.get("hour_format", "24")),
+        "progress_mode": str(system.get("progress_mode", "text")),
         "city": weather.get("city", ""),
         "language_code": weather.get("language_code", ""),
         "lang": weather.get("lang", ""),

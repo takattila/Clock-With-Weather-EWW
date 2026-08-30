@@ -24,7 +24,7 @@ import sys
 import tempfile
 
 CONFIG_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-ROWS = 13        # collapsed ctx-menu column rows (both widgets stack 13)
+ROWS = {"clock": 14, "panel": 13}  # collapsed ctx-menu column rows per widget
 PAD = 7           # ctx_menu top padding (+border) == submenu.MENU_PAD
 MARGIN = 2        # .ctx-btn margin (inset of the first button) == eww.scss
 MAX_ROWS = 18     # sanity: never trust a capture with more B bands than rows
@@ -32,7 +32,7 @@ TOL = 4           # px tolerance for the uniform-pitch consistency check
 
 # B-row indices in the collapsed column, per widget (== submenu.ROW_SEQUENCES).
 B_ROWS = {
-    "clock": [0, 1, 2, 4, 5, 6, 8, 9, 11, 12],
+    "clock": [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13],
     "panel": [0, 1, 2, 4, 5, 7, 8, 9, 11, 12],
 }
 
@@ -159,7 +159,7 @@ def measure(widget):
         leader = starts[0] - tops0
         if not (4 <= leader <= 40):
             return None
-        tops = [int(tops0 + i * pitch) for i in range(ROWS)]
+        tops = [int(tops0 + i * pitch) for i in range(ROWS[widget])]
 
         # Cross-check every measured label band against the model row top.
         for bi, s in enumerate(starts):

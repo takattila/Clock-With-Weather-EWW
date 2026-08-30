@@ -583,3 +583,48 @@ mechanics), PLAN (this file), `config.yaml` appearance comment block.
 - Wayland/KDE: no compositor-specific code paths touched (GTK CSS + SVG
   only); the window-placement helpers (`detect.py`, `start.sh`,
   `*_x11` window variants) are unchanged.
+
+# Follow-up — weather widget system data: text ↔ progress bars (after v4.0.0)
+
+## Goal
+
+Let the clock's right-click menu switch how the HDD / RAM / CPU / SWAP data
+in its right-hand column is shown: the classic used/total text table, or
+percentage **progress bars** — in the same spot, without changing the widget
+size. Config key `system.progress_mode` (`"text"` (default) | `"progress"`).
+
+## Design decisions
+
+- The data stays VISIBLE in both modes (the chosen UX is a text ↔ bar format
+  switch, not a show/hide) — decided with the user.
+- Both views are `:visible` boxes in `widget_clock_weather` that render at
+  the exact same columns/rows (x=16/176 labels, bars x=48/208, % x=148/308;
+  rows y=178/192), so the natural width / geometry is identical either way —
+  the watcher's `eww reload` applies the flip, no relayout needed.
+- `scripts/core/system.py` now also emits `progress_{hdd,ram,cpu,swap}`
+  percentages (HDD = used×100/total; RAM = `mem.percent`; CPU / SWAP =
+  their existing percent). The old `hdd/ram/cpu/swap` text fields are
+  unchanged, so text mode is untouched.
+- The toggle reuses the proven hover-submenu pipeline:
+  `submenu.py` (Rendszer row) → `menu_toggle.py` (text↔progress flip) →
+  `config_set.py` (global `system.progress_mode`).
+- The Rendszer row lives in the **clock** menu only; it inserts one more
+  button row before the last separator, so the clock column is now **14**
+  collapsed rows (panel stays 13). `CONTEXT_ROWS`, `ROW_SEQUENCES` and
+  `measure_menu.py`'s `ROWS`/`B_ROWS` were updated to stay in sync.
+
+## Tests
+
+- `test_system.py`: `progress_*` percentages (HDD 800/1000 → 80, RAM 25,
+  CPU 42, SWAP 12).
+- `test_submenu.py`: Rendszer options/active, clock now 14 rows vs panel 13,
+  updated row indices (Rendszer = 10) and measured-tops counts.
+- `test_menu_toggle.py`: `progress_mode` flips both ways + `main()` writes.
+- `test_config_set.py`: progress_mode stored as string, text/progress
+  validation, global (no `--monitor`).
+- `test_config.py`: default `progress_mode == "text"`.
+
+## Verification (executed)
+
+- `pytest tests/` — 356 passed.
+- `eww --config eww reload` — clean (exit 0, no SCSS/CSS errors).

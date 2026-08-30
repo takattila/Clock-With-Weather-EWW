@@ -20,14 +20,16 @@ Value transitions:
                    with the same arguments as the defpoll (but the NEW units)
                    and pushing it into the eww variable -- otherwise the
                    change would only show up at the next 10-minute poll
-  panel_enabled    true <-> false   (watcher relayout applies it)
-  panel_alignment  right <-> left   (watcher relayout applies it)
+   panel_enabled    true <-> false   (watcher relayout applies it)
+   panel_alignment  right <-> left   (watcher relayout applies it)
+   progress_mode    text <-> progress (watcher reload applies it)
 
 Usage:
   ./menu_toggle.py --key hour_format
   ./menu_toggle.py --key appearance
   ./menu_toggle.py --key units
   ./menu_toggle.py --key panel_enabled --value false   # direct set (submenu)
+  ./menu_toggle.py --key progress_mode --value progress
 """
 
 import argparse
@@ -44,7 +46,8 @@ sys.path.insert(0, os.path.join(CONFIG_DIR, "scripts", "core"))
 
 from config_io import load_merged
 
-KEYS = ("hour_format", "appearance", "units", "panel_enabled", "panel_alignment")
+KEYS = ("hour_format", "appearance", "units", "panel_enabled", "panel_alignment",
+        "progress_mode")
 
 
 def run(cmd, capture=False):
@@ -123,6 +126,9 @@ def next_value(key, cfg):
     if key == "panel_alignment":
         alignment = str((panel.get("window") or {}).get("alignment", "right")).strip().lower()
         return "left" if alignment == "right" else "right"
+    if key == "progress_mode":
+        mode = str(system.get("progress_mode", "text")).strip().lower()
+        return "progress" if mode != "progress" else "text"
     sys.exit("ERROR: unsupported toggle key: %s" % key)
 
 

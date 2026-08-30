@@ -20,23 +20,31 @@ def get_system_info():
     total, used, free = shutil.disk_usage("/")
     # Show free and total space
     hdd_fmt = f"{format_bytes(free)} / {format_bytes(total)}"
+    hdd_pct = int((used / total) * 100) if total else 0
 
     # RAM info
     mem = psutil.virtual_memory()
     ram_fmt = f"{format_bytes(mem.used)} / {format_bytes(mem.total)}"
+    ram_pct = int(mem.percent)
 
     # CPU info (short sampling window, since every run is a fresh process)
-    cpu_usage = f"{int(psutil.cpu_percent(interval=0.2))}%"
+    cpu_pct = int(psutil.cpu_percent(interval=0.2))
+    cpu_fmt = f"{cpu_pct}%"
 
     # SWAP info
     swap = psutil.swap_memory()
-    swap_fmt = f"{int(swap.percent)}% (size: {format_bytes(swap.total)})"
+    swap_pct = int(swap.percent)
+    swap_fmt = f"{swap_pct}% (size: {format_bytes(swap.total)})"
 
     data = {
         "hdd": hdd_fmt,
         "ram": ram_fmt,
-        "cpu": cpu_usage,
-        "swap": swap_fmt
+        "cpu": cpu_fmt,
+        "swap": swap_fmt,
+        "progress_hdd": hdd_pct,
+        "progress_ram": ram_pct,
+        "progress_cpu": cpu_pct,
+        "progress_swap": swap_pct,
     }
 
     print(json.dumps(data))

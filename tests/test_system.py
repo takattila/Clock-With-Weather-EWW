@@ -17,6 +17,7 @@ def test_get_system_info(monkeypatch, capsys):
     class Mem:
         used = 4 * 1024**3
         total = 16 * 1024**3
+        percent = 25
 
     class Swap:
         percent = 12
@@ -36,3 +37,8 @@ def test_get_system_info(monkeypatch, capsys):
     assert out["ram"] == "4 GB / 16 GB"
     assert out["cpu"] == "42%"
     assert out["swap"] == "12% (size: 2 GB)"
+    # percentage values feed the progress-bar view (progress_mode = "progress")
+    assert out["progress_hdd"] == 80          # 800/1000 used
+    assert out["progress_ram"] == 25          # mem.percent
+    assert out["progress_cpu"] == 42
+    assert out["progress_swap"] == 12

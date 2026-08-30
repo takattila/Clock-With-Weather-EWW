@@ -297,6 +297,34 @@ def test_panel_alignment_invalid_value(local_file, monkeypatch):
     assert "right or left" in str(exc.value)
 
 
+def test_progress_mode_stored_as_string(local_file, monkeypatch):
+    run(["--key", "progress_mode", "--value", "progress"], monkeypatch)
+    config_set.main()
+    mode = read(local_file)["system"]["progress_mode"]
+    assert mode == "progress"
+    assert isinstance(mode, str)
+
+
+def test_progress_mode_accepts_text(local_file, monkeypatch):
+    run(["--key", "progress_mode", "--value", "text"], monkeypatch)
+    config_set.main()
+    assert read(local_file)["system"]["progress_mode"] == "text"
+
+
+def test_progress_mode_invalid_value(local_file, monkeypatch):
+    run(["--key", "progress_mode", "--value", "bar-chart"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must be text or progress" in str(exc.value)
+
+
+def test_progress_mode_rejects_monitor(local_file, monkeypatch):
+    run(["--key", "progress_mode", "--value", "progress", "--monitor", "0"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "--monitor must not be used" in str(exc.value)
+
+
 def test_appearance_known_theme(local_file, tmp_path, monkeypatch):
     themes = tmp_path / "themes"
     themes.mkdir()
