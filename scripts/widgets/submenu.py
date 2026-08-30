@@ -105,28 +105,28 @@ CONTEXT_ROWS = {
     "clock": {
         "hour_format": 4,   # 0 Move,1 Resize,2 Reset,3 sep -> 4 is AM/PM
         "appearance": 5,
-        "units": 7,         # 6 is the clock-only sep after Theme
+        "units": 8,         # 6 Theme editor, 7 is the clock-only sep after it
     },
     "panel": {
         "appearance": 4,       # AM/PM is hidden -> Theme one row higher
-        "panel_enabled": 6,    # 5 is the panel-only sep after Theme
-        "panel_alignment": 7,
+        "panel_enabled": 7,    # 5 Theme editor, 6 is the panel-only sep
+        "panel_alignment": 8,
     },
 }
 # Height sequence of the COLLAPSED ctx-menu column, PER widget, in the order
 # the rows actually stack (the visible slots only - keep in sync with
 # widget_ctx_menu in eww.yuck and the heights pinned in eww.scss):
 #   B = one .ctx-btn row (ROW_BTN), S = one .ctx-sep row (ROW_SEP).
-# The clock menu is Move Resize Reset | sep | AM/PM Theme sep Units Weather |
-# sep | Hard reset About; the panel menu drops AM/PM/sep/Units/Weather and
-# adds sep + Panel/Side/gap.
+# The clock menu is Move Resize Reset | sep | AM/PM Theme Theme editor sep
+# Units Weather | sep | Hard reset About; the panel menu drops
+# AM/PM/sep/Units/Weather and adds sep + Panel/Side/gap.
 ROW_SEQUENCES = {
-    # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 AM/PM, 5 Theme, 6 sep, 7 Units,
-    # 8 Weather, 9 sep, 10 Hard reset, 11 About
-    "clock": "B B B S B B S B B S B B".split(),
-    # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 Theme, 5 sep, 6 Panel, 7 Side,
-    # 8 Panel gap, 9 sep, 10 Hard reset, 11 About
-    "panel": "B B B S B S B B B S B B".split(),
+    # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 AM/PM, 5 Theme, 6 Theme editor,
+    # 7 sep, 8 Units, 9 Weather, 10 sep, 11 Hard reset, 12 About
+    "clock": "B B B S B B B S B B S B B".split(),
+    # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 Theme, 5 Theme editor, 6 sep,
+    # 7 Panel, 8 Side, 9 Panel gap, 10 sep, 11 Hard reset, 12 About
+    "panel": "B B B S B B S B B B S B B".split(),
 }
 ROW_TYPE_H = {"B": ROW_BTN, "S": ROW_SEP}
 # Default scope for bare callers / the legacy ROWS accessor.
@@ -262,7 +262,7 @@ def measured_tops():
     generated/menu_rows.json with the REAL row offsets for the running
     compositor's label metrics; those are exact, while the ROW_BTN/ROW_SEP
     model below is a fallback that drifts whenever the font stack differs.
-    Returns a 12-tuple or None (not measured / failure).
+    Returns a 13-tuple or None (not measured / failure).
     """
     global _measured_tops, _measured_loaded
     if _measured_loaded:
@@ -310,7 +310,7 @@ def menu_content_height(widget="clock"):
     """Height the ctx-menu COLUMN occupies: real row heights + the 2 paddings.
 
     Sums the per-row pitches (buttons and separators differ!), so it matches
-    what the column really measures. Both menus stack 12 rows; the helper
+    what the column really measures. Both menus stack 13 rows; the helper
     stays widget-scoped so a future layout drift cannot silently clip one
     menu's content.
     """

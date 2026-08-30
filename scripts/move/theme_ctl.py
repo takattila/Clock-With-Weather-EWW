@@ -1,38 +1,47 @@
 #!/usr/bin/env python3
-"""Weather-settings session launcher for the context menu.
+"""Theme-editor session launcher for the context menu.
 
-Opens the draggable GTK settings form (scripts/weather_panel.py) CENTERED ON
-the monitor the menu was raised on (same centering as the About dialog), in
-contrast to the Move/Resize and Panel-gap panels which hug the widget.
+Opens the draggable GTK theme editor (scripts/move/theme_panel.py) CENTERED
+ON the monitor the menu was raised on (same centering as the About dialog
+and the Weather-settings form). The editor edits every field an appearance
+definition carries (theme, icon set/tint/transparency, fonts, background,
+chart colors/glow, panel background/gradient, corner radius).
 
-The form edits the global `weather:` settings (city, language_code, lang,
-units, api_url -> config.local.yaml via config_set.py, api_key -> the
-git-ignored .api_key file). Editing only changes the DRAFT values in the
-window; the Save button validates everything, writes the changed fields in
-ONE go, immediately refreshes the on-screen weather (weather.py + `eww
-update weather_info=...`, so the change needs no 10-minute defpoll) and then
-closes. The Reset button removes the local weather overrides (so the
-config.yaml / weather-theme values take effect again) and also refreshes and
-closes. Cancel discards and closes.
+Editing only changes the DRAFT values in the window. The footer buttons
+commit it:
+  * Save    -> writes the whole normalized appearance map + system.corner_radius
+               inline into the git-ignored config.local.yaml (the shipped
+               theme files stay untouched; the watcher reloads the widget
+               live) and closes,
+  * Save As -> asks for a name, creates assets/themes/appearance/<name>/
+               appearance.yaml (minimalized like the checked-in themes),
+               activates it and closes,
+  * Preview -> applies the DRAFT to the LIVE widget right now (colors, fonts,
+               radius, glow, panel + re-tinted icons) WITHOUT saving;
+               config.local.yaml stays untouched, so only Save makes it
+               permanent (theme_preview.py). Un-saved previews revert on
+               Reset / Cancel / editor close,
+  * Reset   -> refills the form from the loaded source (and reverts any
+               un-saved Preview),
+  * Cancel  -> discards (reverting any un-saved Preview) and closes.
 
-Like move.py / gap_ctl.py this script does NOT run an interactive loop: it
-resolves the monitor the menu was opened on, centers the form on it (the
-same monitors.py geometry + clamp as about_win.py), closes the context menu
-and returns immediately, so eww's command timeout (200ms) cannot kill it.
-ESC / click-outside / Cancel / Reset / Save quit the session through
+Like weather_ctl.py this script does NOT run an interactive loop: it resolves
+the monitor the menu was opened on, centers the form on it, closes the context
+menu and returns immediately, so eww's command timeout (200ms) cannot kill it.
+ESC / click-outside / the footer buttons quit the session through
 close_popup.py (the invisible keyboard daemon maps ESC while the session file
 exists).
 
 The per-monitor dismiss layers deliberately STAY OPEN like in Move/Resize /
-Panel-gap: they are the click-outside-to-cancel surface for the whole session.
+Weather settings (the click-outside-to-cancel surface for the whole session).
 
 The window HEIGHT is adapted so it also fits the smallest connected screen
 (screen height minus taskbar; see monitors.adaptive_window_height) and the
-form is centered using that resolved height, so it can be dragged onto any
+editor is centered using that resolved height, so it can be dragged onto any
 monitor.
 
 Usage:
-  ./weather_ctl.py --widget clock --monitor 0
+  ./theme_ctl.py --widget clock --monitor 0
 """
 
 import argparse
@@ -52,8 +61,8 @@ sys.path.insert(0, os.path.join(CR_DIR, "core"))
 import session
 import monitors as monmod
 
-POSE_W = 300
-POSE_H = 380
+POSE_W = 560
+POSE_H = 760
 
 
 def run(cmd, capture=False, timeout=15):
@@ -80,7 +89,6 @@ def clamp(value, lo, hi):
 
 
 def load_monitors():
-    """Monitor list from scripts/core/monitors.py (index, x, y, width, height)."""
     out = run(
         ["python3", os.path.join(CR_DIR, "core", "monitors.py")],
         capture=True,
@@ -101,7 +109,6 @@ def read_session():
 
 
 def connected_screens():
-    """All connected monitor indices (best effort)."""
     out = run(
         ["python3", os.path.join(CR_DIR, "core", "monitors.py")],
         capture=True,
@@ -119,35 +126,36 @@ def main():
     ap.add_argument("--monitor", type=int, default=0)
     args = ap.parse_args()
 
-    # Center the form on the monitor the menu was raised on, EXACTLY like the
-    # About dialog (about_win.py): monitor geometry from monitors.py, the
-    # center clamped to the frame. The X11 absolute screen origin is added so
-    # win.move() (absolute coordinates) lands in the frame center.
     monitors = load_monitors()
     mon = next((m for m in monitors if m.get("index") == args.monitor), None)
     if mon is None:
         mon = {"index": args.monitor, "x": 0, "y": 0, "width": 1920, "height": 1080}
     frame_w, frame_h = mon["width"], mon["height"]
+    # Adapt the window height so it also fits the smallest connected screen
+    # (its usable height minus the taskbar) -> it can be dragged to every
+    # monitor. Centering uses the RESOLVED height, not the natural POSE_H.
     win_h = monmod.adaptive_window_height(
         monitors, POSE_H, monmod.get_net_workarea())
     px = clamp((frame_w - POSE_W) // 2, 0, max(0, frame_w - POSE_W))
     py = clamp((frame_h - win_h) // 2, 0, max(0, frame_h - win_h))
 
     # Close the context menu; the per-monitor dismiss layers stay open (the
-    # click-outside-to-cancel surface), like in the Move/Resize session.
+    # click-outside-to-cancel surface), like the other GTK panels.
     eww("close", "ctx_menu")
     eww("close", "dismiss_overlay")
 
-    # Activate the keyboard daemon first and mark the session: while it exists
-    # the daemon maps ESC to close_popup.py and the GTK form keeps running.
     overlays = read_session().get("overlays") or connected_screens()
     session.set_session({
-        "mode": "weather",
+        "mode": "theme",
         "widget": args.widget,
         "monitor": args.monitor,
         "overlays": overlays,
     })
 
+    # X11 positions are absolute screen coordinates, so the centered position
+    # must be offset by the target monitor's origin. Wayland layer-shell
+    # margins are relative to the monitor set by the editor (set_monitor +
+    # anchors), so they must NOT be offset here.
     WAYLAND = "WAYLAND_DISPLAY" in os.environ \
         and os.environ.get("GDK_BACKEND", "wayland") != "x11"
     if not WAYLAND:
@@ -155,7 +163,7 @@ def main():
         py += mon["y"]
     subprocess.Popen(
         [
-            sys.executable, os.path.join(SCRIPT_DIR, "weather_panel.py"),
+            sys.executable, os.path.join(SCRIPT_DIR, "theme_panel.py"),
             "--monitor", str(args.monitor),
             "--x", str(px), "--y", str(py),
             "--frame-w", str(frame_w), "--frame-h", str(frame_h),

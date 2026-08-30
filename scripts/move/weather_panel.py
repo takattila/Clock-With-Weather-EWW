@@ -50,8 +50,15 @@ Closing works four ways, exactly like the other panels:
 This window polls generated/input_session.json and quits once the "weather"
 session disappears (ESC / click-outside / Cancel / Save / Reset).
 
+The window HEIGHT adapts to the desktop: the controller (weather_ctl.py) sizes
+it to fit the smallest connected screen's usable height (screen minus
+taskbar), so it can be dragged onto any monitor. On X11 the drag is clamped to
+the WHOLE virtual desktop (union of all monitors), letting the window be moved
+from one monitor to another.
+
 Usage:
-  ./weather_panel.py --monitor 0 --x 300 --y 200 --frame-w 1920 --frame-h 1080
+  ./weather_panel.py --monitor 0 --x 300 --y 200 --frame-w 1920 --frame-h 1080 \
+                     --win-h 380
 """
 
 import argparse
@@ -329,10 +336,14 @@ def build_css(bg, light, alpha, radius, font):
 
 
 class WeatherPanel:
-    def __init__(self, monitor, x, y, frame_w, frame_h):
+    def __init__(self, monitor, x, y, frame_w, frame_h, win_h=PANEL_H):
         self.monitor = monitor
         self.frame_w = frame_w
         self.frame_h = frame_h
+        # Resolved window size: the controller adapts win_h so the window also
+        # fits the smallest connected screen (screen height minus taskbar).
+        self.win_w = PANEL_W
+        self.win_h = max(0, int(win_h or PANEL_H))
         self.win_x = x
         self.win_y = y
         self.drag = False
@@ -361,6 +372,28 @@ class WeatherPanel:
         except Exception:
             pass
 
+        # Bounding box of the WHOLE virtual desktop, so the window can be
+        # dragged from one monitor to another instead of being pinned to the
+        # monitor it opened on (X11; absolute coordinate space).
+        self.desk_x0, self.desk_y0, self.desk_w, self.desk_h = (
+            self.mon_ox, self.mon_oy, frame_w, frame_h)
+        try:
+            display = Gdk.Display.get_default()
+            if display is not None:
+                x0 = y0 = None
+                x1 = y1 = 0
+                for i in range(display.get_n_monitors()):
+                    g = display.get_monitor(i).get_geometry()
+                    x1 = max(x1, g.x + g.width)
+                    y1 = max(y1, g.y + g.height)
+                    x0 = g.x if x0 is None else min(x0, g.x)
+                    y0 = g.y if y0 is None else min(y0, g.y)
+                if x0 is not None:
+                    self.desk_x0, self.desk_y0 = x0, y0
+                    self.desk_w, self.desk_h = x1 - x0, y1 - y0
+        except Exception:
+            pass
+
         bg, light, alpha, radius, font = theme_values()
         self.win = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
         self.win.set_title("")
@@ -372,15 +405,14 @@ class WeatherPanel:
         self.win.set_resizable(False)
         self.win.set_accept_focus(True)
         # The launcher (weather_ctl.py) CENTERS this window on the monitor
-        # assuming it is EXACTLY PANEL_W x PANEL_H: the size request + hard
-        # geometry hints (min == max) pin it deterministically, so the
-        # centering is pixel-exact even if a field's natural request wants
-        # more room (the entries scroll their text instead).
-        self.win.set_size_request(PANEL_W, PANEL_H)
-        self.win.set_default_size(PANEL_W, PANEL_H)
+        # using the resolved size: the size request + hard geometry hints
+        # (min == max) pin it deterministically, so the centering is
+        # pixel-exact even if a field's natural request wants more room.
+        self.win.set_size_request(self.win_w, self.win_h)
+        self.win.set_default_size(self.win_w, self.win_h)
         geometry = Gdk.Geometry()
-        geometry.min_width = geometry.max_width = PANEL_W
-        geometry.min_height = geometry.max_height = PANEL_H
+        geometry.min_width = geometry.max_width = self.win_w
+        geometry.min_height = geometry.max_height = self.win_h
         self.win.set_geometry_hints(
             None, geometry,
             Gdk.WindowHints.MIN_SIZE | Gdk.WindowHints.MAX_SIZE,
@@ -451,12 +483,26 @@ class WeatherPanel:
         self.win.connect("motion-notify-event", self.on_motion)
         root.pack_start(title, False, False, 0)
 
+        # The field section is wrapped in a ScrolledWindow so the window can
+        # be shrunk below its natural height (smallest-screen adaptation in
+        # __init__) without clipping the footer: when there is room the rows
+        # stretch to absorb the leftover vertical space (no dead gap above
+        # the separator) and when the window is short they scroll instead.
+        scrolled = Gtk.ScrolledWindow.new(None, None)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scrolled.set_shadow_type(Gtk.ShadowType.NONE)
+        fields = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
+        fields.get_style_context().add_class("fields")
+
         # The rows stretch to absorb the leftover vertical space (the window
-        # is a fixed PANEL_H tall, see __init__), so the buttons sit directly
+        # is a fixed win_h tall, see __init__), so the buttons sit directly
         # under the separator with NO dead gap between the fields and them.
         for field_label, key in FIELD_ROWS:
-            root.pack_start(self.field_row(field_label, key), True, True, 0)
-        root.pack_start(self.units_row(), True, True, 0)
+            fields.pack_start(self.field_row(field_label, key), True, True, 0)
+        fields.pack_start(self.units_row(), True, True, 0)
+
+        scrolled.add(fields)
+        root.pack_start(scrolled, True, True, 0)
 
         root.pack_start(self.sep(), False, False, 0)
 
@@ -827,13 +873,17 @@ class WeatherPanel:
         if WAYLAND:
             dx = event.x - self.grab_x
             dy = event.y - self.grab_y
-            nx = max(0, min(self.win_x + dx, max(0, self.frame_w - PANEL_W)))
-            ny = max(0, min(self.win_y + dy, max(0, self.frame_h - PANEL_H)))
+            nx = max(0, min(self.win_x + dx, max(0, self.frame_w - self.win_w)))
+            ny = max(0, min(self.win_y + dy, max(0, self.frame_h - self.win_h)))
         else:
             nx = self.start_x + int(event.x_root - self.grab_root_x)
             ny = self.start_y + int(event.y_root - self.grab_root_y)
-            nx = max(self.mon_ox, min(nx, self.mon_ox + max(0, self.frame_w - PANEL_W)))
-            ny = max(self.mon_oy, min(ny, self.mon_oy + max(0, self.frame_h - PANEL_H)))
+            # Clamp to the WHOLE virtual desktop so the window can be dragged
+            # from one monitor to another (win_w/win_h = resolved size).
+            nx = max(self.desk_x0, min(nx, self.desk_x0
+                                       + max(0, self.desk_w - self.win_w)))
+            ny = max(self.desk_y0, min(ny, self.desk_y0
+                                       + max(0, self.desk_h - self.win_h)))
         if nx != self.win_x or ny != self.win_y:
             self.win_x, self.win_y = nx, ny
             set_position(self.win, nx, ny)
@@ -858,12 +908,14 @@ def main():
     ap.add_argument("--y", type=int, default=0)
     ap.add_argument("--frame-w", type=int, default=0)
     ap.add_argument("--frame-h", type=int, default=0)
+    ap.add_argument("--win-h", type=int, default=PANEL_H)
     args = ap.parse_args()
 
     if not session_active():
         sys.exit(0)
 
-    panel = WeatherPanel(args.monitor, args.x, args.y, args.frame_w, args.frame_h)
+    panel = WeatherPanel(args.monitor, args.x, args.y,
+                         args.frame_w, args.frame_h, args.win_h)
     panel.win.show_all()
     panel.win.present()
     GLib.timeout_add(250, panel.tick)

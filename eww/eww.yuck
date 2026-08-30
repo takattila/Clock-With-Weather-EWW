@@ -5,8 +5,9 @@
 ;;   1. main_window     -> Clock + Weather widget (dynamic width x 247 x scale)
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
 ;;   3. ctx_menu        -> right-click quick-settings menu (Move / Resize /
-;;                         Reset / AM-PM switch / Theme / Units / Panel on-off /
-;;                         Side / Panel gap / Weather / Hard reset / About)
+;;                         Reset / AM-PM switch / Theme / Theme editor / Units /
+;;                         Panel on-off / Side / Panel gap / Weather /
+;;                         Hard reset / About)
 ;;
 ;; The Move/Resize rectangle + the GTK control panels (Move/Resize, Panel
 ;; gap, Weather settings) and the About dialog are GTK3 windows
@@ -267,29 +268,30 @@
 
 ;; The four (hover) selectable/action columns are grouped by domain and
 ;; context-sensitive: the menu shows only the rows that belong to the widget
-;; it was opened on. Layout (16 markup rows, 12 visible per widget):
+;; it was opened on. Layout (17 markup rows, 13 visible per widget):
 ;;
-;;   0 Move            4 AM/PM ▸  ONLY-clock    10 Panel ▸      ONLY-panel
-;;   1 Resize          5 Theme ▸  BOTH          11 Side ▸       ONLY-panel
-;;   2 Reset           6 sep      ONLY-clock    12 Panel gap    ONLY-panel
-;;   3 sep             7 Units ▸  ONLY-clock    13 sep
-;;                    8 Weather  ONLY-clock    14 Hard reset
-;;                    9 sep      ONLY-panel    15 About
+;;   0 Move            4 AM/PM ▸    ONLY-clock  11 Panel ▸      ONLY-panel
+;;   1 Resize          5 Theme ▸    BOTH        12 Side ▸       ONLY-panel
+;;   2 Reset           6 Theme editor BOTH        13 Panel gap    ONLY-panel
+;;   3 sep             7 sep        ONLY-clock  14 sep
+;;                    8 Units ▸    ONLY-clock  15 Hard reset
+;;                    9 Weather    ONLY-clock  16 About
+;;                   10 sep        ONLY-panel
 ;;
 ;; The context-filtered rows are wrapped in plain :visible boxes so the
 ;; hidden rows COLLAPSE from the column (a bare :visible eventbox keeps its
 ;; layout slot) - the ROW indices for the picker-pane math are therefore the
 ;; COLLAPSED (visible) positions: in the clock column Theme is row 5, in the
-;; panel column row 4 (AM/PM hidden) with Panel=6 / Side=7. These are
+;; panel column row 4 (AM/PM hidden) with Panel=7 / Side=8. These are
 ;; duplicated in CONTEXT_ROWS in scripts/widgets/submenu.py, which MUST stay
 ;; in sync. The hover-only rows (AM/PM, Theme, Units, Panel, Side) open
 ;; scripts/widgets/submenu.py --item <key> --widget ${widget} when the
 ;; pointer enters; submenu.py scopes its row-offset math to the open widget's
-;; menu. Every non-submenu row (Move / Resize / Reset / Weather / Panel gap /
-;; Hard reset / About) runs scripts/widgets/submenu_hide.py on hover so a
-;; still-open picker pane does NOT stick (these rows are eventboxes -- eww
-;; buttons never fire :onhover). The submenu lives exactly as long as this
-;; menu — every dismissal path (option click, outside click, ESC, another
+;; menu. Every non-submenu row (Move / Resize / Reset / Theme editor / Weather /
+;; Panel gap / Hard reset / About) runs scripts/widgets/submenu_hide.py on
+;; hover so a still-open picker pane does NOT stick (these rows are eventboxes
+;; -- eww buttons never fire :onhover). The submenu lives exactly as long as
+;; this menu — every dismissal path (option click, outside click, ESC, another
 ;; right-click) goes through close_popup.py. Move / Resize / Reset keep their
 ;; click behavior. Slower actions are nohup-backgrounded to keep the click
 ;; instant, exactly like Move / Resize.
@@ -351,6 +353,17 @@
               :onhover "../scripts/widgets/submenu.py --item appearance --widget ${widget}"
       (box :class "ctx-btn-box"
            (label :text {"Theme: " + config.appearance_name + " ▸"})))
+    ;; Theme editor (both widgets): opens the draggable theme editor (theme_ctl.py)
+    ;; CENTERED ON this monitor - like the About dialog / Weather settings.
+    ;; Editing is draft-only; Save writes the WHOLE appearance map inline into
+    ;; config.local.yaml (the shipped theme files stay untouched; the watcher
+    ;; applies it live), Save As creates a new theme under
+    ;; assets/themes/appearance/; backgrounded (nohup ... &) so the click
+    ;; returns instantly.
+    (eventbox :class "ctx-btn"
+              :onclick "nohup ../scripts/move/theme_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
+              :onhover "../scripts/widgets/submenu_hide.py"
+      (box :class "ctx-btn-box" (label :text "Theme editor")))
     (box :visible {widget == "clock"}
       (label :class "ctx-sep" :text "───────────────────────────"))
     ;; Units (clock only): metric <-> imperial; picking one also refreshes

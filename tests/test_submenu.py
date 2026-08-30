@@ -73,12 +73,12 @@ def _load_measured(tmp_path, monkeypatch, payload):
 
 def test_measured_tops_override_model_pitch(tmp_path, monkeypatch):
     # A desktop whose ctx-menu rows really render at a uniform 38px pitch.
-    tops = [int(9 + 38 * i) for i in range(12)]
+    tops = [int(9 + 38 * i) for i in range(13)]
     _load_measured(tmp_path, monkeypatch, {"tops": tops, "pitch": 38, "pad": 7})
     assert submenu.measured_tops() == tuple(tops)
     assert submenu.row_top("clock", 0) == 9
     assert submenu.row_top("clock", 4) == 161          # AM/PM row
-    assert submenu.row_top("clock", 11) == 427
+    assert submenu.row_top("clock", 12) == 465         # About row
     assert submenu.pane_top_for("appearance", "clock") == tops[5]
 
 
@@ -89,9 +89,9 @@ def test_measured_tops_rejected_when_malformed(tmp_path, monkeypatch):
     assert submenu.row_top("clock", 4) == submenu.MENU_PAD + sum(
         submenu.row_heights("clock")[:4]
     )
-    _load_measured(tmp_path, monkeypatch, {"tops": list(range(12)), "pad": 3})
+    _load_measured(tmp_path, monkeypatch, {"tops": list(range(13)), "pad": 3})
     assert submenu.measured_tops() is None
-    _load_measured(tmp_path, monkeypatch, {"tops": list("x" * 12), "pad": 7})
+    _load_measured(tmp_path, monkeypatch, {"tops": list("x" * 13), "pad": 7})
     assert submenu.measured_tops() is None
     _load_measured(tmp_path, monkeypatch, {"appearance": 4})
     assert submenu.measured_tops() is None
@@ -169,16 +169,17 @@ def test_pane_top_offsets_follow_row_order():
 def test_row_sequences_match_collapsed_column():
     # The sequences mirror widget_ctx_menu as it renders COLLAPSED (the
     # hidden :visible wrappers take no space - see the yuck). Clock:
-    # Move Resize Reset | sep | AM/PM Theme sep Units Weather | sep |
-    # Hard reset About. Panel drops the clock-only rows and adds its own.
+    # Move Resize Reset | sep | AM/PM Theme Theme editor sep Units Weather |
+    # sep | Hard reset About. Panel drops the clock-only rows and adds its
+    # own after its Theme-editor row.
     assert submenu.ROW_SEQUENCES["clock"] == ["B", "B", "B", "S",
-                                              "B", "B", "S", "B", "B",
+                                              "B", "B", "B", "S", "B", "B",
                                               "S", "B", "B"]
     assert submenu.ROW_SEQUENCES["panel"] == ["B", "B", "B", "S",
-                                              "B", "S", "B", "B", "B",
+                                              "B", "B", "S", "B", "B", "B",
                                               "S", "B", "B"]
     for widget, seq in submenu.ROW_SEQUENCES.items():
-        assert len(seq) == submenu.VISIBLE_ROW_COUNTS[widget] == 12
+        assert len(seq) == submenu.VISIBLE_ROW_COUNTS[widget] == 13
         assert set(seq) <= {"B", "S"}          # every slot is a known row type
         assert seq[3] == "S"                   # the Always group separator sits
         assert seq[-3] == "S"                  # after row 3 and the last gap
@@ -203,23 +204,24 @@ def test_separators_are_shorter_than_buttons():
 def test_context_rows_match_collapsed_column():
     # These indices back the widget_ctx_menu column as it renders COLLAPSED
     # (the hidden :visible wrappers take no space - see the yuck). Clock
-    # shows AM/PM(4)+Theme(5)+sep(6)+Units(7); the panel menu DROPS the
-    # clock-only rows, so Theme is one row higher (4) and Panel/Side are 6/7.
+    # shows AM/PM(4)+Theme(5)+Theme editor(6)+sep(7)+Units(8); the panel menu
+    # DROPS the clock-only rows, so Theme is one row higher (4) and
+    # Panel/Side are 7/8.
     assert submenu.CONTEXT_ROWS["clock"]["appearance"] == 5
     assert submenu.CONTEXT_ROWS["panel"]["appearance"] == 4
     assert submenu.CONTEXT_ROWS["clock"]["hour_format"] == 4
-    assert submenu.CONTEXT_ROWS["clock"]["units"] == 7
-    assert submenu.CONTEXT_ROWS["panel"]["panel_enabled"] == 6
-    assert submenu.CONTEXT_ROWS["panel"]["panel_alignment"] == 7
+    assert submenu.CONTEXT_ROWS["clock"]["units"] == 8
+    assert submenu.CONTEXT_ROWS["panel"]["panel_enabled"] == 7
+    assert submenu.CONTEXT_ROWS["panel"]["panel_alignment"] == 8
     # each menu only carries its own rows; the union is the full picker set
     assert set(submenu.CONTEXT_ROWS["clock"]) == {"hour_format", "appearance", "units"}
     assert set(submenu.CONTEXT_ROWS["panel"]) == {"appearance", "panel_enabled",
                                                   "panel_alignment"}
     assert set(submenu.KEYS) == {"hour_format", "appearance", "units",
                                  "panel_enabled", "panel_alignment"}
-    # both menus report the same count (12 visible rows) -> the column height
+    # both menus report the same count (13 visible rows) -> the column height
     # is the same for both, even though the Theme row differs by one.
-    assert submenu.VISIBLE_ROW_COUNTS["clock"] == submenu.VISIBLE_ROW_COUNTS["panel"] == 12
+    assert submenu.VISIBLE_ROW_COUNTS["clock"] == submenu.VISIBLE_ROW_COUNTS["panel"] == 13
 
 
 def test_theme_row_offset_depends_on_widget_column():
@@ -247,7 +249,7 @@ def test_menu_content_height_matches_real_row_sum():
         int(sum(submenu.row_heights("clock")) + 2 * submenu.MENU_PAD)
     assert submenu.menu_content_height("panel") == \
         int(sum(submenu.row_heights("panel")) + 2 * submenu.MENU_PAD)
-    # both columns stack the same 12 rows -> the same column height
+    # both columns stack the same 13 rows -> the same column height
     assert submenu.menu_content_height("clock") == \
         submenu.menu_content_height("panel")
     assert submenu.menu_content_height() == submenu.menu_content_height("clock")

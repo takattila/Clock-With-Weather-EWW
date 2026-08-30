@@ -1,11 +1,12 @@
-# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 context menu & windows)
+# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor)
 
 Every ready-made appearance theme, captured on a 1920×1080 monitor —
-**42 themes: 9 style themes and 12 classic color themes, each in a fully
+**45 themes: 9 style themes and 12 classic color themes (each in a fully
 transparent base variant and a `-bg` variant with visible widget/panel
-backgrounds.** Pick any of them live from the right-click menu's Theme
-submenu — or use them as recipes for your own (see the WIKI's "Creating
-style themes" section).
+backgrounds) plus three new monochrome accents — green, grey and orange.**
+Pick any of them live from the right-click menu's Theme submenu — or use
+them as recipes for your own (see the WIKI's "Creating style themes"
+section).
 
 ## Overview
 
@@ -100,6 +101,15 @@ dark steel gradient panels.
 |---|---|
 | ![titanium](images/screenshots/theme-titanium.png) | ![titanium-bg](images/screenshots/theme-titanium-bg.png) |
 
+## New monochrome accent themes
+
+Three standalone accent themes (no `-bg` variant) covering the green /
+grey / orange spectrum of `config.local.yaml`'s `appearance`:
+
+| green | grey | orange |
+|---|---|---|
+| ![green](images/screenshots/theme-green.png) | ![grey](images/screenshots/theme-grey.png) | ![orange](images/screenshots/theme-orange.png) |
+
 ## Classic themes — light family
 
 Dark text on light/transparent backgrounds, in six accent colors.
@@ -160,10 +170,11 @@ display:
 
 Right-click quick settings: Move / Resize / Reset, hover submenus (AM/PM,
 Theme, Units, Panel, Side — the theme picker adapts its column count and
-flips to the left side of the menu near the right screen edge), Weather
-settings, Panel gap, Hard reset and About. The menu is a fixed width on
-every compositor, the picker never pops open by itself, and hovering any
-non-submenu row closes a still-open picker:
+flips to the left side of the menu near the right screen edge), **Edit
+theme** (opens the theme editor, see below), Weather settings, Panel gap,
+Hard reset and About. The menu is a fixed width on every compositor, the
+picker never pops open by itself, and hovering any non-submenu row closes a
+still-open picker:
 
 | Right click (no picker) | Theme picker |
 |---|---|
@@ -180,3 +191,29 @@ go):
 | ![Weather settings](images/screenshots/window-weather-settings.png) | ![Move / Resize](images/screenshots/window-move-resize.png) |
 | **Panel gap** | **About** |
 | ![Panel gap](images/screenshots/window-panel-gap.png) | ![About](images/screenshots/window-about.png) |
+
+## Theme editor (v4.0.0)
+
+"Theme editor" in the right-click menu opens the draggable theme editor,
+centered on the same monitor — every appearance field (theme, icon
+set/tint/opacity, fonts, background, per-chart colors, glow, panel
+background/gradient, corner radius) edited with a swatch, a hex entry or
+the screen eyedropper; Save writes it inline into `config.local.yaml`,
+Save As… creates a new theme:
+
+| Theme editor |
+|---|
+| ![Theme editor](images/screenshots/window-theme-editor.png) |
+
+### On-screen color picker — live Color preview (v4.0.0)
+
+"Pick" on any color field freezes the desktop under your pointer and shows
+a **live "Color preview"** — swatch, `#rrggbb` hex and a 6× magnifier — in
+the top-left corner of the screen you are sampling. The preview follows the
+pointer in real time (a background poll keeps it live on X11 too), rides
+along to whichever monitor the cursor lands on, and a click applies the
+color:
+
+| Color picker — live preview (over #ffa368) |
+|---|
+| ![Color picker preview](images/screenshots/color-picker-preview.png) |

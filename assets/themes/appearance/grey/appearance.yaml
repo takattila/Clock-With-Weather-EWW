@@ -1,0 +1,30 @@
+appearance:
+  theme: dark
+  icon:
+    set: monochrome
+    transparency:
+      light: 1.0
+      dark: 0.85
+    color:
+      dark: '#e8c4b8'
+  font:
+    face: Noto Sans
+    color:
+      light: '#f3d9ce'
+      dark: '#3d3846'
+    transparency:
+      light: 1.0
+      dark: 1.0
+    shadow:
+      color: '#5e5c64'
+      blur: 10
+  background:
+    transparency: 0.0
+    color: '#1f1418'
+  chart:
+    colors:
+      cpu: '#a99bb5'
+      memory: '#77767b'
+      net_down: '#9e8e8c'
+      net_up: '#9f7383'
+    glow: false

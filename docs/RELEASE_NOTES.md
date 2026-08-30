@@ -1,13 +1,121 @@
-# Clock-With-Weather-EWW — v3.1.1
+# Clock-With-Weather-EWW — v4.0.0
 
 **A beautiful, fully customizable clock & weather widget with a live system
 monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
 layer-shell) and also works on **X11**. Powered by the
 [OpenWeatherMap](https://openweathermap.org) API.
 
-> **Recommendation: v3.1.1** — the current recommended release. A small,
-> focused fix that keeps the right-click hover picker exactly aligned with the
-> menu row it belongs to.
+> **Recommendation: v4.0.0** — the current recommended release. Adds a
+> visual **Theme editor** to the right-click menu.
+
+**v4.0.0 adds a theme editor: theme every color without touching YAML.**
+"Theme editor" next to the Theme picker opens a draggable editor (centered on
+the same monitor) that edits every field an appearance definition can carry
+— theme, icon set/tint/transparency, fonts, background, per-chart colors,
+glow, panel background/gradient and the corner radius. Colors come from a
+native swatch, a hex entry or the **screen itself** (eyedropper: on X11 a
+direct cursor pick with a live magnifier; on Wayland a best-effort
+KDE + screenshot flow). **Save** writes the whole appearance inline into
+`config.local.yaml` (the shipped theme files stay untouched, the watcher
+applies it live); **Save As** creates a brand-new theme that appears in the
+Theme picker right away.
+
+---
+
+## What changed in v4.0.0
+
+### New: Theme editor
+
+- Right-click menu gains **Theme editor** (both the clock and the panel
+  column), opening `theme_ctl.py` → `theme_panel.py`: a 560-wide draggable
+  window centered on the monitor the menu was raised on, same session
+  mechanics as the Weather-settings form (draft-only, title-strip drag,
+  keyboard grab while typing, ESC / click-outside cancels).
+- **Adaptive window height + cross-monitor drag** (theme editor *and*
+  Weather settings): the window's height is capped to fit the **smallest
+  connected screen's usable height** (monitor height minus the taskbar, via
+  `_NET_WORKAREA`), so it can be placed on every monitor. On X11 the drag is
+  clamped to the **whole virtual desktop** (union of all monitors) instead of
+  the single monitor where it opened, so a window can be dragged from one
+  monitor to another; when the shorter height clips the form, the content
+  becomes scrollable (the theme editor already scrolled; the Weather form now
+  wraps its fields in a scrolled window too).
+- **Live theme preview** (`theme_preview.py`): the editor's new **Preview**
+  footer button applies the current draft to the live widget right away —
+  colors, fonts, radius, glow, panel and the re-tinted icon PNGs — **without
+  saving** (`config.local.yaml` stays untouched, so only **Save** makes it
+  permanent). The preview is generated from the in-memory draft via the shared
+  `theme.write_theme_files` helper and reloads eww directly (the watcher is
+  deliberately not involved, avoiding a reload loop). An un-saved preview
+  reverts to the original look on **Reset / Cancel / closing the editor**.
+- **Every appearance field** is editable: `theme`, `icon.set`,
+  `icon.transparency{light,dark}`, `icon.color{light,dark}` (tint),
+  `font.face`, `font.color`, `font.transparency`, `font.shadow{color,blur}`
+  (glow), `background{color,transparency}`, `chart.colors{cpu,memory,net,
+  up}` + `chart.glow`, `panel.background{color,transparency,gradient}` and
+  `system.corner_radius`.
+- **Color input three ways:** native GTK swatch, `#rrggbb` hex entry, and
+  on-screen **eyedropper** — on X11 a full-screen temporary capture + pointer
+  grab with a live hex readout and a 6× magnifier, applied on click; on
+  Wayland a best-effort fallback (KDE cursor position + grim /
+  gnome-screenshot sample in a confirmation dialog), with a graceful
+  message when neither is possible. A **palette strip** up top copies the
+  theme's own colors into the focused field.
+- **Save** (`save_inline_override`) commits the FULL normalized appearance
+  + `system.corner_radius` inline into the git-ignored `config.local.yaml`
+  (preserving every other key), so the shipped
+  `assets/themes/appearance/*` files stay untouched and the watcher reloads
+  the widget live.
+- **Save As…** (`save_as_theme`) asks for a name, writes a new minimalized
+  `assets/themes/appearance/<name>/appearance.yaml` (the same "omit the
+  trivial defaults" style the checked-in themes use) and activates it via
+  `config.local.yaml`, so it shows up in the Theme picker immediately.
+- **Child dialogs follow the editor** — the **Save As** name prompt and the
+  color chooser are **centered on the editor** and re-anchored whenever it is
+  dragged, clamped to the **whole virtual desktop** (like the editor itself),
+  so they come along to whichever monitor the editor lands on. The Save As
+  dialog also **opens and types reliably**: its constructor was fixed (a
+  `Gtk.MessageDialog.new` call that always raised a PyGObject `TypeError`,
+  making the prompt never appear), it now uses the same non-blocking
+  `response` + `present()` pattern as the color dialog, and it takes the
+  keyboard focus via `Gdk.keyboard_grab` exactly like the editor's own entry
+  fields (so the name is typed straight in; Enter saves).
+- **Reset** refills the form from the loaded source; **Cancel** discards.
+  Every commit is validated first (`#rrggbb`, 0–1 transparencies, blur /
+  radius bounds, single-line gradient, no quotes in the font name).
+- The context menu grows to **13 visible rows** per widget (17 markup rows);
+  the submenu-picker math and the row-measurer were updated to match.
+
+### Fixed
+
+- **The X11 eyedropper now actually shows its live "Color preview".** The
+  picker overlay used a stock GTK `POPUP` window, which this Cinnamon/X11
+  setup never composites over the desktop — the frozen snapshot, the swatch,
+  the hex readout and the magnifier simply did not appear ("clicking Pick
+  looked like the editor just closed"). It is now a borderless full-screen
+  `TOPLEVEL` (`override-redirect`, keep-above, skipped by the taskbar and
+  pager) that truly covers the virtual desktop, so the frozen capture and
+  the live readout render on X11.
+- **The preview follows the pointer live on X11, exactly like Wayland.** A
+  background poll thread (via `xdotool`) tracks the cursor and updates the
+  top-left "Color preview" swatch + hex even without constant motion events.
+  Wayland is untouched — its layer-shell overlay, its KDE-cursor polling and
+  its placement are unchanged.
+- **Multi-monitor:** the "Color preview" pins to the top-left of the screen
+  the cursor is currently on (not the virtual-desktop origin), so on a
+  side-by-side monitor setup the readout stays on the screen being sampled.
+
+### Upgrade from v3.1.1
+
+1. Pull / check out `v4.0.0`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Right-click a widget → **Theme editor**. Nothing else to do — your themes
+   and `config.local.yaml` keep working unchanged. The editor's own
+   `window-theme-editor.png` screenshot is in the README / SCREENSHOTS.
+
+---
+
+# Clock-With-Weather-EWW — v3.1.1
 
 **v3.1.1 fixes the hover picker alignment.** Every time the context menu opens
 it now measures its own real row positions and anchors the hover picker
