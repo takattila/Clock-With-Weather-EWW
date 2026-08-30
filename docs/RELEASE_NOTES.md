@@ -86,6 +86,25 @@ Theme picker right away.
 - The context menu grows to **13 visible rows** per widget (17 markup rows);
   the submenu-picker math and the row-measurer were updated to match.
 
+### Fixed
+
+- **The X11 eyedropper now actually shows its live "Color preview".** The
+  picker overlay used a stock GTK `POPUP` window, which this Cinnamon/X11
+  setup never composites over the desktop — the frozen snapshot, the swatch,
+  the hex readout and the magnifier simply did not appear ("clicking Pick
+  looked like the editor just closed"). It is now a borderless full-screen
+  `TOPLEVEL` (`override-redirect`, keep-above, skipped by the taskbar and
+  pager) that truly covers the virtual desktop, so the frozen capture and
+  the live readout render on X11.
+- **The preview follows the pointer live on X11, exactly like Wayland.** A
+  background poll thread (via `xdotool`) tracks the cursor and updates the
+  top-left "Color preview" swatch + hex even without constant motion events.
+  Wayland is untouched — its layer-shell overlay, its KDE-cursor polling and
+  its placement are unchanged.
+- **Multi-monitor:** the "Color preview" pins to the top-left of the screen
+  the cursor is currently on (not the virtual-desktop origin), so on a
+  side-by-side monitor setup the readout stays on the screen being sampled.
+
 ### Upgrade from v3.1.1
 
 1. Pull / check out `v4.0.0`.

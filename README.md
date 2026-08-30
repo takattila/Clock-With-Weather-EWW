@@ -183,6 +183,26 @@ one go**:
     </tr>
 </table>
 
+### Theme editor — on-screen color picker (v4.0.0)
+
+**Pick** on any color field opens a full-screen eyedropper: the desktop is
+frozen under your pointer and a **live "Color preview"** in the top-left
+corner of the screen you are sampling tracks the pixel under the cursor —
+the swatch, the `#rrggbb` hex readout and a **6× magnifier** follow the
+pointer in real time, on both X11 and Wayland (on X11 a background poll
+keeps the preview live). Click applies the color to the field. On a
+multi-monitor setup the preview rides along to whichever screen the cursor
+lands on.
+
+<table>
+    <tr>
+        <th>Screen eyedropper — live color preview (over #ffa368)</th>
+    </tr>
+    <tr>
+        <td><img src="./docs/images/screenshots/color-picker-preview.png"></td>
+    </tr>
+</table>
+
 ### Full desktop (main display)
 
 <table>
@@ -228,7 +248,10 @@ one go**:
   a draggable visual editor for every appearance field: theme, icon
   set/tint/opacity, fonts, background, per-chart colors, glow, panel
   background/gradient and corner radius. Colors come from a swatch, a hex
-  entry or the screen itself (eyedropper). **Preview** applies the current
+  entry or the screen itself (a full-screen eyedropper with a **live Color
+  preview** — swatch, hex and a 6× magnifier — pinned to the top-left of
+  the screen you are sampling and following the pointer in real time, on
+  X11 and Wayland alike). **Preview** applies the current
   draft to the live widget right away (colors, fonts, radius, glow, panel and
   the re-tinted icons) WITHOUT saving, so you can try looks before committing;
   the un-saved preview reverts on Reset / Cancel / closing the editor. Save

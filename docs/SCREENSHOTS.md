@@ -204,3 +204,16 @@ Save As… creates a new theme:
 | Theme editor |
 |---|
 | ![Theme editor](images/screenshots/window-theme-editor.png) |
+
+### On-screen color picker — live Color preview (v4.0.0)
+
+"Pick" on any color field freezes the desktop under your pointer and shows
+a **live "Color preview"** — swatch, `#rrggbb` hex and a 6× magnifier — in
+the top-left corner of the screen you are sampling. The preview follows the
+pointer in real time (a background poll keeps it live on X11 too), rides
+along to whichever monitor the cursor lands on, and a click applies the
+color:
+
+| Color picker — live preview (over #ffa368) |
+|---|
+| ![Color picker preview](images/screenshots/color-picker-preview.png) |
