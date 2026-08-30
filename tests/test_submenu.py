@@ -79,7 +79,7 @@ def test_measured_tops_override_model_pitch(tmp_path, monkeypatch):
     assert submenu.measured_tops() == tuple(tops)
     assert submenu.row_top("clock", 0) == 9
     assert submenu.row_top("clock", 4) == 161          # AM/PM row
-    assert submenu.row_top("clock", 10) == 389         # Rendszer row
+    assert submenu.row_top("clock", 10) == 389         # System row
     assert submenu.row_top("clock", 13) == 503         # About row
     assert submenu.pane_top_for("appearance", "clock") == tops[5]
 
@@ -173,9 +173,9 @@ def test_pane_top_offsets_follow_row_order():
 def test_row_sequences_match_collapsed_column():
     # The sequences mirror widget_ctx_menu as it renders COLLAPSED (the
     # hidden :visible wrappers take no space - see the yuck). Clock:
-    # Move Resize Reset | sep | AM/PM Theme Theme editor sep Units Weather
-    # Rendszer | sep | Hard reset About (14 rows). Panel drops the clock-only
-    # rows and adds its own after its Theme-editor row (13 rows).
+    # Move Resize Reset | sep | AM/PM Theme Theme editor sep Weather settings
+    # Units System | sep | Hard reset About (14 rows). Panel drops the
+    # clock-only rows and adds its own after its Theme-editor row (13 rows).
     assert submenu.ROW_SEQUENCES["clock"] == ["B", "B", "B", "S",
                                               "B", "B", "B", "S", "B", "B", "B",
                                               "S", "B", "B"]
@@ -210,13 +210,13 @@ def test_separators_are_shorter_than_buttons():
 def test_context_rows_match_collapsed_column():
     # These indices back the widget_ctx_menu column as it renders COLLAPSED
     # (the hidden :visible wrappers take no space - see the yuck). Clock
-    # shows AM/PM(4)+Theme(5)+Theme editor(6)+sep(7)+Units(8)+Weather(9)+
-    # Rendszer(10); the panel menu DROPS the clock-only rows, so Theme is one
-    # row higher (4) and Panel/Side are 7/8.
+    # shows AM/PM(4)+Theme(5)+Theme editor(6)+sep(7)+Weather settings(8)+
+    # Units(9)+System(10); the panel menu DROPS the clock-only rows, so Theme
+    # is one row higher (4) and Panel/Side are 7/8.
     assert submenu.CONTEXT_ROWS["clock"]["appearance"] == 5
     assert submenu.CONTEXT_ROWS["panel"]["appearance"] == 4
     assert submenu.CONTEXT_ROWS["clock"]["hour_format"] == 4
-    assert submenu.CONTEXT_ROWS["clock"]["units"] == 8
+    assert submenu.CONTEXT_ROWS["clock"]["units"] == 9
     assert submenu.CONTEXT_ROWS["clock"]["progress_mode"] == 10
     assert submenu.CONTEXT_ROWS["panel"]["panel_enabled"] == 7
     assert submenu.CONTEXT_ROWS["panel"]["panel_alignment"] == 8
@@ -228,7 +228,7 @@ def test_context_rows_match_collapsed_column():
     assert set(submenu.KEYS) == {"hour_format", "appearance", "units",
                                  "panel_enabled", "panel_alignment",
                                  "progress_mode"}
-    # clock stacks one extra row (Rendszer) over the panel column
+    # clock stacks one extra row (System) over the panel column
     assert submenu.VISIBLE_ROW_COUNTS["clock"] == 14
     assert submenu.VISIBLE_ROW_COUNTS["panel"] == 13
 
@@ -258,7 +258,7 @@ def test_menu_content_height_matches_real_row_sum():
         int(sum(submenu.row_heights("clock")) + 2 * submenu.MENU_PAD)
     assert submenu.menu_content_height("panel") == \
         int(sum(submenu.row_heights("panel")) + 2 * submenu.MENU_PAD)
-    # clock stacks one extra row (Rendszer) -> its column is taller than panel
+    # clock stacks one extra row (System) -> its column is taller than panel
     assert submenu.menu_content_height("clock") > \
         submenu.menu_content_height("panel")
     assert submenu.menu_content_height() == submenu.menu_content_height("clock")

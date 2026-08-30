@@ -6,7 +6,7 @@
 ;;   2. panel_window    -> System monitor panel (CPU / MEMORY / NET DOWN / NET UP)
 ;;   3. ctx_menu        -> right-click quick-settings menu (Move / Resize /
 ;;                         Reset / AM-PM switch / Theme / Theme editor / Units /
-;;                         Weather / Rendszer (text-vs-progress bars) / Panel
+;;                         Weather / System (text-vs-progress bars) / Panel
 ;;                         on-off / Side / Panel gap / Hard reset / About)
 ;;
 ;; The Move/Resize rectangle + the GTK control panels (Move/Resize, Panel
@@ -154,7 +154,7 @@
       ;; same as the weather description/MIN-MAX-feels rows).
       ;;
       ;; Two mutually-exclusive views, selected by config.progress_mode (toggled
-      ;; live from the clock's right-click menu -> Rendszer row):
+      ;; live from the clock's right-click menu -> System row):
       ;;   text     -> the classic used/total string table below
       ;;   progress -> percentage progress bars (labels + bar + % label per
       ;;               metric). Columns at x=16/66/164 (left block: HDD/CPU) and
@@ -348,10 +348,10 @@
 ;;   1 Resize          5 Theme ▸           BOTH         Side ▸       ONLY-panel
 ;;   2 Reset           6 Theme editor      BOTH         Panel gap    ONLY-panel
 ;;   3 sep             7 sep               ONLY-clock   sep
-;;                    8 Units ▸           ONLY-clock   Hard reset
-;;                    9 Weather            ONLY-clock   About
-;;                   10 Rendszer ▸        ONLY-clock
-;;                   11 sep               ONLY-panel
+;;                    8 Weather settings   ONLY-clock   Hard reset
+;;                    9 Units ▸            ONLY-clock   About
+;;                   10 System ▸           ONLY-clock
+;;                   11 sep                ONLY-panel
 ;;
 ;; The context-filtered rows are wrapped in plain :visible boxes so the
 ;; hidden rows COLLAPSE from the column (a bare :visible eventbox keeps its
@@ -359,7 +359,7 @@
 ;; COLLAPSED (visible) positions: in the clock column Theme is row 5, in the
 ;; panel column row 4 (AM/PM hidden) with Panel=7 / Side=8. These are
 ;; duplicated in CONTEXT_ROWS in scripts/widgets/submenu.py, which MUST stay
-;; in sync. The hover-only rows (AM/PM, Theme, Units, Rendszer, Panel, Side)
+;; in sync. The hover-only rows (AM/PM, Theme, Units, System, Panel, Side)
 ;; open scripts/widgets/submenu.py --item <key> --widget ${widget} when the
 ;; pointer enters; submenu.py scopes its row-offset math to the open widget's
 ;; menu. Every non-submenu row (Move / Resize / Reset / Theme editor / Weather /
@@ -441,13 +441,6 @@
       (box :class "ctx-btn-box" (label :text "Theme editor")))
     (box :visible {widget == "clock"}
       (label :class "ctx-sep" :text "───────────────────────────"))
-    ;; Units (clock only): metric <-> imperial; picking one also refreshes
-    ;; weather_info instantly so °C/°F does not wait for the 10-minute defpoll.
-    (box :visible {widget == "clock"}
-      (eventbox :class "ctx-btn"
-                :onhover "../scripts/widgets/submenu.py --item units --widget ${widget}"
-        (box :class "ctx-btn-box"
-             (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"}))))
     ;; Weather settings (clock only): city / language_code / lang / units /
     ;; api_url / api_key (the draggable GTK form opens CENTERED ON this
     ;; monitor - like the About dialog). Editing is draft-only; the Save
@@ -461,7 +454,14 @@
       (eventbox :class "ctx-btn"
                 :onclick "nohup ../scripts/move/weather_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
                 :onhover "../scripts/widgets/submenu_hide.py"
-        (box :class "ctx-btn-box" (label :text "Weather"))))
+        (box :class "ctx-btn-box" (label :text "Weather settings"))))
+    ;; Units (clock only): metric <-> imperial; picking one also refreshes
+    ;; weather_info instantly so °C/°F does not wait for the 10-minute defpoll.
+    (box :visible {widget == "clock"}
+      (eventbox :class "ctx-btn"
+                :onhover "../scripts/widgets/submenu.py --item units --widget ${widget}"
+        (box :class "ctx-btn-box"
+             (label :text {config.units == "imperial" ? "Units: °F ▸" : "Units: °C ▸"}))))
     ;; System data mode (clock only): system.progress_mode text <-> progress.
     ;; "text" keeps the classic used/total string table, "progress" shows
     ;; percentage progress bars for HDD / RAM / CPU / SWAP in the same spot.
@@ -469,7 +469,7 @@
       (eventbox :class "ctx-btn"
                 :onhover "../scripts/widgets/submenu.py --item progress_mode --widget ${widget}"
         (box :class "ctx-btn-box"
-             (label :text {config.progress_mode == "progress" ? "Rendszer: sávok ▸" : "Rendszer: szöveg ▸"}))))
+             (label :text {config.progress_mode == "progress" ? "System: Progress bar ▸" : "System: Text ▸"}))))
     (box :visible {widget == "panel"}
       (label :class "ctx-sep" :text "───────────────────────────"))
     ;; Panel visibility (panel only): panel.enabled shown / hidden.
@@ -679,7 +679,7 @@
 
 ;; ===========================================================================
 ;; Hover submenu: value picker for the selectable context-menu rows (AM/PM,
-;; Theme, Units, Rendszer, Panel, Side). Opened by scripts/widgets/submenu.py
+;; Theme, Units, System, Panel, Side). Opened by scripts/widgets/submenu.py
 ;; next to the hovered row; geometry and contents arrive via --arg / eww update
 ;; at hover time. Not focusable: it is pointer-driven only, the keyboard daemon
 ;; keeps handling ESC for the whole popup stack.
