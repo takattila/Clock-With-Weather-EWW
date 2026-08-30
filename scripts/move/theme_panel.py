@@ -37,9 +37,10 @@ redirect so it floats ABOVE the editor and the click-outside overlay), a hex
 entry and an on-screen eyedropper ("Pick"). On X11 the picker grabs the pointer and
 wins: a full-screen capture is taken once, an overlay follows the cursor with
 a live hex readout and the picked pixel is applied on click. On Wayland there
-is no global grab, so the picker degrades to a best-effort KDE+capture flow
-(workarea.kde_cursor + grim/gnome-screenshot sampling into a confirmation
-window); when neither is available a message explains the fallback.
+is no global grab, so the cursor position is polled through the KWin scripting
+API (workarea.kde_cursor) on a background thread -- so the magnifier/readout
+track the real pointer without freezing the GTK main loop (kde_cursor blocks on
+subprocess + sleeps); clicking applies the color at the tracked position.
 
 The window mechanics mirror scripts/move/weather_panel.py exactly: draggable
 title strip, override-redirect toplevel (X11) / layer-shell OVERLAY (Wayland),
@@ -70,6 +71,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 
 try:
     import cairo  # for cr.select_font_face constants
@@ -674,6 +677,8 @@ class ThemePanel:
         self.color_fields = {}    # color key -> ColorField
         self.active_field = None  # last focused color field (swatch strip target)
         self.pick = None          # {"overlay":…, "raw":…} while picking
+        self._pick_poll_stop = False
+        self._pick_poll_thread = None  # background KWin-cursor poll while picking
 
         # Absolute screen origin of the target monitor (drag clamp, X11).
         self.mon_ox = 0
@@ -1116,6 +1121,17 @@ class ThemePanel:
             self.dropdown_open = None
         self.raise_above()
 
+    def _close_child(self, win):
+        """Destroy a floated child dialog (color picker, Save As…). Destroying
+        fires the widget's "destroy" signal, which runs _child_destroyed and
+        clears self.child/raise_above -- unlike _child_destroyed alone, which
+        only clears the reference and leaves the dialog on screen."""
+        try:
+            win.destroy()
+        except Exception:
+            if getattr(self, "child", None) is win:
+                self.child = None
+
     # -- child windows (Option A: the color dialog, dropdowns and the Save As
     #    dialog all float ABOVE the editor and the dismiss overlay, exactly
     #    like the editor itself, so nothing can render below or be eaten by
@@ -1213,9 +1229,9 @@ class ThemePanel:
         btn_ok.get_style_context().add_class("save")
         btn_ok.connect("clicked",
                        lambda *_: self._color_dialog_ok(field, color_w))
-        btn_cancel = Gtk.Button.new_with_label("Mégsem")
+        btn_cancel = Gtk.Button.new_with_label("Cancel")
         btn_cancel.get_style_context().add_class("close")
-        btn_cancel.connect("clicked", lambda *_: self._child_destroyed(dialog))
+        btn_cancel.connect("clicked", lambda *_: self._close_child(dialog))
         action_box.pack_start(btn_cancel, True, True, 0)
         action_box.pack_start(btn_ok, True, True, 0)
         box.pack_start(action_box, False, False, 6)
@@ -1539,9 +1555,9 @@ class ThemePanel:
         box.pack_start(entry, False, False, 0)
 
         action_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
-        btn_cancel = Gtk.Button.new_with_label("Mégsem")
+        btn_cancel = Gtk.Button.new_with_label("Cancel")
         btn_cancel.get_style_context().add_class("close")
-        btn_cancel.connect("clicked", lambda *_: self._child_destroyed(dialog))
+        btn_cancel.connect("clicked", lambda *_: self._close_child(dialog))
         btn_ok = Gtk.Button.new_with_label("Save As")
         btn_ok.get_style_context().add_class("save")
         btn_ok.set_can_default(True)
@@ -1693,6 +1709,20 @@ class ThemePanel:
     def _pick_motion(self, da, event):
         if not self.pick:
             return False
+        if WAYLAND:
+            # The layer-shell overlay sits on the editor's monitor and DOES get
+            # motion events (no grab needed while the pointer is over it). Map
+            # the surface-local coords to the captured (global) pixbuf space via
+            # the monitor origin so the magnifier tracks the pointer live like
+            # on X11. The KWin-cursor poll remains a fallback only when no
+            # motion event is arriving (see _pick_apply_cursor).
+            x = int(event.x) + self.mon_ox
+            y = int(event.y) + self.mon_oy
+            self.pick["x"], self.pick["y"] = x, y
+            self.pick["rgb"] = self._pick_sample(x, y)
+            self.pick["motion_ts"] = time.monotonic()
+            da.queue_draw()
+            return False
         self.pick["x"] = int(event.x_root)
         self.pick["y"] = int(event.y_root)
         rgb = self._pick_sample(self.pick["x"], self.pick["y"])
@@ -1781,7 +1811,17 @@ class ThemePanel:
             return False
         if self._color_applied:
             return False
-        rgb = self._pick_sample(event.x_root, event.y_root)
+        if WAYLAND:
+            # Motion events on the overlay keep the tracked position live; use
+            # it directly (no blocking kde_cursor() call on click). If no motion
+            # ever arrived, fall back to the polled KWin cursor once.
+            rgb = self.pick.get("rgb")
+            if not self.pick.get("motion_ts", 0):
+                pos = self._wa_kde_cursor()
+                if pos:
+                    rgb = self._pick_sample(int(pos[0]), int(pos[1]))
+        else:
+            rgb = self._pick_sample(event.x_root, event.y_root)
         field = getattr(self, "pick_field", None)
         self._pick_finish()
         if rgb is not None and field is not None:
@@ -1791,6 +1831,7 @@ class ThemePanel:
         return False
 
     def _pick_finish(self):
+        self._stop_pick_poll()
         try:
             Gdk.pointer_ungrab(Gdk.CURRENT_TIME)
         except Exception:
@@ -1808,7 +1849,16 @@ class ThemePanel:
         self.raise_above()
 
     def _pick_wayland(self):
-        """Best-effort capture flow (no global grab on Wayland)."""
+        """Best-effort capture flow (no global grab on Wayland).
+
+        The screen is captured once (spectacle / grim / gnome-screenshot), a
+        full-screen layer-shell OVERLAY shows the frozen capture with a live
+        magnifier + hex readout, and the GLOBAL cursor is polled through the KDE
+        KWin scripting API (workarea.kde_cursor) because without a pointer grab
+        the overlay gets no reliable pointer-motion events. On click the color
+        under the polled cursor is applied and the editor reappears. Without the
+        tools or a KDE cursor API it degrades to the swatch/hex entry.
+        """
         tool = None
         for candidate in ("spectacle", "grim", "gnome-screenshot"):
             if subprocess.run(["which", candidate], stdout=subprocess.DEVNULL,
@@ -1849,7 +1899,8 @@ class ThemePanel:
         w, h = screen.get_width(), screen.get_height()
         self.pick = {"raw": raw_pixbuf(pixbuf),
                      "bg": pixbuf,
-                     "overlay": None, "x": 0, "y": 0, "rgb": None}
+                     "overlay": None, "x": 0, "y": 0, "rgb": None,
+                     "motion_ts": 0}
         self.win.hide()
         overlay = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
         overlay.set_decorated(False)
@@ -1864,8 +1915,12 @@ class ThemePanel:
                 GtkLayerShell.set_anchor(overlay, GtkLayerShell.Edge.LEFT, True)
                 GtkLayerShell.set_anchor(overlay, GtkLayerShell.Edge.RIGHT, True)
                 GtkLayerShell.set_anchor(overlay, GtkLayerShell.Edge.BOTTOM, True)
+                display = Gdk.Display.get_default()
+                if display is not None and self.monitor < display.get_n_monitors():
+                    GtkLayerShell.set_monitor(
+                        overlay, display.get_monitor(self.monitor))
                 GtkLayerShell.set_keyboard_mode(
-                    overlay, GtkLayerShell.KeyboardMode.ON_FOCUS)
+                    overlay, GtkLayerShell.KeyboardMode.ON_DEMAND)
             except Exception:
                 pass
         da = Gtk.DrawingArea.new()
@@ -1882,96 +1937,78 @@ class ThemePanel:
         overlay.present()
         self.pick["overlay"] = overlay
         da.queue_draw()
+        # Poll the KWin cursor on a background thread so the magnifier/readout
+        # follow the pointer without freezing the GTK main loop (kde_cursor()
+        # blocks on subprocess + sleeps). Updates are applied on the main loop.
+        self._start_pick_poll()
 
-    def _pick_wayland_poll(self, overlay):
+    def _wa_kde_cursor(self):
+        """Global pointer (x, y) via the KDE KWin scripting API, or None."""
+        try:
+            import workarea as _wa
+            return _wa.kde_cursor()
+        except Exception:
+            return None
+
+    def _start_pick_poll(self):
+        self._stop_pick_poll()
+        self._pick_poll_stop = False
+        self._pick_poll_thread = threading.Thread(
+            target=self._pick_poll_worker, daemon=True)
+        self._pick_poll_thread.start()
+
+    def _pick_poll_worker(self):
+        """Background thread: poll the KWin cursor and ship updates to the
+        main loop. Running kde_cursor() (which blocks on subprocess + sleeps)
+        here keeps the GTK main loop free to redraw the magnifier live."""
+        while not self._pick_poll_stop:
+            pos = self._wa_kde_cursor()
+            if self._pick_poll_stop:
+                break
+            if pos and self.pick is not None:
+                x, y = int(pos[0]), int(pos[1])
+                if (x != self.pick.get("x") or y != self.pick.get("y")
+                        or self.pick.get("rgb") is None):
+                    GLib.idle_add(self._pick_apply_cursor, x, y)
+            time.sleep(0.05)
+
+    def _pick_apply_cursor(self, x, y):
+        """Main-thread: update the tracked cursor position + rgb and redraw.
+
+        Only applied when the overlay is NOT receiving live motion events (the
+        poll is a fallback), so the fast motion-driven tracking is never
+        overwritten by the slower KWin-cursor poll (which would stutter).
+        """
         if self.pick is None:
             return False
-        pos = self.pick_pos() if self.pick_pos else None
-        if not pos:
-            return True
-        x, y = int(pos[0]), int(pos[1])
-        # Only update preview when cursor position actually changes
-        if x == self.pick.get("x") and y == self.pick.get("y"):
-            return True
-        rgb = self._pick_sample(x, y)
-        self.pick["rgb"] = rgb
-        self.pick["x"], self.pick["y"] = x, y
-        if rgb is not None:
-            self.pick_label.set_text("#%02x%02x%02x" % rgb)
-            self.pick_confirm.set_sensitive(True)
-            self.pick_da.queue_draw()
-        return True
-
-    def _pick_wayland_draw(self, da, cr):
-        rgb = self.pick.get("rgb") if self.pick else None
-        if rgb is None:
+        if self.pick.get("motion_ts", 0) and \
+                time.monotonic() - self.pick["motion_ts"] < 0.3:
             return False
-        r, g, b = rgb
-        w = da.get_allocated_width()
-        h = da.get_allocated_height()
-        # Color swatch preview
-        cr.set_source_rgb(r / 255.0, g / 255.0, b / 255.0)
-        cr.rectangle(0, 0, w, h)
-        cr.fill()
-        cr.set_source_rgb(0, 0, 0)
-        cr.set_line_width(1)
-        cr.rectangle(0, 0, w, h)
-        cr.stroke()
-        # Hex label on top of swatch
-        ink = (0, 0, 0) if (0.299 * r + 0.587 * g + 0.114 * b) > 140 else (255, 255, 255)
-        cr.set_source_rgb(*(v / 255.0 for v in ink))
+        self.pick["x"], self.pick["y"] = x, y
+        self.pick["rgb"] = self._pick_sample(x, y)
         try:
-            cr.select_font_face(
-                "Sans",
-                getattr(cairo, "FONT_SLANT_NORMAL", 0) if cairo else 0,
-                getattr(cairo, "FONT_WEIGHT_BOLD", 1) if cairo else 1)
+            da = self.pick["overlay"].get_children()[0]
+            da.queue_draw()
         except Exception:
             pass
-        cr.set_font_size(11)
-        cr.move_to(4, h - 4)
-        cr.show_text("#%02x%02x%02x" % rgb)
         return False
 
-    def _pick_wayland_motion(self, da, event):
-        if self.pick is None:
-            return False
-        pos = self.pick_pos() if self.pick_pos else None
-        if not pos:
-            return True
-        x, y = int(pos[0]), int(pos[1])
-        rgb = self._pick_sample(x, y)
-        if rgb is not None and rgb != self.pick.get("rgb"):
-            self.pick["rgb"] = rgb
-            self.pick["x"], self.pick["y"] = x, y
-            self.pick_label.set_text("#%02x%02x%02x" % rgb)
-            self.pick_confirm.set_sensitive(True)
-            self.pick_da.queue_draw()
-        return False
-
-    def _pick_wayland_release(self, da, event):
-        if self.pick is None or event.button != 1:
-            return False
-        if self._color_applied:
-            return False
-        rgb = self.pick.get("rgb")
-        field = getattr(self, "pick_field", None) or self.active_field
-        self._pick_finish()
-        if rgb is not None and field is not None:
-            field.set_hex(rgb_hex(*rgb))
-            self.set_status("")
-        self._color_applied = True
-        return False
-
-    def _pick_wayland_confirm(self, *_):
-        rgb = self.pick.get("rgb") if self.pick else None
-        field = getattr(self, "pick_field", None) or self.active_field
-        self._pick_finish()
-        if rgb is not None and field is not None:
-            field.set_hex(rgb_hex(*rgb))
-            self.set_status("")
+    def _stop_pick_poll(self):
+        self._pick_poll_stop = True
+        thr = getattr(self, "_pick_poll_thread", None)
+        if thr is not None:
+            thr.join(timeout=0.5)
+            self._pick_poll_thread = None
 
     def tick(self):
         if not session_active():
+            # While picking the editor is hidden and the full-screen picker
+            # overlay owns the click, so losing the session there (e.g. a click
+            # that for a moment lands on a dismiss layer) must neither quit the
+            # editor nor lose the color being picked. The picker itself cancels
+            # on ESC / its own click; only close when truly idle.
+            if self.pick is not None:
+                return True
             self._revert_preview()
             Gtk.main_quit()
             return False
@@ -1980,7 +2017,14 @@ class ThemePanel:
             self._raise_child(child)
         else:
             self.raise_above()
-        self._restack_after_reload()
+        # Do NOT call _restack_after_reload() every tick: it re-asserts the
+        # layer-shell margins (set_position / _child_move) on the editor and
+        # any open child dialog (Save As) each 250 ms, which on Wayland/KDE
+        # keeps re-placing the window so the modal visibly trembles/jumps -- and
+        # its win.present() re-shows the editor while the picker has hidden it.
+        # The re-stack is only needed once, right after an `eww reload`
+        # (preview), and is already scheduled as a one-shot from
+        # _spawn_preview_worker / _revert_preview.
         return True
 
     @staticmethod
