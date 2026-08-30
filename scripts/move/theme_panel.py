@@ -1195,8 +1195,13 @@ class ThemePanel:
             except Exception:
                 pass
         else:
+            # X11: float the dialog above the override-redirect editor and the
+            # dismiss overlay exactly like the editor itself, otherwise it
+            # renders behind them and cannot be used.
             dialog.set_keep_above(True)
+            dialog.connect("realize", self._child_override_redirect)
         dialog.connect("destroy", lambda *_: self._child_destroyed(dialog))
+        dialog.connect("key-press-event", self.on_key_press)
         color_w = Gtk.ColorChooserWidget.new()
         color_w.set_use_alpha(False)
         if h:
@@ -1487,73 +1492,128 @@ class ThemePanel:
         if not ok:
             self.set_status(msg)
             return False
-        dialog = Gtk.MessageDialog(
-            parent=None, modal=True,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.OK_CANCEL,
-            text="Save theme as…")
+        if getattr(self, "child", None) is not None:
+            return False
+
+        # Custom child window (not a native Gtk.MessageDialog): a modal,
+        # WM-managed dialog cannot work on top of the override-redirect editor
+        # and grabs the modal keyboard grab, which froze the whole editor on
+        # X11. This floats above the editor exactly like the color dialog, so
+        # it behaves identically on X11 and Wayland (the two differ only in
+        # how the window is made to float and how the entry gets the keyboard).
+        dialog = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
         dialog.set_title("Save theme as…")
+        dialog.set_resizable(False)
+        dialog.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        dialog.set_decorated(False)
         if WAYLAND:
             try:
                 GtkLayerShell.init_for_window(dialog)
                 GtkLayerShell.set_layer(dialog, GtkLayerShell.Layer.OVERLAY)
                 GtkLayerShell.set_keyboard_mode(
                     dialog, GtkLayerShell.KeyboardMode.ON_DEMAND)
+                GtkLayerShell.set_anchor(dialog, GtkLayerShell.Edge.TOP, True)
+                GtkLayerShell.set_anchor(dialog, GtkLayerShell.Edge.LEFT, True)
             except Exception:
                 pass
         else:
+            # X11: float above the override-redirect editor (and the dismiss
+            # overlay) like the editor itself; the keyboard is grabbed below
+            # so the name entry still gets the typed keys.
             dialog.set_keep_above(True)
+            dialog.connect("realize", self._child_override_redirect)
+
+        box = Gtk.Box.new(Gtk.Orientation.VERTICAL, 8)
+        box.set_margin_start(14)
+        box.set_margin_end(14)
+        box.set_margin_top(14)
+        box.set_margin_bottom(14)
+
+        label = Gtk.Label.new("Save theme as…")
+        label.set_halign(Gtk.Align.START)
+        box.pack_start(label, False, False, 0)
+
         entry = Gtk.Entry.new()
         entry.set_placeholder_text("theme-name (rose-gold, my-pastel, …)")
         entry.set_activates_default(True)
-        area = dialog.get_content_area()
-        area.pack_start(entry, True, True, 6)
-        dialog.set_default_response(Gtk.ResponseType.OK)
-        dialog.connect("response",
-                       lambda d, r: self._save_as_response(d, r, entry, draft))
-        dialog.connect("destroy", lambda *_: self._child_destroyed(dialog))
+        box.pack_start(entry, False, False, 0)
+
+        action_box = Gtk.Box.new(Gtk.Orientation.HORIZONTAL, 6)
+        btn_cancel = Gtk.Button.new_with_label("Mégsem")
+        btn_cancel.get_style_context().add_class("close")
+        btn_cancel.connect("clicked", lambda *_: self._child_destroyed(dialog))
+        btn_ok = Gtk.Button.new_with_label("Save As")
+        btn_ok.get_style_context().add_class("save")
+        btn_ok.set_can_default(True)
+        btn_ok.connect("clicked",
+                       lambda *_: self._save_as_ok(dialog, entry, draft))
+        dialog.set_default(btn_ok)
+        action_box.pack_start(btn_cancel, True, True, 0)
+        action_box.pack_start(btn_ok, True, True, 0)
+        box.pack_start(action_box, False, False, 6)
+        dialog.add(box)
+
+        def on_destroy(win, *_):
+            # Release the X11 keyboard grab the name entry held, then treat it
+            # as any other child (clear self.child, re-raise the editor).
+            if not WAYLAND:
+                try:
+                    Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
+                except Exception:
+                    pass
+            self._child_destroyed(win)
+
+        dialog.connect("destroy", on_destroy)
+        dialog.connect("key-press-event", self.on_key_press)
         self.child = dialog
         dialog.show_all()
         GLib.idle_add(self._child_move, dialog)
         dialog.present()
         entry.grab_focus()
-        if WAYLAND:
-            self._grab_dialog_keyboard(dialog)
+        self._grab_dialog_keyboard(dialog)
         return False
 
     def _grab_dialog_keyboard(self, dialog):
-        """Give the dialog the X keyboard focus, exactly like the editor does
-        (it is override-redirect, so a plain present() cannot steer the WM)."""
-        if not WAYLAND:
+        """Give the Save As name entry the keyboard.
+
+        X11: override-redirect windows never receive WM focus, so the entry
+        only gets keystrokes through Gdk.keyboard_grab (the same mechanism the
+        editor's own fields use). Wayland: no global grab exists, so focus is
+        just moved into the entry. The dialog may not be realized yet when this
+        runs, so it retries on idle until it is.
+        """
+        if WAYLAND:
+            return
+        attempts = [0]
+
+        def do_grab():
             try:
                 window = dialog.get_window()
-                if window is not None:
+                if window is None and attempts[0] < 20:
+                    attempts[0] += 1
+                    return True
+                if window is not None and not WAYLAND:
                     Gdk.keyboard_grab(window, True, Gdk.CURRENT_TIME)
             except Exception:
                 pass
-        GLib.idle_add(dialog.get_focus().grab_focus if dialog.get_focus()
-                      else lambda: None)
+            return False
 
-    def _save_as_response(self, dialog, response, entry, draft):
+        GLib.idle_add(do_grab)
+
+    def _save_as_ok(self, dialog, entry, draft):
+        name = entry.get_text().strip()
+        if not name:
+            self.set_status("Give the theme a name")
+            return
         if self.child is dialog:
             self.child = None
-        if WAYLAND:
-            try:
-                Gdk.keyboard_ungrab(Gdk.CURRENT_TIME)
-            except Exception:
-                pass
-        if response == Gtk.ResponseType.OK:
-            name = entry.get_text().strip()
-            if name:
-                ok, msg = save_as_theme(CONFIG_DIR, name, draft)
-                if ok:
-                    close_popup()
-                    Gtk.main_quit()
-                else:
-                    self.set_status(msg)
-        dialog.destroy()
-        if self.child is dialog:
-            self.child = None
+        ok, msg = save_as_theme(CONFIG_DIR, name, draft)
+        if ok:
+            close_popup()
+            Gtk.main_quit()
+        else:
+            self.set_status(msg)
+            dialog.destroy()
 
     # -- on-screen color picker ---------------------------------------------
     def pick_into(self, field):
@@ -1920,7 +1980,7 @@ class ThemePanel:
             self._raise_child(child)
         else:
             self.raise_above()
-        _restack_after_reload(self)
+        self._restack_after_reload()
         return True
 
     @staticmethod

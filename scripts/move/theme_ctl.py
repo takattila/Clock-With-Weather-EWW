@@ -152,8 +152,15 @@ def main():
         "overlays": overlays,
     })
 
-    px += mon["x"]
-    py += mon["y"]
+    # X11 positions are absolute screen coordinates, so the centered position
+    # must be offset by the target monitor's origin. Wayland layer-shell
+    # margins are relative to the monitor set by the editor (set_monitor +
+    # anchors), so they must NOT be offset here.
+    WAYLAND = "WAYLAND_DISPLAY" in os.environ \
+        and os.environ.get("GDK_BACKEND", "wayland") != "x11"
+    if not WAYLAND:
+        px += mon["x"]
+        py += mon["y"]
     subprocess.Popen(
         [
             sys.executable, os.path.join(SCRIPT_DIR, "theme_panel.py"),
