@@ -147,9 +147,10 @@
    Same footprint as the text table above: the four metrics lay out in two
    columns (left: HDD/CPU ~x16, right: RAM/SWAP ~x210) and two rows
    y=178 / 192. Each metric = label + bar + % value. The bar's top is nudged
-   down 3px so its 8px height centers against the 15px label/percent text
-   baseline. The bar (trough min-width 78) is sized so the gap between label
-   and bar equals the gap between bar and % (equal columns). */
+   down 8px (margin-top 186 / 200 vs the 178 / 192 text rows) so its 8px
+   height sits at the vertical middle of the label/percent text. The bar
+   (trough min-width 78) is sized so the gap between label and bar equals
+   the gap between bar and % (equal columns). */
 
 .sys-prog-label {
   font-size: 15px;
@@ -190,19 +191,19 @@
 }
 
 .sys-prog-hdd-label { margin-left: 16px; margin-top: 178px; }
-.sys-prog-hdd-bar   { margin-left: 66px; margin-top: 181px; }
+.sys-prog-hdd-bar   { margin-left: 66px; margin-top: 186px; }
 .sys-prog-hdd-value { margin-left: 164px; margin-top: 178px; }
 
 .sys-prog-ram-label { margin-left: 210px; margin-top: 178px; }
-.sys-prog-ram-bar   { margin-left: 268px; margin-top: 181px; }
+.sys-prog-ram-bar   { margin-left: 268px; margin-top: 186px; }
 .sys-prog-ram-value { margin-left: 366px; margin-top: 178px; }
 
 .sys-prog-cpu-label { margin-left: 16px; margin-top: 192px; }
-.sys-prog-cpu-bar   { margin-left: 66px; margin-top: 195px; }
+.sys-prog-cpu-bar   { margin-left: 66px; margin-top: 200px; }
 .sys-prog-cpu-value { margin-left: 164px; margin-top: 192px; }
 
 .sys-prog-swap-label { margin-left: 210px; margin-top: 192px; }
-.sys-prog-swap-bar   { margin-left: 268px; margin-top: 195px; }
+.sys-prog-swap-bar   { margin-left: 268px; margin-top: 200px; }
 .sys-prog-swap-value { margin-left: 366px; margin-top: 192px; }
 
 /* ---------- Divider line (image centered 415,110, 1x205) ---------- */
