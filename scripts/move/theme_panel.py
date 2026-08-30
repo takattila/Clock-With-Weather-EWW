@@ -1661,8 +1661,15 @@ class ThemePanel:
                      "overlay": None,
                      "x": 0, "y": 0, "rgb": None}
         self.win.hide()
-        overlay = Gtk.Window.new(Gtk.WindowType.POPUP)
+        overlay = Gtk.Window.new(Gtk.WindowType.TOPLEVEL)
+        overlay.set_decorated(False)
         overlay.set_app_paintable(True)
+        overlay.set_skip_taskbar_hint(True)
+        overlay.set_skip_pager_hint(True)
+        overlay.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        overlay.set_keep_above(True)
+        overlay.set_accept_focus(True)
+        overlay.set_resizable(False)
         visual = Gdk.Screen.get_default().get_rgba_visual()
         if visual is not None:
             overlay.set_visual(visual)
@@ -1682,8 +1689,19 @@ class ThemePanel:
         overlay.present()
         self.pick["overlay"] = overlay
         da.queue_draw()
+        # Live preview on X11: the pointer grab alone may not deliver constant
+        # motion events, so poll the pointer (via xdotool) in the background so
+        # the top-left "Color preview" follows the cursor exactly like on Wayland.
+        self._start_pick_poll()
 
     def _pick_realize(self, overlay, *_):
+        if not WAYLAND:
+            # Keep the full-screen overlay borderless and unmanaged on X11 so it
+            # truly covers the virtual desktop and the WM doesn't reposition it.
+            try:
+                overlay.get_window().set_override_redirect(True)
+            except Exception:
+                pass
         try:
             Gdk.pointer_grab(
                 overlay.get_window(), False,
@@ -1730,6 +1748,23 @@ class ThemePanel:
         da.queue_draw()
         return False
 
+    def _pick_screen_origin(self):
+        """Root (x, y) of the top-left corner of the screen containing the
+        tracked cursor, falling back to the editor's screen. Used to pin the
+        "Color preview" panel to the top-left of the screen the user is working
+        on (not the virtual-desktop origin)."""
+        x = int(self.pick.get("x", 0)) if self.pick else 0
+        y = int(self.pick.get("y", 0)) if self.pick else 0
+        display = Gdk.Display.get_default()
+        try:
+            for i in range(display.get_n_monitors()):
+                g = display.get_monitor(i).get_geometry()
+                if g.x <= x < g.x + g.width and g.y <= y < g.y + g.height:
+                    return (g.x, g.y)
+        except Exception:
+            pass
+        return (self.mon_ox, self.mon_oy)
+
     def _pick_draw(self, da, cr):
         bg = self.pick.get("bg") if self.pick else None
         if bg is not None:
@@ -1742,13 +1777,19 @@ class ThemePanel:
             except Exception:
                 pass
         rgb = self.pick.get("rgb") if self.pick else None
+        # Only on X11 (where the overlay covers the whole virtual desktop) pin
+        # the preview to the current screen's top-left; Wayland keeps its
+        # existing single-monitor placement (offset 0,0).
+        sx = sy = 0
+        if self.pick and not WAYLAND:
+            sx, sy = self._pick_screen_origin()
         if rgb is None:
             # Draw a neutral gray placeholder with "Move to pick" text
             cr.set_source_rgb(0.2, 0.2, 0.2)
-            cr.rectangle(12, 12, 110, 34)
+            cr.rectangle(sx + 12, sy + 12, 110, 34)
             cr.fill()
             cr.set_source_rgb(0.6, 0.6, 0.6)
-            cr.rectangle(12, 12, 110, 34)
+            cr.rectangle(sx + 12, sy + 12, 110, 34)
             cr.stroke()
             cr.set_source_rgb(0.8, 0.8, 0.8)
             try:
@@ -1759,18 +1800,19 @@ class ThemePanel:
             except Exception:
                 pass
             cr.set_font_size(11)
-            cr.move_to(20, 34)
+            cr.move_to(sx + 20, sy + 34)
             cr.show_text("Move mouse to preview")
             return False
         r, g, b = rgb
         cx = clamp(self.pick["x"], 10, da.get_allocated_width() - 10)
         cy = clamp(self.pick["y"], 10, da.get_allocated_height() - 10)
-        # Color preview swatch (large, clearly visible)
+        # Color preview swatch (large, clearly visible) at the top-left of the
+        # screen the cursor is currently on
         cr.set_source_rgb(r / 255.0, g / 255.0, b / 255.0)
-        cr.rectangle(12, 12, 140, 40)
+        cr.rectangle(sx + 12, sy + 12, 140, 40)
         cr.fill()
         cr.set_source_rgb(0, 0, 0)
-        cr.rectangle(12, 12, 140, 40)
+        cr.rectangle(sx + 12, sy + 12, 140, 40)
         cr.set_line_width(2)
         cr.stroke()
         ink = (0, 0, 0) if (0.299 * r + 0.587 * g + 0.114 * b) > 140 else (255, 255, 255)
@@ -1783,10 +1825,10 @@ class ThemePanel:
         except Exception:
             pass
         cr.set_font_size(14)
-        cr.move_to(20, 30)
+        cr.move_to(sx + 20, sy + 30)
         cr.show_text("#%02x%02x%02x" % rgb)
         cr.set_font_size(10)
-        cr.move_to(20, 46)
+        cr.move_to(sx + 20, sy + 46)
         cr.show_text("Release to apply")
         # magnified viewfinder around the cursor: 16px logical square, 6x zoom
         ox, oy = cx - 48, cy - 48
@@ -1957,12 +1999,34 @@ class ThemePanel:
             target=self._pick_poll_worker, daemon=True)
         self._pick_poll_thread.start()
 
+    def _pick_cursor_pos(self):
+        """Global pointer (x, y) for the current backend: the KDE/KWin script on
+        Wayland, or xdotool on X11. Both are subprocess-calls so they are safe
+        to run from the background poll thread. Returns None on failure."""
+        if WAYLAND:
+            return self._wa_kde_cursor()
+        try:
+            out = subprocess.run(
+                ["xdotool", "getmouselocation", "--shell"],
+                capture_output=True, text=True, timeout=1)
+            x = y = None
+            for line in out.stdout.splitlines():
+                if line.startswith("X="):
+                    x = int(line.split("=", 1)[1])
+                elif line.startswith("Y="):
+                    y = int(line.split("=", 1)[1])
+            if x is None or y is None:
+                return None
+            return (x, y)
+        except Exception:
+            return None
+
     def _pick_poll_worker(self):
-        """Background thread: poll the KWin cursor and ship updates to the
-        main loop. Running kde_cursor() (which blocks on subprocess + sleeps)
+        """Background thread: poll the pointer and ship updates to the main
+        loop. Running the cursor lookup (which can block on subprocess/sleeps)
         here keeps the GTK main loop free to redraw the magnifier live."""
         while not self._pick_poll_stop:
-            pos = self._wa_kde_cursor()
+            pos = self._pick_cursor_pos()
             if self._pick_poll_stop:
                 break
             if pos and self.pick is not None:
