@@ -1,4 +1,4 @@
-# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor)
+# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor, + v4.1.0 progress bars)
 
 Every ready-made appearance theme, captured on a 1920×1080 monitor —
 **45 themes: 9 style themes and 12 classic color themes (each in a fully
@@ -6,7 +6,9 @@ transparent base variant and a `-bg` variant with visible widget/panel
 backgrounds) plus three new monochrome accents — green, grey and orange.**
 Pick any of them live from the right-click menu's Theme submenu — or use
 them as recipes for your own (see the WIKI's "Creating style themes"
-section).
+section). Every theme is captured twice: in the classic text view (below)
+and in the **progress-bar view** (`progress-*.png`, see the
+[System data — progress bars](#system-data--progress-bars-v410) section).
 
 ## Overview
 
@@ -156,6 +158,83 @@ The full-height side panel with live CPU / Memory / Network charts
 | With panel — theme: light-orange | With panel — theme: dark-orange-bg |
 |---|---|
 | ![Panel light orange](images/screenshots/panel-light-orange.png) | ![Panel dark orange bg](images/screenshots/panel-dark-orange-bg.png) |
+
+## System data — progress bars (v4.1.0)
+
+The clock's HDD / RAM / CPU / SWAP row rendered as percentage progress bars
+instead of the classic used/total text — toggled live from the right-click
+menu's **System** row (**Text ↔ Progress bar**). Four 78px bars with equal
+label→bar→% column gaps, vertically centered on the text and sharing the
+clock's accent color:
+
+| Progress-bar view — theme: dark-orange | Context menu — System row |
+|---|---|
+| ![Progress bars](images/screenshots/progress-bars-main.png) | ![Context menu System](images/screenshots/progress-context-menu.png) |
+
+### The progress bars in every theme
+
+Every ready-made theme captured with `progress_mode = "progress"`, so the
+same widget also shows the percentage bars in that theme's accent color:
+
+#### Style themes — progress bars
+
+| sunset-basic | sunset-basic-bg |
+|---|---|
+| ![sunset-basic progress](images/screenshots/progress-sunset-basic.png) | ![sunset-basic-bg progress](images/screenshots/progress-sunset-basic-bg.png) |
+| **neon** | **neon-bg** |
+| ![neon progress](images/screenshots/progress-neon.png) | ![neon-bg progress](images/screenshots/progress-neon-bg.png) |
+| **pastel** | **pastel-bg** |
+| ![pastel progress](images/screenshots/progress-pastel.png) | ![pastel-bg progress](images/screenshots/progress-pastel-bg.png) |
+| **metallic-blue-orange** | **metallic-blue-orange-bg** |
+| ![metallic-blue-orange progress](images/screenshots/progress-metallic-blue-orange.png) | ![metallic-blue-orange-bg progress](images/screenshots/progress-metallic-blue-orange-bg.png) |
+| **candy-pastel** | **candy-pastel-bg** |
+| ![candy-pastel progress](images/screenshots/progress-candy-pastel.png) | ![candy-pastel-bg progress](images/screenshots/progress-candy-pastel-bg.png) |
+| **aurora** | **aurora-bg** |
+| ![aurora progress](images/screenshots/progress-aurora.png) | ![aurora-bg progress](images/screenshots/progress-aurora-bg.png) |
+| **cyberpunk** | **cyberpunk-bg** |
+| ![cyberpunk progress](images/screenshots/progress-cyberpunk.png) | ![cyberpunk-bg progress](images/screenshots/progress-cyberpunk-bg.png) |
+| **rose-gold** | **rose-gold-bg** |
+| ![rose-gold progress](images/screenshots/progress-rose-gold.png) | ![rose-gold-bg progress](images/screenshots/progress-rose-gold-bg.png) |
+| **titanium** | **titanium-bg** |
+| ![titanium progress](images/screenshots/progress-titanium.png) | ![titanium-bg progress](images/screenshots/progress-titanium-bg.png) |
+
+#### Monochrome accent themes — progress bars
+
+| green | grey | orange |
+|---|---|---|
+| ![green progress](images/screenshots/progress-green.png) | ![grey progress](images/screenshots/progress-grey.png) | ![orange progress](images/screenshots/progress-orange.png) |
+
+#### Light family — progress bars
+
+| light | light-bg |
+|---|---|
+| ![light progress](images/screenshots/progress-light.png) | ![light-bg progress](images/screenshots/progress-light-bg.png) |
+| **light-blue** | **light-blue-bg** |
+| ![light-blue progress](images/screenshots/progress-light-blue.png) | ![light-blue-bg progress](images/screenshots/progress-light-blue-bg.png) |
+| **light-green** | **light-green-bg** |
+| ![light-green progress](images/screenshots/progress-light-green.png) | ![light-green-bg progress](images/screenshots/progress-light-green-bg.png) |
+| **light-orange** | **light-orange-bg** |
+| ![light-orange progress](images/screenshots/progress-light-orange.png) | ![light-orange-bg progress](images/screenshots/progress-light-orange-bg.png) |
+| **light-red** | **light-red-bg** |
+| ![light-red progress](images/screenshots/progress-light-red.png) | ![light-red-bg progress](images/screenshots/progress-light-red-bg.png) |
+| **light-yellow** | **light-yellow-bg** |
+| ![light-yellow progress](images/screenshots/progress-light-yellow.png) | ![light-yellow-bg progress](images/screenshots/progress-light-yellow-bg.png) |
+
+#### Dark family — progress bars
+
+| dark | dark-bg |
+|---|---|
+| ![dark progress](images/screenshots/progress-dark.png) | ![dark-bg progress](images/screenshots/progress-dark-bg.png) |
+| **dark-blue** | **dark-blue-bg** |
+| ![dark-blue progress](images/screenshots/progress-dark-blue.png) | ![dark-blue-bg progress](images/screenshots/progress-dark-blue-bg.png) |
+| **dark-green** | **dark-green-bg** |
+| ![dark-green progress](images/screenshots/progress-dark-green.png) | ![dark-green-bg progress](images/screenshots/progress-dark-green-bg.png) |
+| **dark-orange** | **dark-orange-bg** |
+| ![dark-orange progress](images/screenshots/progress-dark-orange.png) | ![dark-orange-bg progress](images/screenshots/progress-dark-orange-bg.png) |
+| **dark-red** | **dark-red-bg** |
+| ![dark-red progress](images/screenshots/progress-dark-red.png) | ![dark-red-bg progress](images/screenshots/progress-dark-red-bg.png) |
+| **dark-yellow** | **dark-yellow-bg** |
+| ![dark-yellow progress](images/screenshots/progress-dark-yellow.png) | ![dark-yellow-bg progress](images/screenshots/progress-dark-yellow-bg.png) |
 
 ## Full desktop
 

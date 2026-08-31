@@ -584,7 +584,7 @@ mechanics), PLAN (this file), `config.yaml` appearance comment block.
   only); the window-placement helpers (`detect.py`, `start.sh`,
   `*_x11` window variants) are unchanged.
 
-# Follow-up — weather widget system data: text ↔ progress bars (after v4.0.0)
+# Follow-up — weather widget system data: text ↔ progress bars (shipped as v4.1.0)
 
 ## Goal
 
@@ -628,3 +628,13 @@ size. Config key `system.progress_mode` (`"text"` (default) | `"progress"`).
 
 - `pytest tests/` — 356 passed.
 - `eww --config eww reload` — clean (exit 0, no SCSS/CSS errors).
+- Live (X11/Cinnamon, 1920×1080 + 1368×768): the **System** row flips the
+  widget's system-data column between the text table and the percentage bars
+  instantly; the widget size, geometry and the drag/scroll/monitor logic are
+  unchanged by the mode.
+- Screenshots: a `progress_mode: "progress"` capture of **every one of the 45
+  themes** (`docs/images/screenshots/progress-<theme>.png`, cropped to the
+  clock widget that carries the HDD / RAM / CPU / SWAP row) was added to
+  docs/SCREENSHOTS.md, alongside the existing `progress-bars-main.png` and
+  `progress-context-menu.png` hero shots; README and RELEASE_NOTES (v4.1.0)
+  document the toggle.
