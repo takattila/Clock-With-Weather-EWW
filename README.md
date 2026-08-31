@@ -117,15 +117,33 @@ themes** lives in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
     </tr>
 </table>
 
+### System data — progress bars (v4.1.0)
+
+The clock's **HDD / RAM / CPU / SWAP** row rendered as **percentage progress
+bars** (right-click → **System → Progress bar**), instead of the classic
+used/total text:
+
+<table>
+    <tr>
+        <th>Progress-bar view — theme: dark-orange</th>
+        <th>Context menu — System row</th>
+    </tr>
+    <tr>
+        <td><img src="./docs/images/screenshots/progress-bars-main.png"></td>
+        <td><img src="./docs/images/screenshots/progress-context-menu.png"></td>
+    </tr>
+</table>
+
 ### Right click on the Widgets
 
 The context menu is a quick-settings panel: **Move / Resize / Reset**, hover
 submenus for the **AM/PM format** (12 ↔ 24 hour), the **theme** (all
 ready-made themes, adaptive two/three columns, active one highlighted),
-**°C/°F** (with instant weather refresh), **panel show/hide** and **panel
-side** — plus **Theme editor** (a visual theme editor, new in v4.0.0),
-**Weather settings**, **Panel gap**, factory **Hard reset** and the **About**
-dialog. The menu opens instantly and always belongs to the
+**°C/°F** (with instant weather refresh), **System** (**Text ↔ Progress bar**
+for the HDD / RAM / CPU / SWAP row, new in v4.1.0), **panel show/hide** and
+**panel side** — plus **Theme editor** (a visual theme editor, new in
+v4.0.0), **Weather settings**, **Panel gap**, factory **Hard reset** and the
+**About** dialog. The menu opens instantly and always belongs to the
 widget actually sitting under the pointer — even where their transparent
 edges overlap.
 
@@ -222,6 +240,13 @@ lands on.
   location, description, MIN/MAX/Feels) in one widget.
 - **System Monitor Panel** — a side panel with real-time **CPU**, **Memory**
   and **Network Traffic** (Download/Upload) charts.
+- **HDD / RAM / CPU / SWAP as progress bars** (new in v4.1.0) — the clock's
+  system data row switches live between the classic **Text** (used/total
+  strings) and **Progress bar** views from the right-click menu's System row.
+  In progress mode each metric shows a **label + filled progress bar + %** —
+  four 78px bars with equal label→bar→% column gaps, vertically centered on
+  the text and sharing the clock's accent color — without changing the
+  widget's size.
 - **Dynamic Scaling** — the network charts automatically adjust their scale and
   units (KiB/s to MiB/s) based on traffic, and the active network interface is
   detected automatically.

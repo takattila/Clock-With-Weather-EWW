@@ -1,3 +1,72 @@
+# Clock-With-Weather-EWW — v4.1.0
+
+**A beautiful, fully customizable clock & weather widget with a live system
+monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
+layer-shell) and also works on **X11**. Powered by the
+[OpenWeatherMap](https://openweathermap.org) API.
+
+> **Recommendation: v4.1.0** — the current recommended release. Adds the
+> **HDD / RAM / CPU / SWAP progress bars** to the clock widget, switchable
+> from the right-click menu.
+
+**v4.1.0 lets the clock show its system data as percentage progress bars.**
+The HDD / RAM / CPU / SWAP row in the clock's right-hand column can be flipped,
+live from the right-click menu's **System** row (**Text ↔ Progress bar**),
+between the classic used/total text table and four compact percentage bars.
+Each metric is a **label + filled progress bar + `%`** triplet (four 78px
+bars with equal label→bar→% column gaps, vertically centered on the text and
+sharing the clock's accent color) — rendered in exactly the same spot, so the
+widget's size and geometry never change.
+
+---
+
+## What changed in v4.1.0
+
+### New: progress-bar system data
+
+- The clock's **System** submenu row (**System: Text ▸** / **System: Progress
+  bar ▸**) toggles how the HDD / RAM / CPU / SWAP data in its right-hand
+  column is shown: the classic used/total strings or **percentage progress
+  bars**, without changing the widget size. The new config key
+  `system.progress_mode` (`"text"` (default) | `"progress"`) stores the
+  choice globally, exactly like the other quick-settings toggles.
+- Both views render as `:visible` boxes at the **same columns and rows**, so
+  switching formats needs no relayout — the watcher's `eww reload` applies
+  the flip instantly and the natural width / geometry is identical either
+  way.
+- Each bar shows `label · filled bar · %` across four rows (HDD, RAM, CPU,
+  SWAP): the bar track is the widget's muted background, the fill uses the
+  theme's accent color, and the values come live from
+  `system_info.progress_*` (HDD = used×100/total, RAM = `mem.percent`, CPU /
+  SWAP = their existing percents) — so the `*` percentages stay correct while
+  the old `hdd/ram/cpu/swap` text fields remain untouched for text mode.
+- The Rendszer/System row lives in the **clock** menu only; the context-menu
+  row math (`CONTEXT_ROWS`, `ROW_SEQUENCES`, the row-measurer) was updated
+  for its one extra button row (clock 14 collapsed rows vs panel 13).
+- New unit tests cover the `progress_*` percentages, the submenu row /
+  options / active state, the text↔progress toggle and the config validation;
+  the suite is now **356 passed** (was 350).
+
+### Screenshots — progress bars in every theme
+
+`docs/SCREENSHOTS.md` gained a `progress_mode: "progress"` capture of every
+one of the **45 themes** (`progress-<theme>.png`) next to the text-mode
+gallery, plus the two hero shots below:
+
+| Progress-bar view — theme: dark-orange | Context menu — System row |
+|---|---|
+| ![Progress bars](docs/images/screenshots/progress-bars-main.png) | ![Context menu System](docs/images/screenshots/progress-context-menu.png) |
+
+### Upgrade from v4.0.0
+
+1. Pull / check out `v4.1.0`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Right-click the clock → **System → Progress bar** to try the new view;
+   the default stays the classic text table. Nothing else to do — themes and
+   `config.local.yaml` keep working unchanged.
+
+---
+
 # Clock-With-Weather-EWW — v4.0.0
 
 **A beautiful, fully customizable clock & weather widget with a live system

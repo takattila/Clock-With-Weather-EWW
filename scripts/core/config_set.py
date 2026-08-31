@@ -36,6 +36,7 @@ error):
 ./config_set.py --key units --value imperial      -> weather.units
    ./config_set.py --key panel_enabled --value false -> panel.enabled
    ./config_set.py --key panel_alignment --value left-> panel.window.alignment
+   ./config_set.py --key progress_mode --value text  -> system.progress_mode
    ./config_set.py --key city --value Tatabánya      -> weather.city
    ./config_set.py --key lang --value hu             -> weather.lang
    ./config_set.py --key api_url --value https://... -> weather.api_url
@@ -99,7 +100,7 @@ def coerce_value(key, raw):
             return flag == "true"
         sys.exit("ERROR: panel_enabled must be true or false, got: %s" % (raw,))
     if key in ("hour_format", "appearance", "units", "alignment",
-               "city", "language_code", "lang", "api_url"):
+               "progress_mode", "city", "language_code", "lang", "api_url"):
         return str(raw).strip()
     try:
         return int(str(raw).strip().rstrip(","))
@@ -160,6 +161,11 @@ def resolve_target(args):
         if str(args.value) not in ("right", "left"):
             sys.exit("ERROR: panel_alignment must be right or left, got: %s" % (args.value,))
         return ["panel", "window", "alignment"], "panel.window.alignment"
+    if args.key == "progress_mode":
+        reject_monitor(args)
+        if str(args.value) not in ("text", "progress"):
+            sys.exit("ERROR: progress_mode must be text or progress, got: %s" % (args.value,))
+        return ["system", "progress_mode"], "system.progress_mode"
 
     # --- widget-scoped keys --------------------------------------------------
     if args.widget is None:

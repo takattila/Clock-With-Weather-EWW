@@ -64,6 +64,16 @@ def test_panel_alignment_flips():
     ) == "right"
 
 
+def test_progress_mode_flips_both_ways():
+    assert menu_toggle.next_value("progress_mode", {}) == "progress"
+    assert menu_toggle.next_value(
+        "progress_mode", {"system": {"progress_mode": "text"}}
+    ) == "progress"
+    assert menu_toggle.next_value(
+        "progress_mode", {"system": {"progress_mode": "progress"}}
+    ) == "text"
+
+
 def test_unknown_key_exits():
     with pytest.raises(SystemExit):
         menu_toggle.next_value("bogus", {})
@@ -150,6 +160,18 @@ def test_main_panel_enabled_writes_bool_string(writes, monkeypatch):
     run_main(monkeypatch, "panel_enabled")
     menu_toggle.main()
     assert writes == [("panel_enabled", "false")]
+
+
+def test_main_progress_mode_writes_flipped(writes, monkeypatch):
+    # Hermetic: the flip must not depend on the real config.local.yaml (whose
+    # text/progress the user may have changed live while testing).
+    monkeypatch.setattr(
+        menu_toggle, "load_merged",
+        lambda _path: {"system": {"progress_mode": "text"}},
+    )
+    run_main(monkeypatch, "progress_mode")
+    menu_toggle.main()
+    assert writes == [("progress_mode", "progress")]
 
 
 # --- direct set (--value, used by the hover submenus) -------------------------------

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Hover submenu pane for the selectable context-menu items.
 
-Hovering one of the five quick-setting rows (AM/PM switch, Theme,
-Units, Panel shown/hidden, Side right/left) shows a picker pane INSIDE the context
-menu window, right of the item rows and vertically aligned with the hovered
-row. The active value is highlighted; clicking an entry writes it via
-menu_toggle.py -> config_set.py into the git-ignored config.local.yaml (the
-watcher applies the change live).
+Hovering one of the six quick-setting rows (AM/PM switch, Theme, Units,
+System, Panel shown/hidden, Side right/left) shows a picker pane INSIDE the
+context menu window, right of the item rows and vertically
+aligned with the hovered row. The active value is highlighted; clicking an
+entry writes it via menu_toggle.py -> config_set.py into the git-ignored
+config.local.yaml (the watcher applies the change live).
 
 Why a pane instead of a separate window (all measured on eww 0.6.0/X11):
   * event handlers on widgets created inside `(for ...)` loops never fire;
@@ -105,7 +105,8 @@ CONTEXT_ROWS = {
     "clock": {
         "hour_format": 4,   # 0 Move,1 Resize,2 Reset,3 sep -> 4 is AM/PM
         "appearance": 5,
-        "units": 8,         # 6 Theme editor, 7 is the clock-only sep after it
+        "units": 9,         # 6 Theme editor, 7 sep, 8 Weather settings -> 9 Units
+        "progress_mode": 10,  # 8 Weather settings, 9 Units, 10 is System
     },
     "panel": {
         "appearance": 4,       # AM/PM is hidden -> Theme one row higher
@@ -118,12 +119,13 @@ CONTEXT_ROWS = {
 # widget_ctx_menu in eww.yuck and the heights pinned in eww.scss):
 #   B = one .ctx-btn row (ROW_BTN), S = one .ctx-sep row (ROW_SEP).
 # The clock menu is Move Resize Reset | sep | AM/PM Theme Theme editor sep
-# Units Weather | sep | Hard reset About; the panel menu drops
-# AM/PM/sep/Units/Weather and adds sep + Panel/Side/gap.
+# Weather settings Units System | sep | Hard reset About (14 rows); the panel
+# menu drops AM/PM/sep/Weather/Units/System and adds sep + Panel/Side/gap (13).
 ROW_SEQUENCES = {
     # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 AM/PM, 5 Theme, 6 Theme editor,
-    # 7 sep, 8 Units, 9 Weather, 10 sep, 11 Hard reset, 12 About
-    "clock": "B B B S B B B S B B S B B".split(),
+    # 7 sep, 8 Weather settings, 9 Units, 10 System, 11 sep, 12 Hard reset,
+    # 13 About
+    "clock": "B B B S B B B S B B B S B B".split(),
     # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 Theme, 5 Theme editor, 6 sep,
     # 7 Panel, 8 Side, 9 Panel gap, 10 sep, 11 Hard reset, 12 About
     "panel": "B B B S B B S B B B S B B".split(),
@@ -181,6 +183,9 @@ def options_for(key, cfg):
     if key == "panel_alignment":
         return [{"label": "right", "value": "right"},
                 {"label": "left", "value": "left"}]
+    if key == "progress_mode":
+        return [{"label": "Text", "value": "text"},
+                {"label": "Progress bar", "value": "progress"}]
     raise SystemExit("ERROR: unknown submenu item: %s" % key)
 
 
@@ -201,6 +206,8 @@ def active_for(key, cfg):
         return str(panel.get("enabled", True)).strip().lower()
     if key == "panel_alignment":
         return str((panel.get("window") or {}).get("alignment", "right")).strip().lower()
+    if key == "progress_mode":
+        return str(system.get("progress_mode", "text")).strip().lower()
     return ""
 
 

@@ -229,6 +229,9 @@ system:
     weather: 1.0          #   clock widget  (a single number also works -> both)
     panel: 1.0            #   system monitor panel
   hour_format: "24"     # "24" | "12"
+  progress_mode: "text" # how HDD/RAM/CPU/SWAP show in the clock:
+                        #   "text" (used/total table) | "progress" (bars).
+                        # Switchable live from the clock's right-click menu.
   corner_radius: 20     # bg corner rounding (px) for BOTH widgets; 0 = square
 panel:
   window:
@@ -690,7 +693,7 @@ by `scripts/widgets/ctx.py` + `scripts/move/menu_pos.py`; transparent
 full-screen dismiss layers on EVERY connected monitor close it on outside
 clicks — clicking on another screen dismisses the popups too — ESC works as
 well).
-The five selectable rows are **hover-only parents**: pointing at one opens a
+The six selectable rows are **hover-only parents**: pointing at one opens a
 small submenu next to it (`scripts/widgets/submenu.py`) with the possible
 values, the active one highlighted; picking an entry writes it and closes
 the popups.
@@ -701,6 +704,7 @@ the popups.
 | AM/PM switch | `24h` / `12h` | `system.hour_format` |
 | Theme | every theme under `assets/themes/appearance/`, adaptive two/three columns (flips to the left of the menu near the right screen edge) | `appearance` |
 | Units | `°C (metric)` / `°F (imperial)` — picking one also re-fetches the weather instantly so °C/°F does not wait for the 10-minute poll | `weather.units` |
+| Rendszer | `szöveg` / `sávok` — switches the clock's HDD/RAM/CPU/SWAP data between the used/total text table and percentage progress bars (same spot, widget size unchanged) | `system.progress_mode` |
 | Panel | shown / hidden (applied by the watcher's relayout) | `panel.enabled` |
 | Side | right / left | `panel.window.alignment` |
 | Hard reset | runs `scripts/bin/hard-reset.sh`: deletes `config.local.yaml` (no backup), so every setting returns to the committed default |
