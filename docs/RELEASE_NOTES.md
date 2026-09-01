@@ -1,3 +1,56 @@
+# Clock-With-Weather-EWW — v4.2.0
+
+**A beautiful, fully customizable clock & weather widget with a live system
+monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
+layer-shell) and also works on **X11**. Powered by the
+[OpenWeatherMap](https://openweathermap.org) API.
+
+> **Recommendation: v4.2.0** — the current recommended release. The **About
+> dialog** now reports the widget's **dependencies** (with the installed
+> versions), a fuller **system summary** and can be **exported to a TXT file**.
+
+**v4.2.0 turns the About dialog into a support-ready report.** Right-click →
+**About** now lists every runtime dependency with the version actually
+installed on your machine — `eww`, `python3`, `requests`, `psutil`, `PyYAML`,
+`pillow`, `xprop`, `xrandr` and the Noto Sans font — next to a short system
+report (hostname, kernel, architecture, total memory, CPU), alongside the
+existing repository, runtime and configuration data. A new **Export TXT**
+button writes the whole report to `generated/about_export.txt` and opens it,
+so it can be attached to a bug report or shared with others.
+
+---
+
+## What changed in v4.2.0
+
+### New: About dialog — dependencies, system report and TXT export
+
+- The About dialog gains a **Dependencies** section listing the widget's
+  runtime dependencies with their **live installed versions**: `eww`,
+  `python3`, `requests`, `psutil`, `PyYAML`, `pillow`, `xprop`, `xrandr` and
+  `Noto Sans`. Python packages report their `__version__`, system tools their
+  `--version`, and the font resolves through `fc-match`/fontconfig — showing
+  `installed` or the fallback family when Noto Sans is missing.
+- The **Runtime** section is extended into a short **system report**:
+  `hostname`, `kernel`, `arch`, `memory` (total) and `cpu` (count @
+  frequency) complement the existing compositor, monitor resolution, eww /
+  Python version and OS.
+- **Export TXT** writes the complete dialog content — Repository, Runtime,
+  Dependencies and Configuration — to `generated/about_export.txt` and opens
+  it with `xdg-open`. The transparent dismiss layers are closed first so the
+  opened editor is usable right away.
+- The window is a bit larger (580×620) for the extra sections; the content
+  stays scrollable. The same row data feeds the on-screen dialog and the
+  exported file, so the two can never diverge.
+
+### Upgrade from v4.1.0
+
+1. Pull / check out `v4.2.0`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Right-click a widget → **About**; use **Export TXT** to save the report.
+   Nothing else to do — themes and `config.local.yaml` keep working unchanged.
+
+---
+
 # Clock-With-Weather-EWW — v4.1.0
 
 **A beautiful, fully customizable clock & weather widget with a live system

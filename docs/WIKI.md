@@ -503,6 +503,7 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 | `submenu.py` (`scripts/widgets/`) | — | hover submenus of the five selectable context-menu rows: builds the option list per key (Theme dynamically from `assets/themes/appearance/`), prebuilds the whole picker as a static yuck literal into `sub_yuck` and shows it in the ctx_menu window's side pane, vertically aligned with the hovered row; clamps the pane to the bottom screen edge and adds a third column when the list is too tall (session-driven geometry, see the "Right-click quick-settings menu" section) |
 | `horizontal_layout()` (in `submenu.py`, used by `ctx.py`) | — | decides at menu-open time whether the picker pane fits right of the menu column; near the right monitor edge the window opens shifted left and the pane flips to the menu's left side (`sub_left`) |
 | `hard-reset.sh` (`scripts/bin/`) | — | factory reset: deletes the git-ignored `config.local.yaml` (**no backup**) + a stale input session, regenerates the theme from the committed defaults and relayouts; also available as the context menu's "Hard reset" item |
+| `about.py` / `about_win.py` (`scripts/widgets/`) | git JSON / GTK About window | `about.py` collects the repository git metadata (`collect()`, JSON on stdout); `about.py --open` launches the draggable About dialog (`about_win.py`). The dialog shows Repository / Runtime (incl. hostname, kernel, arch, memory, CPU) / **Dependencies** (installed versions of eww, python3, requests, psutil, PyYAML, pillow, xprop, xrandr, Noto Sans via `fc-match`) / Configuration, with **Open repository** and **Export TXT** buttons (`generated/about_export.txt` + `xdg-open`) |
 | `git-filter-repo.sh` | — | vendored **git-filter-repo** (history-rewriting tool, Python 3 + git only): used to scrub secrets (e.g. an API key) from the whole git history — run `git-filter-repo.sh --replace-text <rules>` in the repo root |
 
 ### `charts/` — generated SVGs
@@ -708,7 +709,7 @@ the popups.
 | Panel | shown / hidden (applied by the watcher's relayout) | `panel.enabled` |
 | Side | right / left | `panel.window.alignment` |
 | Hard reset | runs `scripts/bin/hard-reset.sh`: deletes `config.local.yaml` (no backup), so every setting returns to the committed default |
-| About | the GTK About dialog |
+| About | the GTK About dialog (v4.2.0): repository git data, a **Runtime** system report (compositor, monitor resolution, eww/Python version, OS, hostname, kernel, arch, memory, CPU), a **Dependencies** list with the installed versions (eww, python3, requests, psutil, PyYAML, pillow, xprop, xrandr, Noto Sans), the Configuration, an **Open repository** (`xdg-open`) and an **Export TXT** button (writes `generated/about_export.txt` and opens it) |
 
 Submenu mechanics:
 

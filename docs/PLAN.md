@@ -638,3 +638,40 @@ size. Config key `system.progress_mode` (`"text"` (default) | `"progress"`).
   docs/SCREENSHOTS.md, alongside the existing `progress-bars-main.png` and
   `progress-context-menu.png` hero shots; README and RELEASE_NOTES (v4.1.0)
   document the toggle.
+
+# Follow-up — About dialog as a dependency & system report (shipped as v4.2.0)
+
+## Goal
+
+Turn the existing GTK **About** dialog into a support-ready report: list the
+widget's runtime dependencies with their **installed versions**, expand the
+runtime data into a short system report, and let the whole thing be
+**exported to a TXT file**.
+
+## Design decisions
+
+- Dependencies mirror `docs/WIKI.md`: `eww`, `python3`, `requests`, `psutil`,
+  `PyYAML`, `pillow`, `xprop`, `xrandr` and the Noto Sans font. Versions are
+  read live — Python packages via `__version__`
+  (`importlib`), system tools via `--version`, the font via
+  `fc-match`/fontconfig (`installed` / the fallback family).
+- The Runtime section grows `hostname`, `kernel`, `arch`, `memory` (total,
+  psutil) and `cpu` (count @ frequency) — no new data source, all platform +
+  psutil.
+- `self.rows` in `about_win.py` holds every section once; both the on-screen
+  dialog and the TXT export render from it, so they can never diverge.
+- **Export TXT** writes `generated/about_export.txt` and opens it with
+  `xdg-open`, closing the dismiss layers first (they would otherwise eat the
+  clicks meant for the opened editor). Window grew to 580×620; content stays
+  scrollable.
+
+## Tests / verification
+
+- `python3 -m py_compile scripts/widgets/about_win.py` — OK (CI runs the same
+  check across every `.py`).
+- Headless instantiation of `AboutWin` on X11 produced the full export text
+  (Repository / Runtime / Dependencies / Configuration) with correct live
+  versions.
+- Live values verified: eww 0.6.0, psutil/requests/yaml/PIL `__version__`,
+  xprop 1.2.x, xrandr 1.5.x, Noto Sans `installed`, 31 GiB RAM, 8 CPU.
+- README, WIKI, SCREENSHOTS and RELEASE_NOTES (v4.2.0) document the dialog.
