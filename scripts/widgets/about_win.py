@@ -10,12 +10,16 @@ draggable title strip, using the same mechanics as scripts/move_panel.py:
   * Wayland - layer-shell OVERLAY surface (GtkLayerShell), dragged by updating
               the left/top margins.
 
-The window shows three sections from scripts/about.py collect() plus runtime /
+The window shows four sections from scripts/about.py collect() plus runtime /
 configuration data: Repository (URL, branch/tag, commit, date, author, message),
-Runtime (compositor, monitor resolution, eww version, Python version, OS) and
-Configuration (appearance, icon set, corner radius, font, city, units, language,
-hour format, scale). An "Open repository" button (xdg-open) and a Close button
-are at the bottom. Closing works three ways, like the old eww window:
+Runtime (compositor, monitor resolution, eww version, Python version, OS,
+hostname, kernel, arch, memory, CPU), Dependencies (eww, python3, requests,
+psutil, PyYAML, pillow, xprop, xrandr, Noto Sans with their installed
+versions) and Configuration (appearance, icon set, corner radius, font, city,
+units, language, hour format, scale). An "Open repository" button
+(xdg-open), an "Export TXT" button (writes generated/about_export.txt and opens
+it) and a Close button are at the bottom. Closing works three ways, like the
+old eww window:
 
   * click outside  -> hits the eww dismiss_overlay (opened below this window by
                       about.py --open), which runs close_popup.py and clears the
@@ -32,6 +36,8 @@ Usage:
 """
 
 import argparse
+import datetime
+import importlib
 import json
 import os
 import subprocess
@@ -66,8 +72,8 @@ if WAYLAND:
     except Exception as exc:
         sys.exit("about_win: GtkLayerShell unavailable: %s" % exc)
 
-ABOUT_W = 540
-ABOUT_H = 430
+ABOUT_W = 580
+ABOUT_H = 620
 TITLE_H = 30
 
 
@@ -191,6 +197,119 @@ def os_name():
         return ""
 
 
+def lib_version(module_name):
+    """Import a Python module and return its __version__ (or "")."""
+    try:
+        mod = importlib.import_module(module_name)
+        return getattr(mod, "__version__", "") or ""
+    except Exception:
+        return ""
+
+
+def cmd_version(cmd):
+    """Run an external command and return the first line of its output."""
+    try:
+        out = subprocess.check_output(
+            cmd, stderr=subprocess.STDOUT, text=True, timeout=5,
+        )
+        for line in out.splitlines():
+            if line.strip():
+                return line.strip()
+        return ""
+    except Exception:
+        return ""
+
+
+def font_status():
+    """Return the family fc-match picks for "Noto Sans" (installed / fallback)."""
+    try:
+        out = subprocess.check_output(
+            ["fc-match", "-f", "%{family[0]}", "Noto Sans"],
+            stderr=subprocess.DEVNULL, text=True, timeout=5,
+        ).strip()
+        if not out:
+            return ""
+        if out.lower() == "noto sans":
+            return "installed"
+        return "fallback: %s" % out
+    except Exception:
+        return ""
+
+
+def hostname_name():
+    try:
+        import platform
+        return platform.node()
+    except Exception:
+        return ""
+
+
+def kernel_version():
+    try:
+        import platform
+        return platform.release()
+    except Exception:
+        return ""
+
+
+def arch_name():
+    try:
+        import platform
+        return platform.machine()
+    except Exception:
+        return ""
+
+
+def human_size(num_bytes):
+    for unit in ["B", "KiB", "MiB", "GiB", "TiB"]:
+        if num_bytes < 1024:
+            return "%.0f %s" % (num_bytes, unit)
+        num_bytes /= 1024.0
+    return "%.0f PiB" % num_bytes
+
+
+def memory_total():
+    try:
+        import psutil
+        return human_size(psutil.virtual_memory().total)
+    except Exception:
+        return ""
+
+
+def cpu_info():
+    try:
+        import psutil
+        count = psutil.cpu_count(logical=True) or 0
+        try:
+            freq = psutil.cpu_freq()
+            if freq is not None and freq.current:
+                return "%d @ %.0f MHz" % (count, freq.current)
+        except Exception:
+            pass
+        return "%d" % count
+    except Exception:
+        return ""
+
+
+def dependencies():
+    """Dependencies of the widget with their installed versions.
+
+    Mirrors docs/WIKI.md: eww, python3, the four Python packages and the
+    X11 / font helpers the widget relies on at runtime.
+    """
+    return [
+        ("eww", eww_version()),
+        ("python3", python_version()),
+        ("requests", lib_version("requests")),
+        ("psutil", lib_version("psutil")),
+        ("PyYAML", lib_version("yaml")),
+        ("pillow", lib_version("PIL")),
+        ("xprop", cmd_version(["xprop", "-version"])),
+        ("xrandr", cmd_version(["xrandr", "--version"])),
+        ("Noto Sans", font_status()),
+    ]
+
+
 def set_position(win, x, y):
     if WAYLAND:
         try:
@@ -268,6 +387,8 @@ def build_css(bg, light, dark, alpha, radius, font):
     button:active { background-color: %s; }
     button.open { background-color: %s; }
     button.open:hover { background-color: %s; }
+    button.export { background-color: %s; }
+    button.export:hover { background-color: %s; }
     button.close { background-color: rgba(204, 0, 0, 0.25); }
     button.close:hover { background-color: rgba(204, 0, 0, 0.4); }
     """ % (
@@ -286,6 +407,8 @@ def build_css(bg, light, dark, alpha, radius, font):
         rgba(light, 0.28),
         rgba("#4e9a06", 0.25),
         rgba("#4e9a06", 0.4),
+        rgba("#3184bd", 0.25),
+        rgba("#3184bd", 0.4),
     )
 
 
@@ -382,47 +505,54 @@ class AboutWin:
         self.win.connect("motion-notify-event", self.on_motion)
         root.pack_start(title, False, False, 0)
 
-        # Scrollable content so the three sections fit in the fixed window even
+        # Scrollable content so all sections fit in the fixed window even
         # with long commit messages / URLs.
         scrolled = Gtk.ScrolledWindow.new(None, None)
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.get_style_context().add_class("scroll")
         content = Gtk.Box.new(Gtk.Orientation.VERTICAL, 0)
 
-        # --- Repository ---
-        content.pack_start(self.sec("Repository"), False, False, 0)
-        content.pack_start(self.kv("URL", info.get("url", "")), False, False, 0)
-        content.pack_start(self.kv(
-            "Branch", "%s   (%s)" % (info.get("branch", ""), info.get("tag", ""))),
-            False, False, 0)
-        content.pack_start(self.kv(
-            "Commit", "%s  %s" % (info.get("commit", ""), info.get("full_commit", ""))),
-            False, False, 0)
-        content.pack_start(self.kv("Date", info.get("date", "")), False, False, 0)
-        content.pack_start(self.kv(
-            "Author", "%s <%s>" % (info.get("author", ""), info.get("author_email", ""))),
-            False, False, 0)
-        content.pack_start(self.kv("Message", info.get("message", "")), False, False, 0)
+        # All sections collected once; the same rows feed both the UI and the
+        # TXT export (on_export).
+        self.rows = [
+            ("Repository", [
+                ("URL", info.get("url", "")),
+                ("Branch", "%s   (%s)" % (info.get("branch", ""), info.get("tag", ""))),
+                ("Commit", "%s  %s" % (info.get("commit", ""), info.get("full_commit", ""))),
+                ("Date", info.get("date", "")),
+                ("Author", "%s <%s>" % (info.get("author", ""), info.get("author_email", ""))),
+                ("Message", info.get("message", "")),
+            ]),
+            ("Runtime", [
+                ("Compositor", compositor_name()),
+                ("Monitor", monitor_resolution(self.monitor)),
+                ("Eww", eww_version()),
+                ("Python", python_version()),
+                ("OS", os_name()),
+                ("Hostname", hostname_name()),
+                ("Kernel", kernel_version()),
+                ("Arch", arch_name()),
+                ("Memory", memory_total()),
+                ("CPU", cpu_info()),
+            ]),
+            ("Dependencies", list(dependencies())),
+            ("Configuration", [
+                ("Appearance", config_value("appearance")),
+                ("Icon set", icon_set),
+                ("Corner radius", "%d px" % radius),
+                ("Font", font),
+                ("City", config_value("city")),
+                ("Units", config_value("units")),
+                ("Language", config_value("lang")),
+                ("Hour format", config_value("hour_format")),
+                ("Scale", config_value("scale", self.monitor)),
+            ]),
+        ]
 
-        # --- Runtime ---
-        content.pack_start(self.sec("Runtime"), False, False, 0)
-        content.pack_start(self.kv("Compositor", compositor_name()), False, False, 0)
-        content.pack_start(self.kv("Monitor", monitor_resolution(self.monitor)), False, False, 0)
-        content.pack_start(self.kv("Eww", eww_version()), False, False, 0)
-        content.pack_start(self.kv("Python", python_version()), False, False, 0)
-        content.pack_start(self.kv("OS", os_name()), False, False, 0)
-
-        # --- Configuration ---
-        content.pack_start(self.sec("Configuration"), False, False, 0)
-        content.pack_start(self.kv("Appearance", config_value("appearance")), False, False, 0)
-        content.pack_start(self.kv("Icon set", icon_set), False, False, 0)
-        content.pack_start(self.kv("Corner radius", "%d px" % radius), False, False, 0)
-        content.pack_start(self.kv("Font", font), False, False, 0)
-        content.pack_start(self.kv("City", config_value("city")), False, False, 0)
-        content.pack_start(self.kv("Units", config_value("units")), False, False, 0)
-        content.pack_start(self.kv("Language", config_value("lang")), False, False, 0)
-        content.pack_start(self.kv("Hour format", config_value("hour_format")), False, False, 0)
-        content.pack_start(self.kv("Scale", config_value("scale", self.monitor)), False, False, 0)
+        for sec_name, rows in self.rows:
+            content.pack_start(self.sec(sec_name), False, False, 0)
+            for key, value in rows:
+                content.pack_start(self.kv(key, value), False, False, 0)
 
         scrolled.add(content)
         root.pack_start(scrolled, True, True, 0)
@@ -431,10 +561,14 @@ class AboutWin:
         open_btn = Gtk.Button.new_with_label("Open repository")
         open_btn.get_style_context().add_class("open")
         open_btn.connect("clicked", self.on_open)
+        export_btn = Gtk.Button.new_with_label("Export TXT")
+        export_btn.get_style_context().add_class("export")
+        export_btn.connect("clicked", self.on_export)
         close_btn = Gtk.Button.new_with_label("Close")
         close_btn.get_style_context().add_class("close")
         close_btn.connect("clicked", self.on_close)
         brow.pack_start(open_btn, True, True, 0)
+        brow.pack_start(export_btn, True, True, 0)
         brow.pack_start(close_btn, True, True, 0)
         root.pack_start(brow, False, False, 0)
 
@@ -473,25 +607,50 @@ class AboutWin:
         except Exception:
             pass
 
+    def close_dismiss_layers(self):
+        # The transparent dismiss layers sit on the compositor's overlay
+        # level - ABOVE every normal window. Left mapped they would eat
+        # every click meant for other applications, so they are closed here
+        # before a browser / editor is launched (the About window itself stays
+        # open: it quits when the session file disappears).
+        try:
+            mon = subprocess.check_output(
+                ["python3", os.path.join(CONFIG_DIR, "scripts", "core", "monitors.py")],
+                stderr=subprocess.DEVNULL, text=True, timeout=5,
+            )
+            screens = [int(m["index"]) for m in json.loads(mon).get("monitors", [])]
+        except Exception:
+            screens = []
+        for idx in screens or [0]:
+            run(["eww", "--config", EWW_CONFIG_DIR, "close",
+                 "dismiss_overlay_%d" % idx])
+        run(["eww", "--config", EWW_CONFIG_DIR, "close", "dismiss_overlay"])
+
+    def export_text(self):
+        out = ["=== Clock-With-Weather-EWW - About ===", ""]
+        for sec_name, rows in self.rows:
+            out.append("--- %s ---" % sec_name)
+            for key, value in rows:
+                out.append("%s: %s" % (key, value))
+            out.append("")
+        out.append("Generated: %s" % datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        return "\n".join(out).rstrip() + "\n"
+
+    def on_export(self, *_):
+        try:
+            gen_dir = os.path.join(CONFIG_DIR, "generated")
+            os.makedirs(gen_dir, exist_ok=True)
+            path = os.path.join(gen_dir, "about_export.txt")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(self.export_text())
+            self.close_dismiss_layers()
+            run(["xdg-open", path])
+        except Exception:
+            pass
+
     def on_open(self, *_):
         if self.url:
-            # The transparent dismiss layers sit on the compositor's overlay
-            # level - ABOVE every normal window. Left mapped they would eat
-            # every click meant for the browser / other applications, so they
-            # are closed here (the About window itself stays open: it quits
-            # when the session file disappears).
-            try:
-                mon = subprocess.check_output(
-                    ["python3", os.path.join(CONFIG_DIR, "scripts", "core", "monitors.py")],
-                    stderr=subprocess.DEVNULL, text=True, timeout=5,
-                )
-                screens = [int(m["index"]) for m in json.loads(mon).get("monitors", [])]
-            except Exception:
-                screens = []
-            for idx in screens or [0]:
-                run(["eww", "--config", EWW_CONFIG_DIR, "close",
-                     "dismiss_overlay_%d" % idx])
-            run(["eww", "--config", EWW_CONFIG_DIR, "close", "dismiss_overlay"])
+            self.close_dismiss_layers()
             run(["xdg-open", self.url])
 
     def on_close(self, *_):
