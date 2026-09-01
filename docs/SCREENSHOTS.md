@@ -1,4 +1,4 @@
-# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor, + v4.1.0 progress bars)
+# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor, + v4.1.0 progress bars, + v4.2.0 About report)
 
 Every ready-made appearance theme, captured on a 1920×1080 monitor —
 **45 themes: 9 style themes and 12 classic color themes (each in a fully
@@ -270,6 +270,12 @@ go):
 | ![Weather settings](images/screenshots/window-weather-settings.png) | ![Move / Resize](images/screenshots/window-move-resize.png) |
 | **Panel gap** | **About** |
 | ![Panel gap](images/screenshots/window-panel-gap.png) | ![About](images/screenshots/window-about.png) |
+
+The **About** dialog (v4.2.0) doubles as a support-ready report: repository
+git data, a Runtime system summary (compositor, monitor, eww/Python version,
+OS, hostname, kernel, arch, memory, CPU), the widget's **Dependencies** with
+their installed versions and the Configuration, plus **Open repository** and
+**Export TXT** (`generated/about_export.txt`) buttons.
 
 ## Theme editor (v4.0.0)
 

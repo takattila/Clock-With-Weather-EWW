@@ -143,7 +143,9 @@ ready-made themes, adaptive two/three columns, active one highlighted),
 for the HDD / RAM / CPU / SWAP row, new in v4.1.0), **panel show/hide** and
 **panel side** — plus **Theme editor** (a visual theme editor, new in
 v4.0.0), **Weather settings**, **Panel gap**, factory **Hard reset** and the
-**About** dialog. The menu opens instantly and always belongs to the
+**About** dialog (repository data, the widget's **dependencies** with their
+live installed versions, a short **system report** and an **Export TXT**
+button — new in v4.2.0). The menu opens instantly and always belongs to the
 widget actually sitting under the pointer — even where their transparent
 edges overlap.
 
@@ -167,7 +169,7 @@ to the git-ignored `config.local.yaml` and applied live.
     </tr>
 </table>
 
-### Settings windows (v3.1.0 + theme editor in v4.0.0)
+### Settings windows (v3.1.0 + theme editor in v4.0.0 + About report in v4.2.0)
 
 Move / Resize, the Weather settings form, the Panel gap control, the Theme
 editor and the About dialog open as dedicated windows that hug the widget or
@@ -200,6 +202,15 @@ one go**:
         <td></td>
     </tr>
 </table>
+
+The **About** dialog (right-click → About) is a support-ready report: the git
+**Repository** data, a **Runtime** system summary (compositor, monitor
+resolution, eww / Python version, OS, hostname, kernel, arch, memory, CPU),
+the widget's **Dependencies** with their installed versions (eww, python3,
+requests, psutil, PyYAML, pillow, xprop, xrandr, Noto Sans) and the
+**Configuration** — plus **Open repository** and **Export TXT** buttons
+(new in v4.2.0). Export writes the full report to
+`generated/about_export.txt` and opens it.
 
 ### Theme editor — on-screen color picker (v4.0.0)
 
@@ -295,6 +306,12 @@ lands on.
 - **Panel gap control** (new in v3.1.0) — top / right / bottom / left spacing
   between the panel and the screen / taskbar edges, edited in a draggable
   window next to the panel (± and typed values as a draft), saved in one go.
+- **About dialog — dependency & system report** (new in v4.2.0) — right-click
+  → **About** lists the widget's runtime dependencies with their installed
+  versions (eww, python3, requests, psutil, PyYAML, pillow, xprop, xrandr,
+  Noto Sans), a short system summary (hostname, kernel, arch, memory, CPU)
+  and the usual repository / configuration data. **Export TXT** saves the
+  whole report to `generated/about_export.txt` and opens it.
 - **One universal ESC** (new in v3.1.0) — closes the context menu, any picker
   and the control windows from any mode, and cancels Move / Resize geometry
   editing (even mid-typing) instead of closing the popups.
