@@ -1,0 +1,15 @@
+# Exclude things never needed in the image (mirrors .gitignore + secrets).
+.git
+.github
+.pytest_cache
+__pycache__
+*.pyc
+*.pid
+*.log
+.layout.json
+.api_key
+config.local.yaml
+logs
+run
+charts
+generated

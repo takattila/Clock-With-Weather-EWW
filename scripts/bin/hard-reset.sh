@@ -27,6 +27,12 @@ if [ -f "$DIR/generated/input_session.json" ]; then
   rm -f "$DIR/generated/input_session.json"
 fi
 
+# Docker mode: the theme regeneration runs through the python3 wrapper, which
+# needs the container running (docker exec). Bring it up first (idempotent).
+if [[ -n "${EWW_CONTAINER:-}" || -f "$DIR/scripts/bin/docker-start.sh" ]]; then
+  "$DIR/scripts/bin/docker-start.sh"
+fi
+
 echo "hard reset: regenerating theme from defaults"
 python3 "$DIR/scripts/core/theme.py" "$DIR" \
   || echo "WARN: theme regeneration failed (the watcher/start.sh will retry)"

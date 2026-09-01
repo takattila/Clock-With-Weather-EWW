@@ -1,0 +1,39 @@
+#!/bin/bash
+# ==============================================================================
+# eww wrapper (v5.0.0) - Docker mode
+#
+# When installed via Docker, this wrapper stands in for the host's real `eww`
+# binary. Every `eww ...` call made by start.sh / setup.sh / stop.sh and the
+# Python scripts is transparently routed into the running clock-weather-eww
+# container:
+#
+#   eww --config /home/.../Clock-With-Weather-EWW/eww ...
+#     =>  docker exec clock-weather-eww eww --config /app/eww ...
+#
+# Because the host widget dir is bind-mounted to /app in the container, every
+# reference to the host dir in the arguments is rewritten to /app.
+#
+# The container name can be overridden via EWW_CONTAINER.
+# ==============================================================================
+CONTAINER="${EWW_CONTAINER:-clock-weather-eww}"
+
+# The widget dir on the host = two levels above scripts/bin.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOST_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[eww-wrapper] ERROR: docker not found -- the widget was installed in Docker mode." >&2
+  exit 1
+fi
+
+# Rewrite host-dir references in every argument to the container's /app mount.
+declare -a ARGS=()
+for arg in "$@"; do
+  if [[ "${arg}" = "${HOST_DIR}" || "${arg}" = "${HOST_DIR}/"* ]]; then
+    ARGS+=("/app${arg#"$HOST_DIR"}")
+  else
+    ARGS+=("${arg}")
+  fi
+done
+
+exec docker exec "${CONTAINER}" eww "${ARGS[@]}"

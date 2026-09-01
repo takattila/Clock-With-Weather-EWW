@@ -32,6 +32,10 @@ EWW_INSTALL_BIN="${EWW_INSTALL_BIN:-/usr/local/bin/eww}"
 # DEFAULT_CITY before running the installer).
 DEFAULT_CITY="${DEFAULT_CITY:-Budapest}"
 
+# Install method: "native" (default) or "docker". The default can be overridden
+# non-interactively by exporting INSTALL_METHOD before running the installer.
+INSTALL_METHOD="${INSTALL_METHOD:-}"
+
 C_D=$(echo -en "\e[0m")    # COLOR: DEFAULT
 C_Y=$(echo -en "\e[1;93m") # COLOR: YELLOW
 C_R=$(echo -en "\e[1;31m") # COLOR: RED
@@ -658,19 +662,66 @@ function installSourceSetup() {
     source "${EWW_DIR}/scripts/bin/setup.sh" --from-install true --city "${DEFAULT_CITY}"
 }
 
+function installChooseMethod() {
+    # Choose native vs docker, unless INSTALL_METHOD was provided (e.g. for
+    # scripting / CI: INSTALL_METHOD=docker). Empty -> interactive prompt.
+    if [[ -n "${INSTALL_METHOD}" ]]; then
+        case "${INSTALL_METHOD}" in
+            native|docker) return 0 ;;
+            *)
+                echo "${C_R}[ ERROR ]${C_D} INSTALL_METHOD must be 'native' or 'docker' (got '${C_Y}${INSTALL_METHOD}${C_D}')."
+                exit 1
+                ;;
+        esac
+    fi
+
+    echo
+    echo "- How do you want to install the widget?"
+    echo -e "  ${C_Y}1.${C_D} Native (recommended) -- installs eww + all dependencies via your package manager"
+    echo -e "  ${C_Y}2.${C_D} Docker -- packages everything into a container; Docker is the only dependency"
+    echo
+    local methodNumber
+    methodNumber="$(helperPrompt "  your choice ?: " "1" "1 2")"
+    if [[ "${methodNumber}" = "2" ]]; then
+        INSTALL_METHOD="docker"
+    else
+        INSTALL_METHOD="native"
+    fi
+}
+
 function main() {
     clear
 
     installPrintLogo
     installProceed
     installCheckOS
-    installSetRootPassword
-    installUsLocale
-    installDependencies
-    installEwwDependencies
-    installEww
+    installChooseMethod
+
+    if [[ "${INSTALL_METHOD}" = "docker" ]]; then
+        # Docker mode: no distro/system package install beyond Docker itself.
+        # -- Docker (and the image build) uses sudo only when required.
+        # The bash control scripts (start/stop/setup) still need a bit of host
+        # tooling for geometry/theme, but those run THROUGH the container via
+        # the wrapper scripts, so nothing host-native is required for eww.
+        # We still need the widget cloned + a working setup wizard (which runs
+        # the YAML helpers on the host, writing config.local.yaml).
+        installSetRootPassword
+    else
+        installSetRootPassword
+        installUsLocale
+        installDependencies
+        installEwwDependencies
+        installEww
+    fi
+
     installWidgetFromGitHub
     installFont
+
+    if [[ "${INSTALL_METHOD}" = "docker" ]]; then
+        source "${EWW_DIR}/scripts/bin/install-docker.sh"
+        dockerInstallMain
+        dockerPrepPath
+    fi
 
     installSourceSetup
 

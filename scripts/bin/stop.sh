@@ -2,6 +2,29 @@
 # Stop the eww widget.
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." >/dev/null 2>&1 && pwd )"
 
+# --- Docker mode detection ---------------------------------------------------
+# True when the widget was installed with INSTALL_METHOD=docker (same logic as
+# start.sh). In Docker mode every long-lived process (eww daemon + watchers)
+# lives inside the container, so stopping means stopping/removing the
+# container rather than killing host PIDs.
+detect_docker_mode() {
+  if [[ -n "${EWW_CONTAINER:-}" || -f "$DIR/scripts/bin/docker-stop.sh" ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+DOCKER_MODE="$(detect_docker_mode)"
+
+# In Docker mode everything below (PID-based kills, eww kill, pgrep) targets
+# host processes and is therefore skipped -- the container owns them all.
+if [[ "$DOCKER_MODE" = "true" && -f "$DIR/scripts/bin/docker-stop.sh" ]]; then
+  "$DIR/scripts/bin/docker-stop.sh"
+  echo "Clock + weather widget and system monitor panel stopped (eww, Docker)."
+  exit 0
+fi
+
 # Pattern-based leftover killer shared with start.sh (single-instance
 # guarantee + orphan cleanup; see the file header for the safety model).
 if [ -f "$DIR/scripts/bin/process_sweep.sh" ]; then

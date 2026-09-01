@@ -1,3 +1,66 @@
+# Clock-With-Weather-EWW — v5.0.0
+
+**A beautiful, fully customizable clock & weather widget with a live system
+monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
+layer-shell), works on **X11**, and — new in v5.0.0 — can be **installed and
+run inside a Docker container**, making **Docker the only host dependency**.
+
+> **Recommendation: v5.0.0** — the current recommended release. The installer
+> now asks whether you want a **native** or a **Docker** installation. In
+> Docker mode everything (`eww` + Python + GTK) is containerized; the widget
+> still renders on your desktop by sharing the X11/Wayland sockets.
+
+**v5.0.0 adds a Docker installation method.** The installer (`install.sh`)
+now prompts for **native** or **Docker** (override non-interactively with
+`INSTALL_METHOD=docker`). The Docker route builds a multi-stage image that
+compiles `eww` (`v0.6.0`) internally, so no distro package management for
+`eww`/Python/GTK is needed. The container renders the widget on the user's own
+graphical session via shared X11/Wayland sockets and a mounted `/proc` for the
+system-monitor data.
+
+---
+
+## What changed in v5.0.0
+
+### New: Docker installation (native vs Docker)
+
+- The installer asks **"1. Native (recommended)"** or **"2. Docker"**; pick
+  Docker non-interactively by exporting `INSTALL_METHOD=docker`.
+- **`Dockerfile`** (multi-stage): builds `eww v0.6.0` with both the `x11` and
+  `wayland` features, then builds the runtime image on `ubuntu:22.04` with the
+  Python + GTK dependencies.
+- **`docker-compose.yml`** and **`scripts/docker/entrypoint.sh`** define the
+  container mounts (X11/Wayland sockets, `/proc`, `/sys`, fonts, the widget
+  config) and start the long-lived eww daemon + watchers on startup.
+- **PATH wrapper scripts** (`scripts/bin/eww`, `scripts/bin/python3`) route the
+  host control scripts' calls into the container, so `start.sh`, `stop.sh`,
+  `setup.sh` and `hard-reset.sh` keep working almost unchanged.
+- **`install-docker.sh`** installs Docker (when missing), builds the image and
+  generates the `docker-start.sh` / `docker-stop.sh` runtime helpers.
+
+### Docker-mode differences (documented)
+
+- **Keyboard control is disabled** in Docker mode: the invisible
+  `input_daemon.py` needs `/dev/input` + the `input`/root privilege, which the
+  container does not grant. Mouse-driven control (weather, panel, theme
+  editor, Move/Resize) is fully functional.
+- The **KDE Plasma check** is skipped (the container has no `plasmashell`; the
+  widget does not need it).
+- The **eww version is pinned** to `v0.6.0` (both compositor features), so a
+  single image works on X11 and Wayland alike.
+
+### Upgrade from v4.2.0
+
+- To keep using the **native** method, simply run the installer and pick
+  "Native" — nothing changes.
+- Or re-install with `INSTALL_METHOD=docker` to switch to the container. Your
+  `config.local.yaml` and `.api_key` are backed up and restored automatically
+  by the installer.
+- See the [WIKI — Docker mode](docs/WIKI.md) section for the full architecture
+  and the mount table.
+
+---
+
 # Clock-With-Weather-EWW — v4.2.0
 
 **A beautiful, fully customizable clock & weather widget with a live system

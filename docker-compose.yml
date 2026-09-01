@@ -1,0 +1,48 @@
+# ==============================================================================
+# docker-compose for Clock-With-Weather-EWW (v5.0.0)
+#
+# The widget needs access to the host graphical session: the X11 and/or
+# Wayland sockets, the /proc filesystem (psutil system stats) and the local
+# widget config (config.local.yaml, .api_key) are all mounted in.
+#
+# Use:
+#   docker compose build
+#   docker compose up -d
+#   docker compose down
+#
+# The container runs HEADLESS (no terminal) as a daemon; the eww daemon + the
+# Python watchers live inside it. start.sh / stop.sh on the host wrap these
+# commands via the eww / python3 wrapper scripts.
+# ==============================================================================
+
+services:
+  clock-weather-eww:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: clock-weather-eww:latest
+    container_name: clock-weather-eww
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+      - XAUTHORITY=${XAUTHORITY:-}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-root}
+      - XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-}
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
+    volumes:
+      # The widget repo (config, assets, themes). The host directory is the
+      # single source of truth; the image supplies the runtime only.
+      - ${EWW_DIR:-$HOME/.eww/Clock-With-Weather-EWW}:/app
+      # X11 sockets
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /tmp/.Xauthority:/tmp/.Xauthority:ro
+      # Wayland socket (host XDG_RUNTIME_DIR is bind-mounted to a writable
+      # path; the container-side XDG_RUNTIME_DIR env above points at it)
+      - ${XDG_RUNTIME_DIR:-/tmp/runtime-root}:/tmp/runtime-root:rw
+      # psutil needs the host /proc to report real CPU/mem/disk/network
+      - /proc:/proc:ro
+      - /sys:/sys:ro
+      - /etc/os-release:/etc/os-release:ro
+      - /usr/share/fonts:/usr/share/fonts:ro

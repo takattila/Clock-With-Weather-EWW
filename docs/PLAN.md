@@ -7,6 +7,77 @@
 
 ---
 
+# v5.0.0 — Docker container installation
+
+> The plan behind the v5.0.0 release: allow installing and running the whole
+> widget inside a Docker container, so `Docker` becomes the only real host
+> dependency (no distro package mayhem for `eww`, Python, GTK).
+
+## Goals
+
+1. Let the installer ask **native vs Docker** (`INSTALL_METHOD`),
+2. ship a `Dockerfile` that builds `eww` (`v0.6.0`) and the runtime image,
+3. keep the existing bash control scripts (`start.sh`, `stop.sh`, `setup.sh`,
+   `hard-reset.sh`) almost unchanged by routing their `eww` / `python3` calls
+   into the container through PATH wrapper scripts,
+4. document the differences (keyboard control disabled) and the required
+   host mounts.
+
+## Design decisions
+
+- **Native control scripts + container runtime.** The bash scripts stay on the
+  host because they touch host-specific things (`$HOME` icons, `$DIR` config,
+  `xdg-open`, `sudo`). Only the actual widget stack (eww + Python + GTK) is
+  containerized.
+- **Two PATH wrappers** (`scripts/bin/eww`, `scripts/bin/python3`) translate
+  every call into `docker exec`, rewriting the host dir to the container's
+  `/app` mount argument by argument. This is the key change that lets the
+  existing scripts work unmodified.
+- **Long-lived processes owned by the container.** The eww daemon and the
+  two watchers (config + monitor) are started by
+  `scripts/docker/entrypoint.sh` under `tini`, so they survive and are reaped
+  correctly. Host scripts never PID-kill them; `stop.sh` stops the container.
+- **`input_daemon.py` excluded.** It needs `/dev/input` + `input`/root, which
+  the container does not grant. Keyboard control is disabled in Docker mode;
+  mouse-driven control is unaffected.
+- **`setup.sh` unchanged.** It writes `config.local.yaml`/`.api_key` on the
+  host (bind-mounted to `/app`) and calls the host `start.sh`, which itself
+  starts the container. The `.desktop` icons point at the host `start.sh` too.
+- **Pinned versions.** `eww` `v0.6.0` (both `x11` and `wayland` features), base
+  image `ubuntu:22.04`, and the same `requirements.txt` minimums as native.
+
+## Implementation steps
+
+1. `Dockerfile` (multi-stage: eww-builder w/ cargo → runtime image).
+2. `.dockerignore`.
+3. `docker-compose.yml` (X11/Wayland/proc/config mounts + env).
+4. `scripts/docker/entrypoint.sh` (daemon + watchers, stays alive).
+5. `scripts/bin/{eww,python3}` wrappers (host dir → `/app` rewrite,
+   `docker exec`).
+6. `scripts/bin/install-docker.sh` (docker install, image build,
+   generate `docker-start.sh` / `docker-stop.sh`, PATH prep).
+7. `install.sh`: new `INSTALL_METHOD` + interactive native/docker prompt;
+   docker branch skips the distro eww/python installs.
+8. `start.sh` `main()`: Docker branch — start container, run only the sync
+   layout/geometry via wrappers, skip `start_eww` (its `kill` would drop the
+   container's daemon), skip Plasma check, skip input daemon.
+9. `stop.sh`: Docker branch — `docker-stop.sh` instead of PID/eww kills.
+10. Docs: README (install section, structure), WIKI (Docker-mode section),
+    this plan, RELEASE_NOTES v5.0.0.
+11. CI: a `docker build` sanity job in `ci.yml`.
+
+## Verification
+
+- `docker build` completes (the eww cargo build is the slow part).
+- The widget renders on X11 and Wayland from the container with the documented
+  mounts.
+- `shellcheck` passes on all modified bash scripts.
+- `pytest tests/` and the YAML validation keep passing.
+- `stop.sh` / `start.sh` work in Docker mode (container created/stopped/removed
+  idempotently).
+
+---
+
 # v4.0.0 — Theme Editor
 
 > Executed plan behind the v4.0.0 release: a draggable theme editor that

@@ -32,7 +32,11 @@ Create a free account at [openweathermap.org](https://home.openweathermap.org/us
 
 One-liner, root privileges are requested by the script (the installer is
 **cross-distro**: it detects your package manager and installs **eww + all
-dependencies**):
+dependencies**). The installer asks whether you want a **native** or a
+**Docker** installation (**new in v5.0.0**).
+
+> Tip: to skip the interactive API-key prompt, export your key first:
+> `export OPENWEATHER_API_KEY=<YOUR-API-KEY>`
 
 ... via `curl`:
 
@@ -46,8 +50,29 @@ bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-We
 bash -c "$(wget --no-check-certificate --no-cache --no-cookies -O- https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/bin/install.sh)"
 ```
 
-> Tip: to skip the interactive API-key prompt, export your key first:
-> `export OPENWEATHER_API_KEY=<YOUR-API-KEY>`
+#### Native vs Docker installation (v5.0.0)
+
+The installer first asks which method you want:
+
+- **1. Native** (recommended) — installs `eww` + all Python/GTK dependencies
+  through your package manager and runs the widget directly on the host.
+- **2. Docker** — packages everything (`eww` + Python + GTK) into a container;
+  **Docker is the only real dependency**. The widget still renders on your
+  desktop (X11 or Wayland sockets are shared with the container).
+
+To pick the Docker method non-interactively (for scripting / CI), export the
+method before running the installer:
+
+```bash
+export INSTALL_METHOD=docker
+bash -c "$(curl -fsSLk https://raw.githubusercontent.com/takattila/Clock-With-Weather-EWW/refs/heads/master/scripts/bin/install.sh)"
+```
+
+> Docker-mode limitations: the keyboard control (the invisible `input_daemon`)
+> is **disabled**, because it needs low-level `/dev/input` access that the
+> container does not grant. Everything else — weather, system monitor panel,
+> theme editing, Move/Resize with the mouse — works as on a native install.
+> See [docs/WIKI.md](docs/WIKI.md#docker-mode) for details.
 
 ### 3. Start / stop / configure
 
@@ -397,7 +422,9 @@ Clock-With-Weather-EWW/
 │   ├── core/           # config / theme / watch / weather / system data scripts
 │   ├── widgets/        # panel charts, context menu + quick toggles, About / weather dialogs
 │   ├── move/           # Move/Resize + Panel-gap control windows, input daemons
+│   ├── docker/         # container entrypoint (Docker mode, v5.0.0)
 │   └── bin/            # start.sh, stop.sh, install.sh, setup.sh, hard-reset.sh
+│                       # + eww / python3 wrappers + docker-{start,stop}.sh (Docker mode)
 ├── assets/
 │   ├── themes/         # appearance + per-city weather YAMLs
 │   ├── icons-src/      # source icons (tinted copies go to generated/)
@@ -405,6 +432,8 @@ Clock-With-Weather-EWW/
 ├── docs/               # WIKI, PLAN, SCREENSHOTS gallery, release notes + images
 ├── tools/              # screenshot tooling, vendored git-filter-repo
 ├── tests/              # headless pytest suite
+├── Dockerfile          # multi-stage image (Docker mode, v5.0.0)
+├── docker-compose.yml  # socket/proc/config mounts for the container (v5.0.0)
 ├── config.yaml         # central, commented defaults
 ├── config.local.yaml   # git-ignored machine overrides (+ script writes)
 └── logs/  run/  charts/  generated/   # git-ignored runtime outputs

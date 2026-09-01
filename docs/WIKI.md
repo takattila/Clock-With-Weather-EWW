@@ -39,6 +39,87 @@ What the installer does, in order:
 
 ---
 
+## 0. Docker mode (v5.0.0)
+
+From **v5.0.0** the installer offers two methods — **native** (the classic
+process above) and **Docker**. The Docker method (`INSTALL_METHOD=docker`)
+packages `eww` + the Python runtime + GTK into a single container; **Docker is
+the only host dependency**.
+
+### How it is structured
+
+```
+                        ┌──────────────────────── HOST ────────────────────────┐
+                        │                                                     │
+   control scripts run ─┤  start.sh / stop.sh / setup.sh / hard-reset.sh      │
+   natively on the host │   │                          │                      │
+                        │   ▼  PATH wrapper scripts    │                      │
+                        │  scripts/bin/{eww,python3}   │                      │
+                        │   │  (docker exec)           │                      │
+                        │   └──────────▶ ┌─────────────▼─────────────┐         │
+                        │                │ container: <host DIR> →/app│        │
+                        │  docker-run     │   eww daemon      (entrypoint)     │
+                        │  ──────────────▶│   config watcher  (watch.py)       │
+                        │                │   monitor watcher (monitor_watch.py)│
+                        │                └─────────────────────────────────────┘
+                        └─────────────────────────────────────────────────────┘
+```
+
+- **The bash control scripts (`start.sh`, `stop.sh`, `setup.sh`,
+  `hard-reset.sh`) run natively on the host.** They drive the window layout
+  and geometry through two **PATH wrapper scripts**:
+  - `scripts/bin/eww`      → `docker exec <container> eww "$@"`
+  - `scripts/bin/python3`  → `docker exec <container> python3 "$@"`
+- Because the host widget dir is **bind-mounted** to `/app` in the container,
+  every reference to the host dir in the wrapper arguments is rewritten to
+  `/app`. This is why the existing scripts required almost no changes.
+- **The long-lived processes (eww daemon + the two watchers) live inside the
+  container**, started by `scripts/docker/entrypoint.sh` (wrapped by `tini`,
+  so background watchers are reaped on shutdown). The host scripts never kill
+  them by PID — `stop.sh` simply stops/removes the container.
+
+### Files added
+
+| File | Role |
+|---|---|
+| `Dockerfile` | multi-stage: builds `eww` (`v0.6.0`) with `cargo`, then builds the runtime image (`ubuntu:22.04`, Python + GTK deps) |
+| `.dockerignore` | keeps git-ignored runtime dirs/secrets out of the image |
+| `docker-compose.yml` | declares the X11/Wayland/proc/config mounts and environment |
+| `scripts/docker/entrypoint.sh` | container entrypoint: starts the eww daemon + watchers, stays alive |
+| `scripts/bin/install-docker.sh` | sources an install-time Docker install + build + wrapper-generation |
+| `scripts/bin/eww` (wrapper) | routes `eww` calls into the container |
+| `scripts/bin/python3` (wrapper) | routes sync Python calls into the container |
+| `scripts/bin/docker-start.sh` / `docker-stop.sh` | generated at install: start / stop the container |
+
+### Runtime mounts (host → container)
+
+| Mount | Why |
+|---|---|
+| `<host DIR>:/app` | the widget repo (config, assets, themes) — single source of truth |
+| `/tmp/.X11-unix`, Xauthority | X11 rendering |
+| `$XDG_RUNTIME_DIR:/tmp/runtime-root` | Wayland socket |
+| `/proc:/proc:ro`, `/sys:/sys:ro` | `psutil` CPU/mem/disk/network stats |
+| `/usr/share/fonts:/usr/share/fonts:ro` | fonts for the GTK rendering |
+| `/etc/os-release` | distro report in the About dialog |
+
+The container runs with `--net=host` and the display env is exported on
+start (see `docker-start.sh`).
+
+### Differences vs native (limitations)
+
+| Area | Docker mode |
+|---|---|
+| Keyboard control (`input_daemon.py`) | **disabled** — needs `/dev/input` + `input`/root, not granted to the container |
+| KDE Plasma check (`ensure_plasma_running`) | skipped (there is no `plasmashell` in the container; the widget does not need it) |
+| `eww` version | **pinned** `v0.6.0` built with both `x11` and `wayland` features |
+| Python versions | pinned by the `ubuntu:22.04` image (tested elsewhere: same scripts run on 3.11–3.14) |
+| Weather / panel / theme editor / Move-Resize | fully working (mouse-driven) |
+
+The widget still detects its compositor (X11/Wayland) automatically at
+runtime, so a single image works on both.
+
+---
+
 ## 1. Dependencies
 
 ### Required

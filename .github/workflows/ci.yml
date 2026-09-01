@@ -78,4 +78,17 @@ jobs:
             scripts/bin/setup.sh \
             scripts/bin/setup-test-env.sh \
             scripts/bin/start.sh \
-            scripts/bin/stop.sh
+            scripts/bin/stop.sh \
+            scripts/bin/install-docker.sh \
+            scripts/bin/eww \
+            scripts/bin/python3 \
+            scripts/docker/entrypoint.sh
+
+  docker-build:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the Docker image
+        run: docker build -t clock-weather-eww:ci .
+        timeout-minutes: 60

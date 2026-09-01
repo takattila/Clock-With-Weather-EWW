@@ -1,0 +1,44 @@
+#!/bin/bash
+# ==============================================================================
+# python3 wrapper (v5.0.0) - Docker mode
+#
+# When installed via Docker, this wrapper stands in for the host's real
+# `python3` interpreter for the SYNC (query) calls the control scripts make:
+# the theme generation, monitor/workarea/geometry queries and the About-dialog
+# dependency checks. It routes every call into the running clock-weather-eww
+# container:
+#
+#   python3 /home/.../Clock-With-Weather-EWW/scripts/core/theme.py <dir>
+#     =>  docker exec clock-weather-eww python3 /app/scripts/core/theme.py /app
+#
+# Because the host widget dir is bind-mounted to /app in the container, every
+# reference to the host dir in the arguments is rewritten to /app.
+#
+# The long-lived python daemons (watchers) are NOT started through this
+# wrapper -- they are owned by scripts/docker/entrypoint.sh so they survive in
+# the container (a docker exec dies with the caller).
+#
+# The container name can be overridden via EWW_CONTAINER.
+# ==============================================================================
+CONTAINER="${EWW_CONTAINER:-clock-weather-eww}"
+
+# The widget dir on the host = two levels above scripts/bin.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOST_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[python3-wrapper] ERROR: docker not found -- the widget was installed in Docker mode." >&2
+  exit 1
+fi
+
+# Rewrite host-dir references in every argument to the container's /app mount.
+declare -a ARGS=()
+for arg in "$@"; do
+  if [[ "${arg}" = "${HOST_DIR}" || "${arg}" = "${HOST_DIR}/"* ]]; then
+    ARGS+=("/app${arg#"$HOST_DIR"}")
+  else
+    ARGS+=("${arg}")
+  fi
+done
+
+exec docker exec "${CONTAINER}" python3 "${ARGS[@]}"
