@@ -7,6 +7,87 @@
 
 ---
 
+# Feature — One-package install (.deb / .rpm / AUR) built by GitHub Actions
+
+> Planned: wrap the widget + all its dependencies into native distribution
+> packages so "one package install" replaces the dependency install. The
+> packages stay a thin wrapper — dependencies come from the package manager,
+> the repo + pinned `eww` install via the existing installer logic, so the
+> widget's git self-update and runtime-write model stay untouched.
+
+## Goal
+
+Install the repo and every dependency with a single package command on
+Debian/Ubuntu/Mint (`.deb`), Fedora/RHEL (`.rpm`) and Arch (AUR `PKGBUILD`),
+instead of the multi-step dependency install. Packages are built in a
+GitHub Actions matrix and attached to releases.
+
+## Design decisions
+
+- **Wrapper, not repackaging.** The widget repo is deliberately NOT shipped
+  as a read-only FHS payload (`/usr/share`): it needs runtime writes
+  (`logs/`, `run/`, `.layout.json`, `config.local.yaml`, `.api_key`) and a
+  git working tree for self-update. The package instead:
+    1. declares every runtime + eww build dependency in the native
+       `Depends:` / `Requires` / `depends=()` field, so the package manager
+       pulls them automatically, and
+    2. runs a non-interactive variant of the existing installer logic in
+       `postinst` / `%post` / `.install` (clone repo to `~/.eww`, build +
+       pin `eww` by the embedded git hash, install font, autostart entry).
+- **API key is not prompted during package install** — deferred to
+  `setup.sh` on first login (`OPENWEATHER_API_KEY` env or the wizard).
+- **Both update models keep working**: the home repo stays a full git
+  clone (existing self-update intact); package upgrades re-pin the repo to
+  the release tag (git checkout), so the packaged version and the widget
+  version track each other. `postrm` must NOT delete the user's
+  `config.local.yaml`/cloned repo (only package-level artifacts).
+- **Single source of truth for dependency lists**: the per-distro package
+  tables currently hardcoded in `scripts/bin/install.sh`
+  (`installEwwDependencies` / `installDependencies`, ~lines 445-520) move to
+  `packaging/deps.yaml`; `install.sh` and the package generators read the
+  same file, so they can never drift apart.
+- **Version = git tag** (`v4.3.0` → `4.3.0`); the postinst pins the repo to
+  that same tag, making package upgrades deterministic.
+
+## Implementation steps
+
+1. `scripts/bin/install.sh` — add a `EWW_NONINTERACTIVE=1` mode that skips
+   the prompts (proceed / root password / locale / city / API key /
+   auto-start) and uses `DEFAULT_CITY` + env; the interactive UX is
+   unchanged. Dependency lists sourced from `packaging/deps.yaml`.
+2. `packaging/deps.yaml` (new) — `tool:`, `runtime:`, `build:` lists per
+   package family (apt / zypper / dnf / pacman / yum), identical to today's
+   `install.sh` content.
+3. `packaging/deb/` — `DEBIAN/control` (Depends = apt list, version from
+   tag), `postinst` (resolve `SUDO_USER`, run non-interactive installer,
+   preserve/restore `config.local.yaml`, create `~/.config/autostart`
+   entry), `postrm` (safe cleanup), `build-deb.sh` (`dpkg-deb --build`).
+4. `packaging/rpm/` — `clock-with-weather-eww.spec` (Requires: + `%post`
+   via the same installer call), `build-rpm.sh` (`rpmbuild -bb`).
+5. `packaging/arch/PKGBUILD` — `depends=()` (incl. `eww` from the official
+   repos), `.install` running the non-interactive installer.
+6. `.github/workflows/package.yml` (new) — matrix
+   `ubuntu-latest`(deb) / `fedora-latest`(rpm) / `archlinux`(PKGBUILD),
+   version from the tag, artifacts uploaded and attached on tag push.
+
+## Open questions
+
+- `postinst` runs as root → the widget lands in `SUDO_USER`'s home only
+  (single-user desktop assumption, acceptable).
+- The eww build toolchain stays in `Depends:` (needed for rebuilds) rather
+  than being cleaned post-install.
+
+## Verification (planned)
+
+- `.deb` on the target Linux Mint 22.3: `sudo apt install
+  ./clock-with-weather-eww_<ver>_all.deb` pulls all deps, the installer
+  clones the repo, `eww --version` reports the pinned hash, `start.sh`
+  boots the widget.
+- `pytest tests/` unaffected (no widget code changes).
+- CI matrix produces all three artifacts from one tag push.
+
+---
+
 # v4.0.0 — Theme Editor
 
 > Executed plan behind the v4.0.0 release: a draggable theme editor that
