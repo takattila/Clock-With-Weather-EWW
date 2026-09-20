@@ -347,6 +347,14 @@ function helperBuildEwwFromSource() {
     git clone --depth 1 --branch "${EWW_REPO_REF}" https://github.com/"${EWW_REPO}".git "${EWW_BUILD_DIR}" &> /dev/null
     echo "done."
 
+    # rustc >= 1.80 cannot compile the `time` crate version that eww's
+    # Cargo.lock pins (E0282 type-inference regression in time 0.3.34, fixed
+    # upstream in 0.3.35). Shift that lockfile entry to the newest 0.3.x.
+    # On toolchains whose lock already satisfies this it is a no-op; when the
+    # pinned ref is bumped and 0.3.34 is long gone, the -p selector simply
+    # errors and `|| true` keeps the build moving.
+    ( cd "${EWW_BUILD_DIR}" && cargo update -p time@0.3.34 ) &> /dev/null || true
+
     echo "  == Running ${C_Y}cargo build --release${C_D} (this can take a while, typically 5-10 minutes on this machine) ... "
     echo "     ${C_Y}Please wait${C_D}: the build is compiling eww from source."
     ( cd "${EWW_BUILD_DIR}" && cargo build --release --no-default-features --features "${eww_features}" ) &> /dev/null
