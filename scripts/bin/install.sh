@@ -303,6 +303,8 @@ function helperInstallEwwBuildDeps() {
     elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
         helperInstall "apt update -y" "UPDATE"
         helperInstall "apt install -y" "build-essential pkg-config libgtk-3-dev libgtk-layer-shell-dev libpango1.0-dev libgdk-pixbuf2.0-dev libcairo2-dev libglib2.0-dev libdbusmenu-gtk3-dev"
+    elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
+        helperInstall "pacman -Sy --noconfirm" "base-devel pkg-config gtk3 gtk-layer-shell pango gdk-pixbuf2 cairo glib2 libdbusmenu-gtk3"
     elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
         helperInstall "zypper -n in" "gcc make pkgconf-pkg-config gtk3-devel gtk-layer-shell-devel pango-devel gdk-pixbuf-devel cairo-devel glib2-devel libdbusmenu-gtk3-devel"
     elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
