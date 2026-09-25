@@ -83,6 +83,31 @@ def collect():
     }
 
 
+def monitor_selector(index):
+    """eww monitor selector for the enumeration `index`: the connector NAME
+    when known, else the index.
+
+    eww/GDK selects a monitor by index, but GDK's index order is the order it
+    first saw the outputs and does not necessarily follow `xrandr
+    --listmonitors` (which lists the primary monitor first) — after a hotplug
+    the dismiss layer would open on the wrong screen. The name is order
+    independent.
+    """
+    try:
+        out = subprocess.check_output(
+            ["python3", os.path.join(CONFIG_DIR, "scripts", "core", "monitors.py")],
+            stderr=subprocess.DEVNULL, text=True, timeout=5,
+        )
+        m = next((m for m in json.loads(out).get("monitors", [])
+                  if int(m["index"]) == int(index)), None)
+        name = (m or {}).get("name")
+        if name and str(name) != str(index):
+            return str(name)
+    except Exception:
+        pass
+    return str(index)
+
+
 def main():
     args = sys.argv[1:]
     if "--open" in args and os.environ.get("EWW_ABOUT_BG") != "1":
@@ -107,10 +132,11 @@ def main():
         run(["eww", "--config", EWW_CONFIG_DIR, "close", "ctx_menu"])
         # Transparent dismiss layer first (so the GTK About window stacks above
         # it): clicking outside the About window closes it.
+        sel = monitor_selector(monitor)
         run(["eww", "--config", EWW_CONFIG_DIR, "open",
              "--id", "dismiss_overlay",
-             "--screen", monitor,
-             "--arg", "screen=" + monitor,
+             "--screen", sel,
+             "--arg", "screen=" + sel,
              "dismiss_overlay"])
         # The invisible keyboard daemon reads the session file: while it exists,
         # ESC closes the About window. about_win.py watches the same file and

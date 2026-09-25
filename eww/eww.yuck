@@ -91,8 +91,13 @@
 ;; Image path helpers
 ;; ===========================================================================
 
-(defwidget widget_clock_weather [main_w main_h main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen]
-  (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget clock --monitor ${screen}"
+;; `mon` is the monitor INDEX from scripts/core/monitors.py (the config's
+;; per_monitor keys are indexed by it); `screen` is eww's own monitor selector
+;; and is passed by NAME from start.sh, because GDK's index order is the order
+;; it first saw the outputs and does NOT follow `xrandr --listmonitors` after a
+;; hotplug (see start.sh's open_on_monitor).
+(defwidget widget_clock_weather [main_w main_h main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y mon]
+  (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget clock --monitor ${mon}"
     ;; Independent axis scales: width follows main_scale_perc_x, height
     ;; follows main_scale_perc_y (equal unless the Move/Resize dialog was
     ;; used to resize a single axis). The canvas window is max(natural,
@@ -309,8 +314,8 @@
 ;; System monitor panel
 ;; ===========================================================================
 
-(defwidget widget_panel [ph panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y screen]
-  (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget panel --monitor ${screen}"
+(defwidget widget_panel [ph panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y mon]
+  (eventbox :timeout "10s" :onrightclick "../scripts/widgets/ctx.py --widget panel --monitor ${mon}"
     (transform :scale-x "${panel_scale_perc_x}%" :scale-y "${panel_scale_perc_y}%"
                :translate-x {panel_translate_x}
                :translate-y {panel_translate_y}
@@ -534,7 +539,7 @@
 ;; menu_toggle.py; ESC / outside clicks close everything via close_popup.py.
 (defwindow main_window
   [main_win_x main_win_y main_win_w main_win_h main_w main_h
-   main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen]
+   main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen mon]
   :monitor {screen}
   :geometry (geometry :x {main_win_x}
                       :y {main_win_y}
@@ -549,11 +554,13 @@
                         :main_scale_perc_y main_scale_perc_y
                         :main_translate_x main_translate_x
                         :main_translate_y main_translate_y
-                        :screen screen))
+                        :mon mon))
 
 ;; panel_window is parametrized so start.sh can open one instance per monitor
-;; with `eww open --id panel_<N> --screen <N> --arg "screen=<N>" ... panel_window`.
-;; `screen` is both the monitor selector and the :monitor value; ph (the
+;; with `eww open --id panel_<N> --arg "screen=<monitor name>" ... panel_window`.
+;; `screen` is eww's monitor selector (the monitor NAME, so a GDK index reorder
+;; after a hotplug cannot move the panel to the other screen) and `mon` the
+;; enumeration index the scripts/config use; ph (the
 ;; NATURAL height) feeds the chart selector (panel.files[ph]); pwin_x/y/w/h
 ;; is the CANVAS geometry computed by scripts/move/widget_rect.py (same rule
 ;; as for the clock: max(natural, visible) per axis, positioned so it always
@@ -562,7 +569,7 @@
 ;; axis scale — see widget_clock_weather) place the scaled content exactly on
 ;; the visible rectangle.
 (defwindow panel_window
-  [screen pw ph pwin_x pwin_y pwin_w pwin_h panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y]
+  [screen mon pw ph pwin_x pwin_y pwin_w pwin_h panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y]
   :monitor {screen}
   :geometry (geometry :x {pwin_x}
                       :y {pwin_y}
@@ -576,7 +583,7 @@
                 :panel_scale_perc_x panel_scale_perc_x
                 :panel_scale_perc_y panel_scale_perc_y
                 :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
-                :screen screen))
+                :mon mon))
 
 ;; X11 variants: eww 0.5.0 only honours `:stacking "foreground"`/`"background"` on
 ;; X11 ("bottom" is a no-op there), so these windows use "background"
@@ -589,7 +596,7 @@
 ;; (Layer::Bottom).
 (defwindow main_window_x11
   [main_win_x main_win_y main_win_w main_win_h main_w main_h
-   main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen]
+   main_scale_perc_x main_scale_perc_y main_translate_x main_translate_y screen mon]
   :monitor {screen}
   :geometry (geometry :x {main_win_x}
                       :y {main_win_y}
@@ -604,10 +611,10 @@
                         :main_scale_perc_y main_scale_perc_y
                         :main_translate_x main_translate_x
                         :main_translate_y main_translate_y
-                        :screen screen))
+                        :mon mon))
 
 (defwindow panel_window_x11
-  [screen pw ph pwin_x pwin_y pwin_w pwin_h panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y]
+  [screen mon pw ph pwin_x pwin_y pwin_w pwin_h panel_scale_perc_x panel_scale_perc_y panel_translate_x panel_translate_y]
   :monitor {screen}
   :geometry (geometry :x {pwin_x}
                       :y {pwin_y}
@@ -621,7 +628,7 @@
                 :panel_scale_perc_x panel_scale_perc_x
                 :panel_scale_perc_y panel_scale_perc_y
                 :panel_translate_x panel_translate_x :panel_translate_y panel_translate_y
-                :screen screen))
+                :mon mon))
 
 ;; ===========================================================================
 ;; Context menu window
