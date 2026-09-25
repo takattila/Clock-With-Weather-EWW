@@ -27,6 +27,7 @@ see scripts/core/config.py::resolve_axis_scales).
 Usage:
   ./widget_rect.py --widget clock --monitor 0
   ./widget_rect.py --widget panel --monitor 1
+  ./widget_rect.py --widget clock --monitor 0 --monitor-name DP-1
 
 Output (stdout, JSON):
   {
@@ -433,19 +434,31 @@ def main():
     args = sys.argv[1:]
     widget = None
     monitor_index = 0
+    monitor_name = None
     for i, a in enumerate(args):
         if a == "--widget" and i + 1 < len(args):
             widget = args[i + 1]
         elif a == "--monitor" and i + 1 < len(args):
             monitor_index = int(args[i + 1])
+        elif a == "--monitor-name" and i + 1 < len(args):
+            monitor_name = args[i + 1]
     if widget not in ("clock", "panel"):
-        sys.exit("Usage: ./widget_rect.py --widget clock|panel --monitor N")
+        sys.exit("Usage: ./widget_rect.py --widget clock|panel --monitor N [--monitor-name NAME]")
 
     data = get_monitors()
     compositor = data.get("compositor", "x11")
-    monitor = next((m for m in data["monitors"] if m["index"] == monitor_index), None)
+    # The monitor is looked up by NAME when given (start.sh pairs the geometry
+    # with the monitor eww opens it on): the enumeration order can differ
+    # between two consecutive monitors.py runs -- e.g. around a hotplug, when
+    # `xrandr --listmonitors` reorders (it lists the primary monitor first) --
+    # and the rectangle must belong to the screen the window is opened on.
+    # `--monitor` (the index) still drives the per_monitor config lookups.
+    monitor = next((m for m in data["monitors"] if m.get("name") == monitor_name), None) \
+        if monitor_name else None
     if monitor is None:
-        sys.exit("ERROR: monitor %d not found" % monitor_index)
+        monitor = next((m for m in data["monitors"] if m["index"] == monitor_index), None)
+    if monitor is None:
+        sys.exit("ERROR: monitor %s not found" % (monitor_name or monitor_index))
     workarea = get_workarea()
 
     rect = clock_rect(monitor, compositor, workarea, monitor_index) if widget == "clock" \

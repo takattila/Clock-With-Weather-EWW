@@ -15,6 +15,11 @@ LOGS_DIR="$DIR/logs"   # every *.log file
 RUN_DIR="$DIR/run"     # every *.pid file
 mkdir -p "$LOGS_DIR" "$RUN_DIR"
 
+# How long open_on_monitor keeps retrying a monitor NAME before giving up and
+# using the index (see the function for why a single try is not enough).
+NAME_RETRIES=8
+NAME_RETRY_DELAY=1
+
 # --- KDE Plasma check -----------------------------------------------------
 # The widget needs a running desktop shell to be displayed. If KDE Plasma
 # (plasmashell) is not running, restore the normal desktop first (this also
@@ -86,7 +91,47 @@ generate_theme() {
 # (scripts/core/monitors.py) and compute the panel geometry for every monitor
 # (scripts/core/workarea.py --per-monitor). The layout is stored in .layout.json
 # for panel.py (chart sizes per monitor height) and the windows are opened
-# once per monitor with `eww open --screen/--id/--arg`.
+# once per monitor with `eww open --id/--arg`.
+
+# Open one eww window on a monitor. eww/GDK picks the monitor by INDEX, but
+# GDK's index order is the order in which it FIRST saw the outputs (a monitor
+# plugged in later is appended -- see GDK's gdk_x11_display_get_xinerama_monitors)
+# and does not necessarily follow `xrandr --listmonitors` (which lists the
+# PRIMARY monitor first). After a hotplug the two orders can disagree, and the
+# geometry computed for monitor N is then applied to a different physical
+# screen (the panel ends up in the middle of the desktop, the clock off-center).
+# So the monitor is addressed by its connector NAME (order independent), and the
+# index is only the fallback for the (unexpected) case where eww cannot resolve
+# the name. `mon` is passed separately: it is the enumeration index the scripts
+# (ctx.py --monitor) and the per_monitor config keys are indexed by.
+#
+# The name is retried, not just tried once: the compositor reports the new
+# monitor immediately, but the daemon's own GDK monitor list only catches up
+# when its event loop gets the X event ("New monitor connected, reloading
+# configuration" in the daemon log) -- under load that is a second or two.
+# Resolving the name against that stale list fails, and the index fallback
+# would then park the window on the wrong physical screen, where eww keeps it
+# (the monitor is resolved once, at open time). So retry briefly, and only
+# fall back when the name stays unresolvable.
+# Usage: open_on_monitor <id> <monitor name> <monitor index> <window> [args...]
+open_on_monitor() {
+  local id="$1" name="$2" idx="$3" win="$4"
+  shift 4
+  local n
+  if [ -n "$name" ]; then
+    for ((n = 0; n < NAME_RETRIES; n++)); do
+      if eww --config "$DIR/eww" open --id "$id" \
+           --arg "screen=$name" --arg "mon=$idx" "$@" "$win" 2>/dev/null; then
+        return 0
+      fi
+      sleep "$NAME_RETRY_DELAY"
+    done
+    echo "WARN: eww cannot resolve monitor '$name' (window $id); using index $idx" >&2
+  fi
+  eww --config "$DIR/eww" open --id "$id" \
+    --arg "screen=$idx" --arg "mon=$idx" "$@" "$win"
+}
+
 layout_windows() {
   local monitors layout count compositor win_main win_panel
   local panel_enabled
@@ -121,9 +166,11 @@ layout_windows() {
   panel_enabled="$(python3 "$DIR/scripts/core/config.py" --key panel_enabled)"
 
   count=0
-  # px/py/panchor are no longer consumed here (the panel geometry comes from
-  # widget_rect.py's canvas keys); the layout line keeps its 6-field shape.
-  while IFS='|' read -r idx _ _ pw ph _; do
+  # The layout line is idx|px|py|pw|ph|anchor|name: px/py/panchor are no
+  # longer consumed here (the panel geometry comes from widget_rect.py's canvas
+  # keys), `name` is the monitor's connector name, used as eww's monitor
+  # selector (see open_on_monitor).
+  while IFS='|' read -r idx _ _ pw ph _ mname; do
     [ -z "$idx" ] && continue
 
     # Clock widget geometry. The eww window is a fixed-size transparent
@@ -149,7 +196,7 @@ layout_windows() {
           panel_geom panel_scale_x panel_scale_y \
           panel_scale_perc_x panel_scale_perc_y \
           pwin_x pwin_y pwin_w pwin_h ptranslate_x ptranslate_y
-    main_geom="$(python3 "$DIR/scripts/move/widget_rect.py" --widget clock --monitor "$idx")" || {
+    main_geom="$(python3 "$DIR/scripts/move/widget_rect.py" --widget clock --monitor "$idx" --monitor-name "$mname")" || {
       echo "ERROR: widget_rect.py (clock, monitor $idx) failed"; return 1
     }
     for k in win_x win_y win_w win_h translate_x translate_y natural_w natural_h; do
@@ -160,16 +207,14 @@ layout_windows() {
     main_scale_perc_x="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key scale_x --monitor "$idx") * 100)))")"
     main_scale_perc_y="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key scale_y --monitor "$idx") * 100)))")"
 
-    eww --config "$DIR/eww" open --id "main_$idx" --screen "$idx" \
+    open_on_monitor "main_$idx" "$mname" "$idx" "$win_main" \
       --arg "main_win_x=$main_win_x" --arg "main_win_y=$main_win_y" \
       --arg "main_win_w=$main_win_w" --arg "main_win_h=$main_win_h" \
       --arg "main_w=$main_natural_w" --arg "main_h=$main_natural_h" \
       --arg "main_scale_perc_x=$main_scale_perc_x" \
       --arg "main_scale_perc_y=$main_scale_perc_y" \
       --arg "main_translate_x=$main_translate_x" \
-      --arg "main_translate_y=$main_translate_y" \
-      --arg "screen=$idx" \
-      "$win_main"
+      --arg "main_translate_y=$main_translate_y"
 
     if [ "$panel_enabled" = "true" ]; then
       panel_scale_x="$(python3 "$DIR/scripts/core/config.py" --key panel_scale_x --monitor "$idx")"
@@ -183,7 +228,7 @@ layout_windows() {
       # exactly on the visible rectangle. Geometry uses a "top left" anchor
       # with these absolute frame coords on both compositors.
       local panel_geom pwin_x pwin_y
-      panel_geom="$(python3 "$DIR/scripts/move/widget_rect.py" --widget panel --monitor "$idx")" || {
+      panel_geom="$(python3 "$DIR/scripts/move/widget_rect.py" --widget panel --monitor "$idx" --monitor-name "$mname")" || {
         echo "ERROR: widget_rect.py (panel, monitor $idx) failed"; return 1
       }
       for k in win_x win_y win_w win_h translate_x translate_y; do
@@ -191,23 +236,21 @@ layout_windows() {
         val="$(printf '%s' "$panel_geom" | python3 -c "import json,sys; print(json.load(sys.stdin)[\"$k\"])")"
         eval "p$k=\$val"
       done
-      eww --config "$DIR/eww" open --id "panel_$idx" --screen "$idx" \
-        --arg "screen=$idx" \
+      open_on_monitor "panel_$idx" "$mname" "$idx" "$win_panel" \
         --arg "pw=$pw" --arg "ph=$ph" \
         --arg "pwin_x=$pwin_x" --arg "pwin_y=$pwin_y" \
         --arg "pwin_w=$pwin_w" --arg "pwin_h=$pwin_h" \
         --arg "panel_scale_perc_x=$panel_scale_perc_x" \
         --arg "panel_scale_perc_y=$panel_scale_perc_y" \
         --arg "panel_translate_x=$ptranslate_x" \
-        --arg "panel_translate_y=$ptranslate_y" \
-        "$win_panel"
+        --arg "panel_translate_y=$ptranslate_y"
     fi
     count=$((count + 1))
   done < <(printf '%s' "$layout" | python3 -c '
 import json, sys
 for m in json.load(sys.stdin)["monitors"]:
     p = m["panel"]
-    print("%s|%s|%s|%s|%s|%s" % (m["index"], p["x"], p["y"], p["width"], p["height"], p["anchor"]))
+    print("%s|%s|%s|%s|%s|%s|%s" % (m["index"], p["x"], p["y"], p["width"], p["height"], p["anchor"], m.get("name", "")))
 ')
   if [ "$panel_enabled" = "true" ]; then
     echo "layout: opened main+panel on $count monitor(s)"

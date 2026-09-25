@@ -72,6 +72,26 @@ def get_monitors_cached():
     return data
 
 
+def monitor_selector(data, index):
+    """eww monitor selector for the enumeration `index`: the connector NAME
+    when known, else the index.
+
+    eww/GDK selects a monitor by index, but GDK's index order is the order it
+    first saw the outputs and does not necessarily follow `xrandr
+    --listmonitors` (which lists the primary monitor first) — after a hotplug
+    the popup would open on the wrong screen. The name is order independent.
+    """
+    try:
+        m = next((m for m in (data or {}).get("monitors", [])
+                  if int(m["index"]) == int(index)), None)
+        name = (m or {}).get("name")
+        if name and str(name) != str(index):
+            return str(name)
+    except Exception:
+        pass
+    return str(index)
+
+
 def resolve_cursor(data):
     """Compositor-appropriate global cursor (px, py), or None.
 
@@ -258,10 +278,11 @@ def main():
         pass
     run(["eww", "--config", EWW_CONFIG_DIR, "close", "ctx_menu"])
     for idx in screens:
+        sel = monitor_selector(data, idx)
         run(["eww", "--config", EWW_CONFIG_DIR, "open",
              "--id", "dismiss_overlay_%d" % idx,
-             "--screen", str(idx),
-             "--arg", "screen=%d" % idx,
+             "--screen", sel,
+             "--arg", "screen=%s" % sel,
              "dismiss_overlay"])
     run(["eww", "--config", EWW_CONFIG_DIR, "close", "ctx_menu"])
     # Window height: at open time the window is sized so its CONTENT never
@@ -319,7 +340,7 @@ def main():
         [
             "eww", "--config", EWW_CONFIG_DIR, "open",
             "--id", "ctx_menu",
-            "--screen", str(pos["screen"]),
+            "--screen", monitor_selector(data, pos["screen"]),
             "--arg", "widget=%s" % widget,
             "--arg", "monitor=%d" % monitor,
             "--arg", "pos_x=%d" % pos["x"],

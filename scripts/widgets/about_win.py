@@ -14,9 +14,9 @@ The window shows four sections from scripts/about.py collect() plus runtime /
 configuration data: Repository (URL, branch/tag, commit, date, author, message),
 Runtime (compositor, monitor resolution, eww version, Python version, OS,
 hostname, kernel, arch, memory, CPU), Dependencies (eww, python3, requests,
-psutil, PyYAML, pillow, xprop, xrandr, Noto Sans with their installed
-versions) and Configuration (appearance, icon set, corner radius, font, city,
-units, language, hour format, scale). An "Open repository" button
+psutil, PyYAML, pillow, python-xlib, xprop, xrandr, Noto Sans with their
+installed versions) and Configuration (appearance, icon set, corner radius,
+font, city, units, language, hour format, scale). An "Open repository" button
 (xdg-open), an "Export TXT" button (writes generated/about_export.txt and opens
 it) and a Close button are at the bottom. Closing works three ways, like the
 old eww window:
@@ -201,9 +201,12 @@ def lib_version(module_name):
     """Import a Python module and return its __version__ (or "")."""
     try:
         mod = importlib.import_module(module_name)
-        return getattr(mod, "__version__", "") or ""
     except Exception:
         return ""
+    version = getattr(mod, "__version__", "") or ""
+    if isinstance(version, (tuple, list)):  # python-xlib: (0, 33) -> "0.33"
+        return ".".join(str(part) for part in version)
+    return str(version)
 
 
 def cmd_version(cmd):
@@ -304,6 +307,7 @@ def dependencies():
         ("psutil", lib_version("psutil")),
         ("PyYAML", lib_version("yaml")),
         ("pillow", lib_version("PIL")),
+        ("python-xlib", lib_version("Xlib")),
         ("xprop", cmd_version(["xprop", "-version"])),
         ("xrandr", cmd_version(["xrandr", "--version"])),
         ("Noto Sans", font_status()),
