@@ -675,3 +675,83 @@ runtime data into a short system report, and let the whole thing be
 - Live values verified: eww 0.6.0, psutil/requests/yaml/PIL `__version__`,
   xprop 1.2.x, xrandr 1.5.x, Noto Sans `installed`, 31 GiB RAM, 8 CPU.
 - README, WIKI, SCREENSHOTS and RELEASE_NOTES (v4.2.0) document the dialog.
+
+# Follow-up — multi-monitor placement & display-change relayout (shipped as v4.2.1)
+
+## The problem
+
+Two independent bugs moved the clock and the panel off their own monitor:
+
+1. **The window was opened by monitor index.** eww/GDK resolves `--screen N`
+   by index, and GDK's index order is the order in which it first saw the
+   outputs (a monitor plugged in later is appended), which does not
+   necessarily follow `xrandr --listmonitors` (primary first). After a hotplug
+   the two orders disagreed (measured: GDK `eDP-1=0, DP-1=1` vs xrandr
+   `DP-1=0, eDP-1=1`), so `start.sh`'s per-monitor geometry was applied to a
+   different physical screen: the panel landed in the middle of the desktop,
+   the clock off-center.
+2. **The watcher never saw a disabled monitor or a resolution change.** It
+   compared only the `/sys/class/drm` connector state: `xrandr --output X
+   --off` ("turn off display") leaves status/modes untouched while the cable
+   is plugged in, and the `modes` file lists the *supported* modes, not the
+   active one — so a mode/position/rotation change is invisible there too.
+   Without a detection the relayout never ran, the vanished monitor's windows
+   were never closed, and the compositor clamped them onto the remaining
+   screen.
+
+## Design decisions
+
+- **The connector name is the identity.** `start.sh` passes the monitor name
+  as eww's monitor selector (`:monitor {screen}`) and keeps the enumeration
+  index in a separate `mon` arg for the `per_monitor` config keys and the
+  scripts. The name is order independent and is available on both
+  compositors: GDK's connector is the RANDR output name on X11 and the
+  `zxdg_output_v1` name on Wayland (verified in the GTK 3.24 sources).
+- **Retry the name instead of falling back at once.** The compositor reports
+  the new monitor immediately, but the daemon's GDK list only catches up when
+  its event loop processes the X event ("New monitor connected, reloading
+  configuration"), which took 1–2 s under load. The index fallback in that
+  window parked the window on the wrong screen, where eww keeps it (the
+  monitor is resolved once, at open time). Hence `NAME_RETRIES=8` × 1 s, with
+  the index only as a last resort — and a warning when it is used.
+- **One identity, everywhere.** `widget_rect.py --monitor-name`,
+  `ctx.py::monitor_selector()` and `about.py::monitor_selector()` resolve the
+  same way, so the rectangle, the popup and the dismiss layer always belong
+  to the monitor eww opened the window on.
+- **The active layout is polled, not only /sys.** `monitors.py --topology`
+  signs the real monitor list. On X11 the watcher reads it from the X server
+  with python-xlib (`XRRGetMonitors`, ~0.2 ms on a warm connection vs ~220 ms
+  for an `xrandr` subprocess), so it runs on the normal 5 s poll and sees
+  hotplug, disable, resolution, position and rotation alike. python-xlib is
+  **optional**: without it — and on Wayland — the subprocess enumeration is
+  used on its own slower cadence (30 s).
+- **Signatures are order independent.** A pure reorder (e.g. `xrandr
+  --primary`) keeps every index → monitor mapping, window and config key in
+  place, so it must not trigger a relayout.
+- The connector's `enabled` state joined the cheap `/sys` signature: that is
+  what catches "turn off display" with no subprocess at all.
+
+## Tests / verification
+
+- `python3 -m pytest -q` — **370 passed** (12 new in `tests/test_monitors.py`
+  and `tests/test_monitor_watch.py`: topology signature format / order
+  independence / no-monitor case, the `enabled` state in the cheap signature
+  and kernels without the file, the X11 signature formatting, python-xlib
+  missing, a dead X connection, and the watcher's main loop on both the fast
+  X11 path — where the slow subprocess check must not run — and the slow
+  fallback).
+- `shellcheck -S warning scripts/bin/start.sh scripts/bin/install.sh` — 4 and
+  11 warnings, identical to `master` (no new ones); `bash -n` and
+  `py_compile` clean; CI green on Python 3.11–3.14 + ShellCheck + YAML.
+- Live on the real dual-monitor setup (`DP-1` 1920x1080 `+1368+0` primary,
+  `eDP-1` 1368x768 `+0+0`):
+
+  | Action | Detected | Result |
+  |---|---|---|
+  | `xrandr --output DP-1 --off` | ~9 s | only the 2 `eDP-1` windows remain, in place |
+  | re-enable `DP-1` at 1920x1080 | ~11 s | all 4 windows back at `2076,441` / `3038,30` / `432,285` / `1118,30` |
+  | `DP-1 --mode 1600x900 --pos 1368x0` | ~10 s | that monitor's 2 windows re-centred for the new size |
+
+  No `WARN: eww cannot resolve monitor` in any run.
+- README, WIKI and RELEASE_NOTES (v4.2.1) document the behavior, the optional
+  `python-xlib` dependency and the upgrade path.

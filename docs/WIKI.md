@@ -717,7 +717,7 @@ the popups.
 | Panel | shown / hidden (applied by the watcher's relayout) | `panel.enabled` |
 | Side | right / left | `panel.window.alignment` |
 | Hard reset | runs `scripts/bin/hard-reset.sh`: deletes `config.local.yaml` (no backup), so every setting returns to the committed default |
-| About | the GTK About dialog (v4.2.0): repository git data, a **Runtime** system report (compositor, monitor resolution, eww/Python version, OS, hostname, kernel, arch, memory, CPU), a **Dependencies** list with the installed versions (eww, python3, requests, psutil, PyYAML, pillow, xprop, xrandr, Noto Sans), the Configuration, an **Open repository** (`xdg-open`) and an **Export TXT** button (writes `generated/about_export.txt` and opens it) |
+| About | the GTK About dialog (v4.2.0): repository git data, a **Runtime** system report (compositor, monitor resolution, eww/Python version, OS, hostname, kernel, arch, memory, CPU), a **Dependencies** list with the installed versions (eww, python3, requests, psutil, PyYAML, pillow, python-xlib, xprop, xrandr, Noto Sans), the Configuration, an **Open repository** (`xdg-open`) and an **Export TXT** button (writes `generated/about_export.txt` and opens it) |
 
 Submenu mechanics:
 

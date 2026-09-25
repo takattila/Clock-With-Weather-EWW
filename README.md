@@ -306,6 +306,14 @@ lands on.
 - **Panel gap control** (new in v3.1.0) — top / right / bottom / left spacing
   between the panel and the screen / taskbar edges, edited in a draggable
   window next to the panel (± and typed values as a draft), saved in one go.
+- **Multi-monitor placement that survives every display change** (fixed in
+  v4.2.1) — the clock and the panel open on **their own** monitor by
+  connector name (not by an index that GDK reorders on hotplug), and the whole
+  layout is re-computed within seconds of a monitor being plugged in, switched
+  **off**, or changed resolution/position — previously the windows of a
+  vanished monitor stayed on screen and got clamped onto the remaining one.
+  Works on X11 and Wayland; on X11 the optional `python-xlib` package makes
+  the re-lay-out detection ~5 s fast and CPU-free.
 - **About dialog — dependency & system report** (new in v4.2.0) — right-click
   → **About** lists the widget's runtime dependencies with their installed
   versions (eww, python3, requests, psutil, PyYAML, pillow, xprop, xrandr,

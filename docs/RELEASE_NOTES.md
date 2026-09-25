@@ -1,3 +1,84 @@
+# Clock-With-Weather-EWW — v4.2.1
+
+**A beautiful, fully customizable clock & weather widget with a live system
+monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
+layer-shell) and also works on **X11**. Powered by the
+[OpenWeatherMap](https://openweathermap.org) API.
+
+> **Recommendation: v4.2.1** — the current recommended release. Every widget
+> window now opens on **its own monitor**, and the whole layout is re-computed
+> within seconds of **any** display change: hotplug, "turn off display",
+> resolution or position change.
+
+**v4.2.1 fixes the multi-monitor placement.** Two independent bugs could push
+the clock and the panel off their own screen. The windows were addressed by
+monitor *index*, but GDK's index order is the order in which it first saw the
+outputs and does not follow `xrandr --listmonitors` (primary first) after a
+hotplug — so the geometry computed for monitor *N* was applied to a different
+physical screen. And the hotplug watcher only compared the DRM connector
+state, which does not change when a monitor is switched **off** or when the
+**resolution/position** changes, so those changes went unnoticed and the
+compositor clamped the leftover windows onto the remaining screen.
+
+---
+
+## What changed in v4.2.1
+
+### Fixed: every window opens on its own monitor
+
+- The monitor is now addressed by its **connector name** (`DP-1`, `eDP-1`,
+  `HDMI-A-1`, …) instead of by index: `start.sh` passes the name as eww's
+  monitor selector (`:monitor {screen}`) and keeps the enumeration index in a
+  separate `mon` argument for the `per_monitor` config keys and the scripts.
+  The name is order independent and works on both compositors (GDK takes it
+  from the RANDR output name on X11, from the `zxdg_output_v1` name on
+  Wayland).
+- The name is **retried** (8 × 1 s) instead of tried once: the compositor
+  reports a new monitor immediately, but the daemon's own GDK list catches up
+  only when its event loop processes the X event. The index fallback is kept
+  as a last resort and now warns instead of silently landing on the wrong
+  screen.
+- The same name-based selector is used by the **context menu**, the **dismiss
+  overlays** and the **About** dialog, so every popup opens on the screen the
+  widget it belongs to.
+
+### Fixed: a disabled monitor or a resolution change is now noticed
+
+- The hotplug watcher also watches the **active layout**, not just the
+  `/sys/class/drm` connector state: a monitor switched **off**
+  (`xrandr --output X --off`, "turn off display" — the cable is still
+  plugged in, so status/modes do not change) and **resolution, position or
+  rotation** changes (the `modes` file lists the *supported* modes, not the
+  active one) are now detected within seconds, the vanished monitor's windows
+  are closed and the remaining ones are re-computed.
+- On **X11** the layout is read straight from the X server
+  (`XRRGetMonitors`): ~0.2 ms per poll versus ~220 ms for an `xrandr`
+  subprocess, so it runs on the normal 5 s poll and the steady-state CPU
+  stays effectively zero. A pure monitor **reorder** (e.g. `xrandr
+  --primary`) does not trigger a needless relayout.
+- The cheap `/sys` signature also carries each connector's `enabled` state,
+  and a **dead X connection** (X server restart) is re-established instead of
+  leaving the watcher blind.
+
+### New (optional): python-xlib
+
+- `python-xlib` is **optional** and only used on **X11**; without it (and on
+  Wayland) the watcher falls back to re-reading the compositor's own monitor
+  list on a slower cadence. `install.sh` (all five supported distros),
+  `requirements.txt`, the WIKI and the About dialog's dependency list were
+  updated, and the dependency report now renders python-xlib's version
+  (`0.33`).
+
+### Upgrade from v4.2.0
+
+1. Pull / check out `v4.2.1`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Nothing else to do — themes and `config.local.yaml` keep working unchanged.
+   If you install the dependencies by hand, add the optional `python-xlib`
+   (already in `requirements.txt`) to get the ~5 s relayout on X11.
+
+---
+
 # Clock-With-Weather-EWW — v4.2.0
 
 **A beautiful, fully customizable clock & weather widget with a live system
