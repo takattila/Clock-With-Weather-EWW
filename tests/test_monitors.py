@@ -76,3 +76,74 @@ def test_desktop_bounds_union_of_monitors():
 
 def test_desktop_bounds_empty():
     assert monitors.desktop_bounds([]) == (0, 0, 0, 0)
+
+
+# --- hotplug/relayout detection signatures ---------------------------------
+# The watcher polls --signature (cheap, /sys only) plus the ACTIVE layout
+# signature. The latter is what catches a monitor that is only disabled and
+# resolution/position changes, which leave /sys untouched.
+
+def _named(index, name, x, y, w, h):
+    m = _mon(index, x, y, w, h)
+    m["name"] = name
+    return m
+
+
+def test_topology_signature_uses_name_and_geometry():
+    sig = monitors.topology_signature(
+        [_named(0, "DP-1", 1368, 0, 1920, 1080), _named(1, "eDP-1", 0, 0, 1368, 768)]
+    )
+    assert sig == "DP-1:1920x1080+1368+0|eDP-1:1368x768+0+0"
+
+
+def test_topology_signature_is_order_independent():
+    # `xrandr --primary` swapping the primary monitor reorders the enumeration
+    # but leaves every index -> monitor mapping, window and config key in
+    # place, so it must not look like a layout change.
+    a = [_named(0, "DP-1", 1368, 0, 1920, 1080), _named(1, "eDP-1", 0, 0, 1368, 768)]
+    b = list(reversed(a))
+    assert monitors.topology_signature(a) == monitors.topology_signature(b)
+
+
+def test_topology_signature_changes_on_the_events_sysfs_cannot_see():
+    base = [_named(0, "DP-1", 1368, 0, 1920, 1080), _named(1, "eDP-1", 0, 0, 1368, 768)]
+    sig = monitors.topology_signature(base)
+    # A disabled output is gone from the compositor's list (the DRM connector
+    # stays "connected", so --signature does not change).
+    assert monitors.topology_signature(base[:1]) != sig
+    # Resolution change.
+    resized = [_named(0, "DP-1", 1368, 0, 1600, 900), _named(1, "eDP-1", 0, 0, 1368, 768)]
+    assert monitors.topology_signature(resized) != sig
+    # Position change.
+    moved = [_named(0, "DP-1", 0, 0, 1920, 1080), _named(1, "eDP-1", 1920, 0, 1368, 768)]
+    assert monitors.topology_signature(moved) != sig
+
+
+def test_topology_signature_no_monitors():
+    assert monitors.topology_signature([]) == "none"
+
+
+def test_signature_includes_connector_enable_state(tmp_path, monkeypatch):
+    # A monitor that is switched off (`xrandr --output X --off`) keeps its DRM
+    # status/modes, so --signature must carry the `enabled` state as well.
+    drm = tmp_path / "card1-DP-1"
+    drm.mkdir()
+    (drm / "status").write_text("connected\n")
+    (drm / "modes").write_text("1920x1080\n1280x1024\n")
+    (drm / "enabled").write_text("enabled\n")
+    monkeypatch.setattr(monitors, "SYSFS_DRM", str(tmp_path))
+    assert monitors.signature() == "card1-DP-1=connected:1920x1080:enabled"
+
+    (drm / "enabled").write_text("disabled\n")
+    assert monitors.signature() == "card1-DP-1=connected:1920x1080:disabled"
+
+
+def test_signature_without_enabled_file(tmp_path, monkeypatch):
+    # Older kernels have no `enabled` file: the signature still works, with an
+    # empty enable state.
+    drm = tmp_path / "card1-eDP-1"
+    drm.mkdir()
+    (drm / "status").write_text("connected\n")
+    (drm / "modes").write_text("1368x768\n")
+    monkeypatch.setattr(monitors, "SYSFS_DRM", str(tmp_path))
+    assert monitors.signature() == "card1-eDP-1=connected:1368x768:"

@@ -51,6 +51,7 @@ What the installer does, in order:
 | `python3-psutil` | 5.x–7.x (tested: 7.2.2) | CPU/RAM/SWAP/HDD/network (`system.py`, `panel.py`) |
 | `python3-yaml` | 6.x (tested: 6.0.3) | reading the YAML configs (`config.py`, `theme.py`) |
 | `python3-pillow` | 10.x (tested: 10.2.0) | tinting the icon PNGs to `icon.color` (`theme.py`) |
+| `python3-xlib` | 0.33+ (tested: 0.33) | **X11 only**, optional: reads the active monitor list straight from the X server, so a resolution change or a disabled output is re-laid-out within ~5 s (`monitor_watch.py`) |
 | `xprop` | any | reading `_NET_WORKAREA` (panel height) |
 | `xrandr` | any | resolution / workarea fallback |
 | `Noto Sans` font | any | the only font family used |
@@ -59,6 +60,13 @@ The four Python packages (`requests`, `psutil`, `PyYAML`, `pillow`) are also
 listed in [`requirements.txt`](requirements.txt) for manual / pip-based setups
 (`pip install -r requirements.txt`); the installer (`install.sh`) installs
 them from your distribution's repositories instead.
+
+`python3-xlib` is optional and **only used on X11**: with it the hotplug
+watcher asks the X server for the active monitor list on every poll (~0.2 ms),
+which catches hotplug, a monitor switched off, and resolution/position changes
+alike within `POLL_INTERVAL` (~5 s). Without it the watcher falls back to a
+slower compositor-enumeration check (`TOPOLOGY_INTERVAL`, 30 s by default), and
+on Wayland that slower path is always used.
 
 ### For testing / development
 

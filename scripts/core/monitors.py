@@ -12,16 +12,23 @@ Output (stdout, JSON):
     ]
   }
 
-The `index` matches the GDK monitor index used by `eww open --screen N`:
-  - Wayland: wl_output binding order (wayland-info enumeration order).
-  - X11:     xrandr --listmonitors order.
+The `index` is the enumeration order and is what `eww open --screen N` uses, but
+it must NOT be used to decide which physical monitor a widget belongs to: GDK
+enumerates monitors in output-binding order, which can differ from the order
+below after a hotplug (e.g. GDK: eDP-1=0, DP-1=1 vs xrandr: DP-1=0, eDP-1=1).
+Use the connector `name` for placement; `index` is only for per-monitor config
+keys, which are re-derived on every relayout anyway.
 
 A cheap `--signature` mode reads only /sys/class/drm (no subprocess spawn) so
-scripts/monitor_watch.py can poll for hotplug / mode changes almost for free.
+scripts/core/monitor_watch.py can poll for hotplug / mode changes almost for
+free. `--topology` is the complementary, more expensive signature of the
+ACTIVE monitor layout (compositor enumeration): it also sees a monitor that is
+only disabled, or a resolution/position change, which leave /sys untouched.
 
 Usage:
   ./monitors.py            # full JSON enumeration
-  ./monitors.py --signature  # cheap connector+mode signature string
+  ./monitors.py --signature  # cheap connector+mode+enable signature string
+  ./monitors.py --topology   # active monitor layout signature string
 """
 
 import json
@@ -43,6 +50,7 @@ def drm_connectors():
                 continue
             status_file = os.path.join(SYSFS_DRM, entry, "status")
             modes_file = os.path.join(SYSFS_DRM, entry, "modes")
+            enabled_file = os.path.join(SYSFS_DRM, entry, "enabled")
             if not os.path.isfile(status_file):
                 continue
             try:
@@ -54,9 +62,20 @@ def drm_connectors():
                         first = f.readline().strip()
                         if first:
                             mode = first
+                # `enabled` is the kernel-side CRTC state of the connector:
+                # "disabled" while the output is switched off (`xrandr --output
+                # X --off`, "turn off display" in the settings dialog) even
+                # though the cable is still plugged in. Older kernels may not
+                # have the file -> treated as unknown.
+                enabled = ""
+                if os.path.isfile(enabled_file):
+                    with open(enabled_file, encoding="utf-8") as f:
+                        enabled = f.read().strip()
             except Exception:
                 continue
-            out.append({"name": entry, "status": status, "mode": mode})
+            out.append(
+                {"name": entry, "status": status, "mode": mode, "enabled": enabled}
+            )
     except Exception:
         pass
     return out
@@ -277,16 +296,53 @@ def desktop_bounds(monitors):
 def signature():
     parts = []
     for c in drm_connectors():
-        parts.append("%s=%s:%s" % (c["name"], c["status"], c["mode"]))
+        parts.append("%s=%s:%s:%s" % (c["name"], c["status"], c["mode"], c.get("enabled", "")))
     if not parts:
         return "none"
     return "|".join(parts)
+
+
+def topology_signature(monitors=None):
+    """Signature of the ACTIVE monitor layout, from the compositor's own list.
+
+    --signature (the DRM connector state) cannot see everything that changes
+    the layout: a monitor that is merely DISABLED (cable still plugged in, the
+    DRM status/modes stay the same) or a resolution/rotation/position change
+    does not touch /sys at all. Without seeing those, the windows of the
+    vanished monitor are never closed and the compositor clamps them onto the
+    remaining screen.
+
+    This signature is built from the real enumeration (`xrandr --listmonitors`
+    on X11, `wayland-info` on Wayland), so it changes for every layout change.
+    It costs a subprocess, hence it is polled slowly by monitor_watch.py as a
+    safety net next to the cheap --signature poll.
+    """
+    if monitors is None:
+        monitors = enumerate_monitors(detect_compositor())
+    parts = [
+        "%s:%dx%d+%d+%d"
+        % (
+            m.get("name", ""),
+            int(m.get("width", 0)),
+            int(m.get("height", 0)),
+            int(m.get("x", 0)),
+            int(m.get("y", 0)),
+        )
+        for m in monitors
+    ]
+    # Sorted: a pure ORDER change (e.g. `xrandr --primary` swapping the primary
+    # monitor) keeps every index -> monitor mapping and therefore every window
+    # and config key exactly where it is, so it must not trigger a relayout.
+    return "|".join(sorted(parts)) if parts else "none"
 
 
 def main():
     compositor = detect_compositor()
     if "--signature" in sys.argv:
         print(signature())
+        return
+    if "--topology" in sys.argv:
+        print(topology_signature())
         return
     monitors = enumerate_monitors(compositor)
     print(

@@ -499,15 +499,15 @@ function installEwwDependencies() {
     # qt6-tools provides qdbus6, used by workarea.py to query the KDE taskbar
     # frame for the panel gaps (optional: geometry falls back without it).
     if [[ "$(helperExistsProgram yum)" = "0" ]]; then
-        packages="python3 python3-requests python3-psutil python3-yaml python3-pillow python3-gobject gtk3 xdotool xdg-utils librsvg2 xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts qt6-tools"
+        packages="python3 python3-requests python3-psutil python3-yaml python3-pillow python3-xlib python3-gobject gtk3 xdotool xdg-utils librsvg2 xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts qt6-tools"
     elif [[ "$(helperExistsProgram apt)" = "0" ]]; then
-        packages="python3 python3-requests python3-psutil python3-yaml python3-pillow python3-gi gir1.2-gtk-3.0 xdotool xdg-utils librsvg2-common x11-utils x11-xserver-utils fonts-noto-core qt6-tools"
+        packages="python3 python3-requests python3-psutil python3-yaml python3-pillow python3-xlib python3-gi gir1.2-gtk-3.0 xdotool xdg-utils librsvg2-common x11-utils x11-xserver-utils fonts-noto-core qt6-tools"
     elif [[ "$(helperExistsProgram pacman)" = "0" ]]; then
-        packages="python python-requests python-psutil python-yaml python-pillow python-gobject gtk3 xdotool xdg-utils librsvg xorg-xprop xorg-xrandr noto-fonts qt6-tools"
+        packages="python python-requests python-psutil python-yaml python-pillow python-xlib python-gobject gtk3 xdotool xdg-utils librsvg xorg-xprop xorg-xrandr noto-fonts qt6-tools"
     elif [[ "$(helperExistsProgram zypper)" = "0" ]]; then
-        packages="python3 python3-requests python3-psutil python3-PyYAML python3-Pillow python3-gobject gtk3 xdotool xdg-utils librsvg2 xprop xrandr google-noto-sans-fonts qt6-tools"
+        packages="python3 python3-requests python3-psutil python3-PyYAML python3-Pillow python3-xlib python3-gobject gtk3 xdotool xdg-utils librsvg2 xprop xrandr google-noto-sans-fonts qt6-tools"
     elif [[ "$(helperExistsProgram dnf)" = "0" ]]; then
-        packages="python3 python3-requests python3-psutil python3-yaml python3-pillow python3-gobject gtk3 xdotool xdg-utils librsvg2 xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts qt6-tools"
+        packages="python3 python3-requests python3-psutil python3-yaml python3-pillow python3-xlib python3-gobject gtk3 xdotool xdg-utils librsvg2 xorg-x11-utils xorg-x11-server-utils google-noto-sans-fonts qt6-tools"
     else
         echo
         echo "${C_R}[ ERROR ]${C_D} Can't install eww dependencies: ${C_Y}install system not known${C_D}"

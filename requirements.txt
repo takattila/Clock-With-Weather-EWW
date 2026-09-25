@@ -6,5 +6,11 @@ psutil>=5.9
 requests>=2.28
 pillow>=10.0
 
+# Optional, X11 only: lets monitor_watch.py read the active monitor layout
+# straight from the X server (~0.2 ms/poll) so a resolution change or a
+# disabled output is noticed within ~5 s. Without it the watcher falls back
+# to a slower compositor-enumeration check (Wayland always uses that path).
+python-xlib>=0.33
+
 # --- development / testing ---
 pytest
