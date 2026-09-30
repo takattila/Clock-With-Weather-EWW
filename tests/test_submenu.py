@@ -74,13 +74,15 @@ def _load_measured(tmp_path, monkeypatch, payload):
 
 def test_measured_tops_override_model_pitch(tmp_path, monkeypatch):
     # A desktop whose ctx-menu rows really render at a uniform 38px pitch.
-    tops = [int(9 + 38 * i) for i in range(14)]   # clock stacks 14 rows now
+    tops = [int(9 + 38 * i) for i in range(15)]   # clock stacks 15 rows now
     _load_measured(tmp_path, monkeypatch, {"tops": tops, "pitch": 38, "pad": 7})
     assert submenu.measured_tops() == tuple(tops)
     assert submenu.row_top("clock", 0) == 9
     assert submenu.row_top("clock", 4) == 161          # AM/PM row
-    assert submenu.row_top("clock", 10) == 389         # System row
-    assert submenu.row_top("clock", 13) == 503         # About row
+    assert submenu.row_top("clock", 10) == 389         # Units row
+    assert submenu.row_top("clock", 9) == 351          # Raindrops row
+    assert submenu.row_top("clock", 11) == 427         # System row
+    assert submenu.row_top("clock", 14) == 541         # About row
     assert submenu.pane_top_for("appearance", "clock") == tops[5]
 
 
@@ -174,15 +176,15 @@ def test_row_sequences_match_collapsed_column():
     # The sequences mirror widget_ctx_menu as it renders COLLAPSED (the
     # hidden :visible wrappers take no space - see the yuck). Clock:
     # Move Resize Reset | sep | AM/PM Theme Theme editor sep Weather settings
-    # Units System | sep | Hard reset About (14 rows). Panel drops the
+    # Raindrops Units System | sep | Hard reset About (15 rows). Panel drops the
     # clock-only rows and adds its own after its Theme-editor row (13 rows).
     assert submenu.ROW_SEQUENCES["clock"] == ["B", "B", "B", "S",
                                               "B", "B", "B", "S", "B", "B", "B",
-                                              "S", "B", "B"]
+                                              "B", "S", "B", "B"]
     assert submenu.ROW_SEQUENCES["panel"] == ["B", "B", "B", "S",
                                               "B", "B", "S", "B", "B", "B",
                                               "S", "B", "B"]
-    assert len(submenu.ROW_SEQUENCES["clock"]) == submenu.VISIBLE_ROW_COUNTS["clock"] == 14
+    assert len(submenu.ROW_SEQUENCES["clock"]) == submenu.VISIBLE_ROW_COUNTS["clock"] == 15
     assert len(submenu.ROW_SEQUENCES["panel"]) == submenu.VISIBLE_ROW_COUNTS["panel"] == 13
     for widget, seq in submenu.ROW_SEQUENCES.items():
         assert len(seq) == submenu.VISIBLE_ROW_COUNTS[widget]
@@ -211,13 +213,13 @@ def test_context_rows_match_collapsed_column():
     # These indices back the widget_ctx_menu column as it renders COLLAPSED
     # (the hidden :visible wrappers take no space - see the yuck). Clock
     # shows AM/PM(4)+Theme(5)+Theme editor(6)+sep(7)+Weather settings(8)+
-    # Units(9)+System(10); the panel menu DROPS the clock-only rows, so Theme
-    # is one row higher (4) and Panel/Side are 7/8.
+    # Raindrops(9)+Units(10)+System(11); the panel menu DROPS the clock-only
+    # rows, so Theme is one row higher (4) and Panel/Side are 7/8.
     assert submenu.CONTEXT_ROWS["clock"]["appearance"] == 5
     assert submenu.CONTEXT_ROWS["panel"]["appearance"] == 4
     assert submenu.CONTEXT_ROWS["clock"]["hour_format"] == 4
-    assert submenu.CONTEXT_ROWS["clock"]["units"] == 9
-    assert submenu.CONTEXT_ROWS["clock"]["progress_mode"] == 10
+    assert submenu.CONTEXT_ROWS["clock"]["units"] == 10
+    assert submenu.CONTEXT_ROWS["clock"]["progress_mode"] == 11
     assert submenu.CONTEXT_ROWS["panel"]["panel_enabled"] == 7
     assert submenu.CONTEXT_ROWS["panel"]["panel_alignment"] == 8
     # each menu only carries its own rows; the union is the full picker set
@@ -228,8 +230,8 @@ def test_context_rows_match_collapsed_column():
     assert set(submenu.KEYS) == {"hour_format", "appearance", "units",
                                  "panel_enabled", "panel_alignment",
                                  "progress_mode"}
-    # clock stacks one extra row (System) over the panel column
-    assert submenu.VISIBLE_ROW_COUNTS["clock"] == 14
+    # clock stacks two extra rows (Raindrops + System) over the panel column
+    assert submenu.VISIBLE_ROW_COUNTS["clock"] == 15
     assert submenu.VISIBLE_ROW_COUNTS["panel"] == 13
 
 

@@ -1,3 +1,150 @@
+# Clock-With-Weather-EWW — v5.0.0
+
+**A beautiful, fully customizable clock & weather widget with a live system
+monitor panel for your desktop.** Runs natively on **Wayland** (EWW + GTK
+layer-shell) and also works on **X11**. Powered by the
+[OpenWeatherMap](https://openweathermap.org) API.
+
+> **Recommendation: v5.0.0** — the current recommended release. Adds the
+> **raindrop effect**: a full-screen rain layer that falls *behind* your
+> desktop windows, never steals a click, and follows the real weather.
+
+**v5.0.0 brings the weather to the whole screen.** When it rains outside, rain
+falls on your desktop: a transparent, **click-through** layer sits behind every
+window (layer-shell *bottom* on Wayland, keep-below on X11), so you can click
+straight through it while it rains over your icons. The right-click menu's new
+**Raindrops** row opens a small panel **centered on your monitor** with a
+master switch, an **Auto** mode that lets the layer follow the actual
+OpenWeatherMap condition, and manual **droplet count / speed / opacity** — no
+restart, and no extra API calls.
+
+---
+
+## What changed in v5.0.0
+
+### New: the raindrop effect
+
+- A dedicated, **standalone** process (`scripts/core/rain.py`) draws the rain.
+  It is deliberately *not* an eww window: eww 0.6.0 exposes no click-through or
+  input-shape property (verified: `strings $(which eww) | grep -i pass.through`
+  finds nothing), so a full-screen eww surface would swallow every click on the
+  desktop. Owning a `Gtk.Window` makes `Gdk.Window.set_pass_through()` available
+  — verified to return `True` on a realized window.
+- **One layer per monitor**, each exactly the size of its own screen, and the
+  geometry is re-checked on every poll: plugging a monitor in, switching one
+  off or changing a resolution rebuilds the affected layer instead of leaving a
+  stale full-screen window behind.
+- **Stacking**: layer-shell `Layer.BOTTOM` on Wayland (above the wallpaper,
+  below every normal window), `keep_below` + `DESKTOP` type hint on X11. The
+  window is undecorated, unfocusable, skipped in the taskbar and non-resizable.
+- **Two ways to run it**:
+  - `weather.rain.auto: true` (default) — the rain only falls while the current
+    condition is precipitation (**Rain, Drizzle, Thunderstorm, Squall, Shower,
+    Snow**). `Mist` / `Fog` / `Haze` / `Dust` deliberately do not count. If the
+    weather fetch fails, the last good state is kept, so the rain never
+    flickers off because of an API hiccup.
+  - `weather.rain.auto: false` — it falls whenever `enabled` is true, e.g. for
+    the aesthetic, with the count/speed you like.
+- **New config block** (`config.yaml`, overridable per machine in
+  `config.local.yaml`):
+
+  ```yaml
+  weather:
+    rain:
+      enabled: true   # master switch; false removes the layer entirely
+      auto: true      # only while it actually rains
+      count: 24       # droplets on screen, 0-120
+      speed: 5        # 1 (drizzle) .. 10 (downpour)
+      opacity: 0.35   # 0.0-1.0
+  ```
+
+- **No intensity scaling from the API**: the number of droplets comes from the
+  panel, not from the weather. OpenWeatherMap's condition list has no
+  rain-intensity field to scale with, and a heavy shower should not cost ten
+  times the CPU of a light one.
+- **A new "Raindrops" row in the clock's right-click menu** opens the settings
+  panel **centered on the monitor** the menu was opened on: **Enabled**
+  (On/Off), **Auto (only when raining)**, **Droplets** (spin, 0-120), **Speed**
+  and **Opacity** (sliders), plus **Save / Reset / Close**. Editing is
+  draft-only — **Save** validates every field and writes the changed keys to
+  `config.local.yaml` in one pass, so the config watcher reloads the widget
+  once instead of on every slider tick. **Reset** drops the local rain
+  overrides. The panel is draggable, closes on **ESC** and on a click outside,
+  and the row math (`CONTEXT_ROWS`, `ROW_SEQUENCES`, the row-measurer) was
+  updated for the extra button (clock menu 15 collapsed rows vs panel 13).
+- **Live, restart-free**: the layer polls `config.yaml`, `config.local.yaml`,
+  `eww/eww.theme.json` and `generated/weather_cache.json` every 2 s and the
+  monitor geometry, so panel edits, a theme change and a weather refresh all
+  show up on their own. It also survives `eww reload` — nothing in it depends
+  on the eww daemon. When it gets disabled the droplet widgets are released
+  and the layer costs nothing.
+- **The rain takes the theme's color**, so it matches the widget's accent
+  instead of being a foreign white on a dark desktop.
+- **Lifecycle**: `start.sh` starts the layer (and sweeps any leftover one first,
+  so repeated starts can never stack two full-screen layers), `stop.sh` stops
+  it by pid file *and* by pattern sweep, and `hard-reset.sh` brings a fresh one
+  up after a factory reset — skipped when the widget is not running, so a reset
+  on a stopped install never spawns a stray layer.
+- **`weather.py` now also writes `generated/weather_cache.json`** with
+  `condition` and `is_raining` next to the payload it prints. The rain reads
+  that file instead of calling the API: the effect reuses the widget's own
+  10-minute weather poll, so it adds **zero** requests and can never disagree
+  with the temperature shown on the clock.
+- **Honest cost** (measured, two monitors — 1920x1080 + 1368x768 — 24 droplets
+  per monitor, speed 5): the layer process uses **7 / 12 / 16 / 24 / 33 %** of
+  *one* CPU core at **10 / 24 / 40 / 80 / 120** droplets, i.e. about half of
+  that per monitor. The default of 24 is a deliberate middle ground; on a busy
+  machine drop it to 10, and `count: 0` (or the Enabled switch) removes the
+  layer completely. The cost is linear in the count, not in the speed.
+
+### Technical notes
+
+- The animation is plain GTK3 CSS `@keyframes` on **`margin-top`**, one rule
+  per droplet inside a `Gtk.Overlay`. Deliberately not
+  `transform: translateY(...)`: GTK 3.24.41's CSS engine rejects `transform`
+  outright (`No property named 'transform'`), and `top` / `width` / `height`
+  are widget properties here, not CSS properties.
+- Every drop gets a **negative** `animation-delay` so it starts mid-flight. A
+  positive delay would leave all of them bunched at the start line and then
+  stop; the negative delay is what spreads the rain across the screen.
+- The layout is **seeded** (`SEED = 20240501`): the same count always produces
+  the same rain, on every machine and every reload, which is what makes it unit
+  testable. 30 % of the drops are rendered as longer, faster streaks.
+- The CSS provider is **removed before a new one is registered** for a screen.
+  Providers registered for a screen are only dropped by removing them, so a
+  slider drag used to stack one provider per frame and leak the old rules,
+  whose equal-specificity classes raced the new ones.
+- The droplet tint is re-read from `eww/eww.theme.json`, which is watched by
+  mtime, so a theme switch recolors the rain within 2 s.
+- The layer is verified by its own self-test, which asserts the two things that
+  matter and cannot be unit tested: click-through and visibility.
+
+  ```bash
+  python3 ~/.eww/Clock-With-Weather-EWW/scripts/core/rain.py       ~/.eww/Clock-With-Weather-EWW --selftest
+  # monitor 0: size=1920x1080 click_through=True drops=24 visible=True expected_visible=True
+  # monitor 1: size=1368x768  click_through=True drops=24 visible=True expected_visible=True
+  ```
+
+  It exits non-zero if a shown layer is not click-through, if a layer's
+  visibility disagrees with the config, or if a layer that should have rain is
+  empty.
+
+### Upgrade from v4.2.1
+
+1. Pull / check out `v5.0.0`.
+2. Restart the widget: `bash ~/.eww/Clock-With-Weather-EWW/scripts/bin/start.sh`.
+3. Right-click the clock → **Raindrops** to try it. The defaults are
+   `auto: true`, so the rain only appears when the current condition really is
+   precipitation — switch **Auto** off to have it always fall.
+
+Nothing to migrate: `weather.rain.*` is a new block, themes, positions and
+every other setting are untouched, and an existing `config.local.yaml` without
+rain keys simply falls back to the defaults above. If the layer ever gets in
+the way, `Enabled: Off` (or `weather.rain.count: 0`) removes it; `stop.sh`
+stops it together with the widget.
+
+---
+
 # Clock-With-Weather-EWW — v4.2.1
 
 **A beautiful, fully customizable clock & weather widget with a live system

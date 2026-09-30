@@ -10,6 +10,7 @@ it so the daemon goes back to idle:
   {"mode": "gap", "widget": "clock", "monitor": 0}    -- gap_ctl.py (panel gap)
   {"mode": "weather", "widget": "clock", "monitor": 0} -- weather_ctl.py
   {"mode": "theme", "widget": "clock", "monitor": 0}   -- theme_ctl.py
+  {"mode": "rain", "widget": "clock", "monitor": 0}     -- rain_ctl.py (v5.0.0)
 
 They also make sure the daemon is running: start.sh starts it via passwordless
 sudo at startup, and these helpers restart it (lazy fallback) if it died.

@@ -755,3 +755,200 @@ Two independent bugs moved the clock and the panel off their own monitor:
   No `WARN: eww cannot resolve monitor` in any run.
 - README, WIKI and RELEASE_NOTES (v4.2.1) document the behavior, the optional
   `python-xlib` dependency and the upgrade path.
+
+---
+
+# v5.0.0 — Raindrop effect
+
+> Executed plan behind the v5.0.0 release: a full-screen rain layer that falls
+> **behind** the desktop windows, is **click-through**, follows the real weather
+> and is configured from the right-click menu through a monitor-centered panel.
+
+## Goal
+
+1. Rain falls across the whole screen when the current OpenWeatherMap condition
+   is precipitation — on **every** monitor, and never over a user's click.
+2. A right-click menu row ("Raindrops") opens a small settings panel
+   **centered on the monitor** the menu was raised on: a master switch, an
+   `auto` gate and manual droplet count / speed / opacity.
+3. Everything applies live, without restarting the widget, and without adding
+   a single extra API call.
+
+## Design decisions
+
+- **A standalone GTK3 process, not an eww window.** eww 0.6.0 exposes no
+  click-through / input-shape property (verified: `strings $(which eww) |
+  grep -i pass.through` → nothing), so a full-screen eww surface would eat
+  every click on the desktop. Owning a `Gtk.Window` makes
+  `Gdk.Window.set_pass_through()` available, and it is verified to return
+  `True` on a realized window. This is also why the effect is a separate
+  process at all: it must outlive `eww reload` and the widget's window layout.
+- **Stacking per backend:** layer-shell `Layer.BOTTOM` + `KeyboardMode.NONE`
+  on Wayland (above the wallpaper, below every normal window), `keep_below` +
+  `WindowTypeHint.DESKTOP` on X11. Undecorated, unfocusable, skipped in the
+  taskbar, non-resizable.
+- **One window per monitor**, exactly the monitor's size, built from
+  `Gdk.Display.get_monitor(i).get_geometry()`. The geometry tuple is part of
+  the layer's render signature and is re-checked every poll, so a hotplug or a
+  resolution change destroys and rebuilds the affected layer instead of leaving
+  a stale full-screen window on a screen that no longer exists.
+- **Animate `margin-top`, never `transform`.** GTK 3.24.41's CSS engine rejects
+  `transform` outright (`No property named 'transform'`), and `top` / `width` /
+  `height` are widget properties, not CSS properties. A `Gtk.Overlay` +
+  per-drop boxes with a shared `@keyframes raindrop` on `margin-top` is the
+  cheapest thing that actually animates here.
+- **Negative `animation-delay` per drop** (up to one duration). With a positive
+  delay every drop hangs at the start line until its first cycle ends — the
+  rain would arrive in a visible wave. The negative delay staggers them along
+  the path from the first frame.
+- **Seeded layout** (`SEED = 20240501`) so the same count always produces the
+  same rain on any machine and after any restart. This is what makes the
+  geometry unit-testable; 30 % of drops are longer, faster streaks and every
+  drop gets a 0.7-1.4x duration jitter so the fall never looks mechanical.
+- **No intensity scaling from the API.** OpenWeatherMap's `weather[].main`
+  vocabulary has no rain-intensity field to scale with, and mapping "heavy
+  rain" to ten times the droplets would make the effect expensive exactly when
+  the user is least likely to want it. Count/speed are manual, decided by the
+  user.
+- **`auto` is a gate, not a mode switch:** `active = enabled && count > 0 &&
+  (!auto || is_raining)`. One code path, no duplicated state.
+- **The precipitation list is narrow and documented:** `Rain`, `Drizzle`,
+  `Thunderstorm`, `Squall`, `Shower`, `Snow` — `weather[0].main` is a single
+  token from OWM's fixed vocabulary, so a case-insensitive exact-membership
+  test is the correct comparison (a substring test would be wrong: a `main` of
+  `"rain"` must not match a hypothetical `"heavy rain"`).
+  `Mist` / `Fog` / `Haze` / `Smoke` / `Dust` / `Sand` / `Ash` / `Tornado` are
+  deliberately excluded — nothing is visibly falling, and the widget's own
+  icon already reports those conditions.
+- **The rain reuses the weather poll.** `weather.py` writes
+  `generated/weather_cache.json` (`condition`, `is_raining`) after a
+  **successful** fetch; the layer reads that file. Zero extra requests, and the
+  effect can never disagree with the temperature on the clock. A failed fetch
+  deliberately leaves the last good state, so an API hiccup cannot make the
+  rain flicker off.
+- **A missing cache falls back to raining** (a friendlier failure than a
+  silently dry screen) — documented as such.
+- **The layer writes nothing and watches by mtime:** `config.yaml`,
+  `config.local.yaml`, `eww/eww.theme.json`, `generated/weather_cache.json`
+  plus the monitor signature, every 2 s. Watching the *theme* file too is what
+  makes the tint follow a theme switch; watching the geometry is what makes a
+  hotplug a non-event.
+- **Theme-aware tint** from `eww/eww.theme.json` (`color_light` → `menu_ink` →
+  `color_dark`) so the rain matches the widget instead of being a foreign white
+  on a dark desktop.
+- **Draft-only panel, Save commits** (same convention as the Weather settings
+  form): writing `config.local.yaml` re-triggers `watch.py` (theme regen +
+  `eww reload`), so committing on every slider tick would fire dozens of
+  reloads per drag. Save validates every field and writes only the changed
+  keys, so the watcher reloads once.
+- **Free the widgets when hidden:** `deactivate()` hides the layer *and* drops
+  the droplet boxes (resetting the render signature so the next activation
+  rebuilds). A disabled layer should cost nothing, not a hidden widget tree.
+- **The provider is removed before a new one is registered.** Providers
+  registered for a screen are only dropped by removing them; a drag would
+  otherwise stack one provider per frame and leak the old rules, whose
+  equal-specificity `.rain-drop-*` classes would race the new ones.
+- **Lifecycle is swept, not just pid-fileed.** `start_rain()` runs
+  `sweep_kill` first, so repeated starts can never stack two full-screen
+  layers; `stop_rain()` kills by pid file *and* by pattern (older generations
+  whose pid file was overwritten keep running otherwise — the same class of bug
+  the v4.2.1 relayout plan hit with `watch.py`); `hard-reset.sh` restarts the
+  layer but only when eww is running, so a reset on a stopped install never
+  spawns a stray full-screen window.
+- **ESC / click-outside already work:** the input daemon's ESC handler is
+  documented as covering "ANY future session mode that signals itself through
+  the session file", and `rain_ctl.py` writes `{"mode": "rain", ...}` and
+  `close_popup.py` clears it. Only the doc comments needed updating.
+- **The row math follows the existing conventions:** one more button row in the
+  clock menu (15 collapsed rows; the panel menu stays 13), with
+  `CONTEXT_ROWS`, `ROW_SEQUENCES` and `measure_menu.py`'s `ROWS`/`B_ROWS` kept
+  in sync, and `test_submenu.py` asserting the new indices.
+
+## Implementation steps
+
+1. `config.yaml`: the commented `weather.rain` block
+   (`enabled: true`, `auto: true`, `count: 24`, `speed: 5`, `opacity: 0.35`).
+2. `scripts/core/config_set.py`: the five `rain_*` keys with range validation
+   (count 0-120, speed 1-10, opacity 0.0-1.0, booleans), all global
+   (`--monitor` rejected), deep-merged into `config.local.yaml`.
+3. `scripts/core/weather.py`: emit `condition` + `is_raining`, and cache the
+   successful payload to `generated/weather_cache.json` (never overwriting it
+   from an error response; a cache write failure must not break the poll).
+4. `scripts/core/rain.py` (new): the layer itself — per-monitor windows,
+   pass-through, seeded `plan_drops`, `build_css`, mtime + geometry polling,
+   `--selftest`.
+5. `eww/eww.yuck` + `scripts/widgets/submenu.py` + `measure_menu.py`: the
+   `Raindrops` row, the row math and the click handler that calls
+   `rain_ctl.py`.
+6. `scripts/move/rain_ctl.py` (new): center the panel on the menu's monitor and
+   signal the `rain` session; `scripts/move/rain_panel.py` (new): the form.
+7. `start.sh` / `stop.sh` / `hard-reset.sh`: lifecycle with sweeps.
+8. `session.py` / `input_daemon.py`: document the new `rain` mode.
+9. Tests: `tests/test_rain.py` (new), `tests/test_rain_panel.py` (new),
+   `test_weather.py` (precipitation + cache), `test_config_set.py` (rain keys),
+   `test_submenu.py` (row math).
+10. Docs: README, WIKI (section 5b), PLAN, RELEASE_NOTES, SCREENSHOTS.
+
+## Verification (executed)
+
+- `python3 -m pytest tests/ -q` — **570 passed** (was 370): +95 in
+  `test_rain.py` (clamping, speed→duration mapping, the seeded layout incl.
+  negative delays and x-sorted stable CSS, CSS generation, merged-config
+  reads, weather-cache reads, the active-matrix, and the layer bookkeeping
+  with the GTK calls stubbed: one provider per rebuild with the previous one
+  removed, the skip-when-unchanged path, the tint-triggered rebuild, the drop
+  release on deactivate and the monitor-topology rebuild), +61 in
+  `test_rain_panel.py` (validation ranges mirroring `config_set.py`,
+  `load_settings`, the Reset helper, CSS completeness, the Save/dirty
+  bookkeeping incl. "no write on a slider drag", and the construction-time
+  `sync_from_config` fill — a real bug the tests caught: the panel used to open
+  at the adjustment minimums), +14 in `test_weather.py`
+  (precipitation matching, the missing-`main` default, the cache write, and
+  "an error response must not overwrite the cache") and the rain-key block in
+  `test_config_set.py`.
+- `bash -n` on `start.sh` / `stop.sh` / `hard-reset.sh` — clean; ShellCheck at
+  error level is clean on all three (4 pre-existing warnings in `start.sh`).
+- Bugs the final audit found and fixed (all three had a regression test or an
+  isolated re-run):
+  1. **the panel opened empty** — `RainPanel.__init__` never pushed the config
+     into the widgets, so every control started at its adjustment minimum
+     (0 drops / speed 1 / opacity 0) and Save wrote those minimums over the
+     user's settings. Fixed with a construction-time `sync_from_config()`;
+     `PANEL_H` also had to grow 330 -> 343 to the measured content height, or
+     the content overflowed the window's own MIN/MAX geometry hint;
+  2. **the test suite overwrote the live weather cache** — `write_cache()` writes
+     to `weather.CACHE_FILE`, and the precipitation tests patched `requests.get`
+     without redirecting that path, so running the suite replaced the real
+     `generated/weather_cache.json` with fixture data (a fake "Clear" sky at
+     10 °C). Fixed with an autouse fixture in `test_weather.py`; the live cache
+     was then regenerated from the real API;
+  3. **`hard-reset.sh` restarted the layer `start.sh --relayout` had just
+     started** — it swept and relaunched unconditionally. It now only starts one
+     when no layer is running at all.
+- `--selftest` on the real dual-monitor setup:
+
+  | Config | Result |
+  |---|---|
+  | `auto: false, count: 24` | both layers `click_through=True drops=24 visible=True`, exit 0 |
+  | `enabled: false` | both layers hidden, 0 drops, exit 0 |
+  | `auto: true` + `is_raining: false` | both layers hidden, exit 0 |
+
+- Live reconfiguration, driven in-process against a temp config tree: count
+  10 → 40 rebuilt both layers; a `color_light` change alone rebuilt them (the
+  theme file is watched); `auto: true` + dry hid them and the next
+  `is_raining: true` tick showed them again; `count: 0` released the widgets and
+  going back to 30 rebuilt them.
+- Lifecycle, driven with a temp tree: starting twice never yields two
+  processes, a stale pid file does not produce a duplicate, and stop (pid file +
+  sweep) leaves none behind. `hard-reset.sh` run against an isolated tree with
+  two stray layers and no pid file ended with exactly one layer and a written
+  `run/rain.pid`.
+- Measured CPU of the layer process, two monitors (1920x1080 + 1368x768),
+  speed 5: **7 / 12 / 16 / 24 / 33 %** of one core at **10 / 24 / 40 / 80 / 120**
+  droplets (RES ~45 MB throughout). The default 24 is ~6 % per monitor. The
+  original "~5 % of one core" note in `config.yaml` was measured on a single
+  monitor and was replaced by this table in `config.yaml`, the README, the
+  release notes and the WIKI rather than left as a flattering number.
+- Not verified here: the Wayland layer-shell branch (this machine runs X11) and
+  a screenshot of the effect — capture it with the `spectacle` command in WIKI
+  section 7 once the layer is running.

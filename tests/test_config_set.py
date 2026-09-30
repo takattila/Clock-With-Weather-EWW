@@ -427,3 +427,132 @@ def test_weather_key_rejects_monitor(local_file, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         config_set.main()
     assert "--monitor must not be used" in str(exc.value)
+
+
+# --- raindrop-effect keys (v5.0.0: weather.rain.*) -------------------------
+
+def test_rain_keys_write_under_weather_rain(local_file, monkeypatch):
+    for key, value, expected in [
+        ("rain_enabled", "false", False),
+        ("rain_auto", "true", True),
+        ("rain_count", "40", 40),
+        ("rain_speed", "8", 8),
+    ]:
+        run(["--key", key, "--value", value], monkeypatch)
+        config_set.main()
+        assert read(local_file)["weather"]["rain"][key[len("rain_"):]] == expected
+
+
+def test_rain_opacity_is_a_float(local_file, monkeypatch):
+    run(["--key", "rain_opacity", "--value", "0.5"], monkeypatch)
+    config_set.main()
+    value = read(local_file)["weather"]["rain"]["opacity"]
+    assert isinstance(value, float)
+    assert value == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("value", ["0", "120", "60"])
+def test_rain_count_accepts_valid_range(local_file, monkeypatch, value):
+    run(["--key", "rain_count", "--value", value], monkeypatch)
+    config_set.main()
+    assert read(local_file)["weather"]["rain"]["count"] == int(value)
+
+
+@pytest.mark.parametrize("value", ["-1", "121", "999"])
+def test_rain_count_rejects_out_of_range(local_file, monkeypatch, value):
+    run(["--key", "rain_count", "--value", value], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "between 0 and 120" in str(exc.value)
+    assert not local_file.exists()
+
+
+@pytest.mark.parametrize("value", ["1", "5", "10"])
+def test_rain_speed_accepts_valid_range(local_file, monkeypatch, value):
+    run(["--key", "rain_speed", "--value", value], monkeypatch)
+    config_set.main()
+    assert read(local_file)["weather"]["rain"]["speed"] == int(value)
+
+
+@pytest.mark.parametrize("value", ["0", "11", "-2"])
+def test_rain_speed_rejects_out_of_range(local_file, monkeypatch, value):
+    run(["--key", "rain_speed", "--value", value], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "between 1 and 10" in str(exc.value)
+    assert not local_file.exists()
+
+
+@pytest.mark.parametrize("key", ["rain_enabled", "rain_auto"])
+def test_rain_booleans_reject_junk(local_file, monkeypatch, key):
+    run(["--key", key, "--value", "maybe"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must be true or false" in str(exc.value)
+    assert not local_file.exists()
+
+
+@pytest.mark.parametrize("key", ["rain_enabled", "rain_auto"])
+def test_rain_booleans_accept_the_usual_spellings(local_file, monkeypatch, key):
+    run(["--key", key, "--value", "true"], monkeypatch)
+    config_set.main()
+    assert read(local_file)["weather"]["rain"][key[len("rain_"):]] is True
+    run(["--key", key, "--value", "false"], monkeypatch)
+    config_set.main()
+    assert read(local_file)["weather"]["rain"][key[len("rain_"):]] is False
+
+
+def test_rain_opacity_rejects_out_of_range(local_file, monkeypatch):
+    run(["--key", "rain_opacity", "--value", "1.5"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "between 0.0 and 1.0" in str(exc.value)
+    assert not local_file.exists()
+
+
+def test_rain_opacity_rejects_junk(local_file, monkeypatch):
+    run(["--key", "rain_opacity", "--value", "shiny"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "must be a number" in str(exc.value)
+    assert not local_file.exists()
+
+
+def test_rain_key_rejects_monitor(local_file, monkeypatch):
+    # The rain layer spans every monitor, so a per-monitor key makes no sense.
+    run(["--key", "rain_count", "--value", "30", "--monitor", "1"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "is global" in str(exc.value)
+    assert not local_file.exists()
+
+
+def test_unsupported_rain_key_is_rejected(local_file, monkeypatch):
+    run(["--key", "rain_colour", "--value", "blue"], monkeypatch)
+    with pytest.raises(SystemExit) as exc:
+        config_set.main()
+    assert "unsupported rain key" in str(exc.value)
+    assert not local_file.exists()
+
+
+def test_rain_writes_preserve_other_local_keys(local_file, monkeypatch):
+    local_file.write_text(
+        "weather:\n  city: Tatabánya\npanel:\n  enabled: true\n", encoding="utf-8"
+    )
+    run(["--key", "rain_count", "--value", "30"], monkeypatch)
+    config_set.main()
+    data = read(local_file)
+    assert data["weather"]["city"] == "Tatabánya"
+    assert data["panel"]["enabled"] is True
+    assert data["weather"]["rain"]["count"] == 30
+
+
+def test_rain_and_weather_keys_share_the_weather_block(local_file, monkeypatch):
+    # config_set.py must deep-merge, not replace the whole weather.* subtree.
+    run(["--key", "city", "--value", "Tatabánya"], monkeypatch)
+    config_set.main()
+    run(["--key", "rain_count", "--value", "30"], monkeypatch)
+    config_set.main()
+    weather = read(local_file)["weather"]
+    assert weather["city"] == "Tatabánya"
+    assert weather["rain"]["count"] == 30

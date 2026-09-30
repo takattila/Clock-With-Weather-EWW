@@ -105,8 +105,9 @@ CONTEXT_ROWS = {
     "clock": {
         "hour_format": 4,   # 0 Move,1 Resize,2 Reset,3 sep -> 4 is AM/PM
         "appearance": 5,
-        "units": 9,         # 6 Theme editor, 7 sep, 8 Weather settings -> 9 Units
-        "progress_mode": 10,  # 8 Weather settings, 9 Units, 10 is System
+        "units": 10,        # 6 Theme editor, 7 sep, 8 Weather settings,
+                           # 9 Raindrops -> 10 Units
+        "progress_mode": 11,  # 10 Units, 11 is System
     },
     "panel": {
         "appearance": 4,       # AM/PM is hidden -> Theme one row higher
@@ -119,13 +120,14 @@ CONTEXT_ROWS = {
 # widget_ctx_menu in eww.yuck and the heights pinned in eww.scss):
 #   B = one .ctx-btn row (ROW_BTN), S = one .ctx-sep row (ROW_SEP).
 # The clock menu is Move Resize Reset | sep | AM/PM Theme Theme editor sep
-# Weather settings Units System | sep | Hard reset About (14 rows); the panel
-# menu drops AM/PM/sep/Weather/Units/System and adds sep + Panel/Side/gap (13).
+# Weather settings Raindrops Units System | sep | Hard reset About (15 rows);
+# the panel menu drops AM/PM/sep/Weather/Raindrops/Units/System and adds
+# sep + Panel/Side/gap (13).
 ROW_SEQUENCES = {
     # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 AM/PM, 5 Theme, 6 Theme editor,
-    # 7 sep, 8 Weather settings, 9 Units, 10 System, 11 sep, 12 Hard reset,
-    # 13 About
-    "clock": "B B B S B B B S B B B S B B".split(),
+    # 7 sep, 8 Weather settings, 9 Raindrops, 10 Units, 11 System, 12 sep,
+    # 13 Hard reset, 14 About
+    "clock": "B B B S B B B S B B B B S B B".split(),
     # 0 Move, 1 Resize, 2 Reset, 3 sep, 4 Theme, 5 Theme editor, 6 sep,
     # 7 Panel, 8 Side, 9 Panel gap, 10 sep, 11 Hard reset, 12 About
     "panel": "B B B S B B S B B B S B B".split(),

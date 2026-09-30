@@ -134,6 +134,38 @@ used/total text:
     </tr>
 </table>
 
+### Raindrop effect (v5.0.0)
+
+When it rains outside, it rains on your desktop: a transparent, **click-through**
+layer falls **behind** every window (layer-shell *bottom* on Wayland, keep-below
+on X11), so you can click straight through it while it rains over your icons.
+Right-click the clock → **Raindrops** opens a small panel **centered on your
+monitor**:
+
+- **Enabled** — the master switch (off removes the layer completely)
+- **Auto (only when raining)** — the rain follows the real OpenWeatherMap
+  condition (**Rain / Drizzle / Thunderstorm / Squall / Shower / Snow**);
+  `Mist` / `Fog` / `Haze` / `Dust` deliberately do not count
+- **Droplets / Speed / Opacity** — manual control, 0-120 droplets, speed 1
+  (drizzle) to 10 (downpour), opacity 0.0-1.0
+- the controls are a **draft**: nothing touches `config.local.yaml` until you
+  press **Save** (an out-of-range value is refused with an inline error and the
+  panel stays open), and **Save** writes only the keys you actually changed, in
+  one pass
+- **Reset** drops the local rain overrides, **Cancel** discards the draft, and
+  **ESC** or a click outside closes the panel
+
+The layer is one window per monitor, follows your theme's accent color, picks up
+config/theme/weather changes within 2 s without a restart, and re-builds itself
+when a monitor is plugged in or its resolution changes. It is also free of extra
+API calls: it reads the `is_raining` flag that the widget's own weather poll
+already writes to `generated/weather_cache.json`.
+
+The cost is linear in the droplet count — measured on two monitors (1920x1080 +
+1368x768), the layer process used **7 / 12 / 16 / 24 / 33 %** of one CPU core at
+**10 / 24 / 40 / 80 / 120** droplets per monitor. The default of 24 is about 6 %
+per monitor; use 10 on a busy machine, or 0 to turn it off.
+
 ### Right click on the Widgets
 
 The context menu is a quick-settings panel: **Move / Resize / Reset**, hover
@@ -142,7 +174,8 @@ ready-made themes, adaptive two/three columns, active one highlighted),
 **°C/°F** (with instant weather refresh), **System** (**Text ↔ Progress bar**
 for the HDD / RAM / CPU / SWAP row, new in v4.1.0), **panel show/hide** and
 **panel side** — plus **Theme editor** (a visual theme editor, new in
-v4.0.0), **Weather settings**, **Panel gap**, factory **Hard reset** and the
+v4.0.0), **Weather settings**, **Raindrops** (the raindrop effect, new in
+v5.0.0), **Panel gap**, factory **Hard reset** and the
 **About** dialog (repository data, the widget's **dependencies** with their
 live installed versions, a short **system report** and an **Export TXT**
 button — new in v4.2.0). The menu opens instantly and always belongs to the
@@ -174,7 +207,8 @@ to the git-ignored `config.local.yaml` and applied live.
 Move / Resize, the Weather settings form, the Panel gap control, the Theme
 editor and the About dialog open as dedicated windows that hug the widget or
 the screen edge they control — editing is draft-only, **Save commits it in
-one go**:
+one go**. The **Raindrops** panel (v5.0.0) is centered on the monitor it was
+opened from:
 
 <table>
     <tr>
@@ -249,6 +283,17 @@ lands on.
 
 - **Clock & Weather** — time, date and live weather (temperature, icon,
   location, description, MIN/MAX/Feels) in one widget.
+- **Raindrop effect** (new in v5.0.0) — a full-screen rain layer that falls
+  **behind** the desktop windows and is **click-through**, so it never blocks a
+  click. One window per monitor, always the size of its own screen, re-built on
+  hotplug/resolution changes, tinted with the active theme's accent color. It
+  either follows the real weather (**Auto**: only while the condition is
+  Rain / Drizzle / Thunderstorm / Squall / Shower / Snow) or falls whenever you
+  switch Auto off — with manual **droplet count (0-120), speed (1-10) and
+  opacity**. Configurable from the right-click menu's **Raindrops** row through
+  a monitor-centered panel (Save commits in one pass), applied within 2 s
+  without a restart, and it adds no extra API calls: the `is_raining` flag is
+  written by the widget's existing weather poll.
 - **System Monitor Panel** — a side panel with real-time **CPU**, **Memory**
   and **Network Traffic** (Download/Upload) charts.
 - **HDD / RAM / CPU / SWAP as progress bars** (new in v4.1.0) — the clock's
@@ -402,9 +447,9 @@ default should change for every machine. The right-click menu toggles and the
 Clock-With-Weather-EWW/
 ├── eww/                # the eww config dir: eww.yuck + eww.scss (+ generated theme files)
 ├── scripts/
-│   ├── core/           # config / theme / watch / weather / system data scripts
+│   ├── core/           # config / theme / watch / weather / rain layer / system data scripts
 │   ├── widgets/        # panel charts, context menu + quick toggles, About / weather dialogs
-│   ├── move/           # Move/Resize + Panel-gap control windows, input daemons
+│   ├── move/           # Move/Resize + Panel-gap + Raindrops control windows, input daemons
 │   └── bin/            # start.sh, stop.sh, install.sh, setup.sh, hard-reset.sh
 ├── assets/
 │   ├── themes/         # appearance + per-city weather YAMLs
@@ -416,6 +461,7 @@ Clock-With-Weather-EWW/
 ├── config.yaml         # central, commented defaults
 ├── config.local.yaml   # git-ignored machine overrides (+ script writes)
 └── logs/  run/  charts/  generated/   # git-ignored runtime outputs
+                          (generated/weather_cache.json drives the raindrop layer)
 ```
 
 ---
@@ -426,10 +472,12 @@ Clock-With-Weather-EWW/
   (`config.yaml`), project structure, EWW/CSS customization, testing and more.
 - **[SCREENSHOTS — theme gallery](docs/SCREENSHOTS.md)** — every style theme
   and the context menu in action.
-- **[PLAN — feature plan](docs/PLAN.md)** — the executed plan behind the
-  style-aware theme system (the previous plans for the independent
-  width/height resize, the `config.local.yaml` override layer and the
-  quick-settings context menu are preserved in git history).
+- **[PLAN — feature plan](docs/PLAN.md)** — the executed plans behind the
+  style-aware theme system, the independent width/height resize, the
+  `config.local.yaml` override layer, the quick-settings context menu and the
+  v5.0.0 raindrop effect (older plans are preserved in git history).
+- **[Release notes](docs/RELEASE_NOTES.md)** — what changed in each version,
+  newest first.
 - **Screenshots** — [view all](#screenshots).
 
 ---

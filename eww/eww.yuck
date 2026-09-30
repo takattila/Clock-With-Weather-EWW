@@ -347,16 +347,17 @@
 
 ;; The four (hover) selectable/action columns are grouped by domain and
 ;; context-sensitive: the menu shows only the rows that belong to the widget
-;; it was opened on. Layout (18 markup rows; 14 visible on clock, 13 on panel):
+;; it was opened on. Layout (19 markup rows; 15 visible on clock, 13 on panel):
 ;;
 ;;   0 Move            4 AM/PM ▸           ONLY-clock   Panel ▸      ONLY-panel
 ;;   1 Resize          5 Theme ▸           BOTH         Side ▸       ONLY-panel
 ;;   2 Reset           6 Theme editor      BOTH         Panel gap    ONLY-panel
 ;;   3 sep             7 sep               ONLY-clock   sep
 ;;                    8 Weather settings   ONLY-clock   Hard reset
-;;                    9 Units ▸            ONLY-clock   About
-;;                   10 System ▸           ONLY-clock
-;;                   11 sep                ONLY-panel
+;;                    9 Raindrops          ONLY-clock   About
+;;                   10 Units ▸            ONLY-clock
+;;                   11 System ▸           ONLY-clock
+;;                   12 sep                ONLY-panel
 ;;
 ;; The context-filtered rows are wrapped in plain :visible boxes so the
 ;; hidden rows COLLAPSE from the column (a bare :visible eventbox keeps its
@@ -368,7 +369,7 @@
 ;; open scripts/widgets/submenu.py --item <key> --widget ${widget} when the
 ;; pointer enters; submenu.py scopes its row-offset math to the open widget's
 ;; menu. Every non-submenu row (Move / Resize / Reset / Theme editor / Weather /
-;; Panel gap / Hard reset / About) runs scripts/widgets/submenu_hide.py on
+;; Raindrops / Panel gap / Hard reset / About) runs scripts/widgets/submenu_hide.py on
 ;; hover so a still-open picker pane does NOT stick (these rows are eventboxes
 ;; -- eww buttons never fire :onhover). The submenu lives exactly as long as
 ;; this menu — every dismissal path (option click, outside click, ESC, another
@@ -460,6 +461,16 @@
                 :onclick "nohup ../scripts/move/weather_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
                 :onhover "../scripts/widgets/submenu_hide.py"
         (box :class "ctx-btn-box" (label :text "Weather settings"))))
+    ;; Raindrops (clock only, v5.0.0): opens the GTK panel for the
+    ;; full-screen, click-through rain layer (enabled / auto / count / speed /
+    ;; opacity), centered on this monitor. Save writes weather.rain.* through
+    ;; config_set.py; scripts/core/rain.py polls the config and applies the
+    ;; change within 2s. Backgrounded (nohup ... &) like the other panels.
+    (box :visible {widget == "clock"}
+      (eventbox :class "ctx-btn"
+                :onclick "nohup ../scripts/move/rain_ctl.py --widget ${widget} --monitor ${monitor} >/dev/null 2>&1 &"
+                :onhover "../scripts/widgets/submenu_hide.py"
+        (box :class "ctx-btn-box" (label :text "Raindrops"))))
     ;; Units (clock only): metric <-> imperial; picking one also refreshes
     ;; weather_info instantly so °C/°F does not wait for the 10-minute defpoll.
     (box :visible {widget == "clock"}

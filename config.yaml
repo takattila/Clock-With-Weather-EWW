@@ -91,6 +91,42 @@ weather:
 
   name: default
 
+  # rain -> the full-screen raindrop effect (v5.0.0). A separate, click-through
+  # transparent layer runs BEHIND the desktop windows (layer-shell "bottom" on
+  # Wayland, keep-below on X11), so clicks pass straight through it. Live-editable
+  # from the right-click menu's "Raindrops" row (opens a centered panel).
+  rain:
+
+    # enabled -> master switch. false removes the layer entirely (no CPU cost).
+    enabled: true
+
+    # auto -> when true the rain only falls while the current weather
+    #         condition is precipitation (Rain / Drizzle / Thunderstorm /
+    #         Squall / Shower / Snow), so a dry sky stays dry without touching
+    #         this panel. When false it falls whenever `enabled` is true.
+    #         Driven by generated/weather_cache.json, which weather.py
+    #         refreshes with the widget's own poll (no extra API calls).
+    auto: true
+
+    # count -> how many droplets are on screen at once. 0-120.
+    #          The cost is linear in the count. Measured CPU of the whole
+    #          layer process on this machine, TWO monitors (1920x1080 +
+    #          1368x768), 24 droplets per monitor, speed 5:
+    #            10 ->  7%     24 -> 12%     40 -> 16%
+    #            80 -> 24%    120 -> 33%   (of ONE cpu core)
+    #          So 24 (the default) is roughly 6% per monitor; drop it to 10
+    #          on a busy machine. Setting 0 removes the layer entirely.
+    count: 24
+
+    # speed -> 1 (slowest, dreamlike drizzle) to 10 (fastest, downpour).
+    #         Maps to a per-drop animation duration of ~2.4s (1) down to
+    #         ~0.55s (10); every drop gets a seeded 0.7x-1.4x variation on top
+    #         so the fall never looks mechanical.
+    speed: 5
+
+    # opacity -> 0.0-1.0, how visible the droplets are against the desktop.
+    opacity: 0.35
+
   # window -> position of the clock widget on the screen.
   window:
 

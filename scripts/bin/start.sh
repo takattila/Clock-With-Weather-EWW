@@ -332,6 +332,27 @@ start_input_daemon() {
   fi
 }
 
+# Start the raindrop layer (scripts/core/rain.py, v5.0.0). It is a standalone
+# GTK3 process rather than an eww window because eww 0.6.0 exposes no
+# click-through property, and a full-screen eww surface would swallow every
+# click on the desktop. It sits in layer-shell BOTTOM / keep-below and polls
+# config.yaml + config.local.yaml + generated/weather_cache.json, so it picks
+# panel edits up live and survives `eww reload`. A stale layer left over from a
+# previous session is swept first (single-instance guarantee, like the
+# watchers). Log goes to logs/rain.log, its PID to run/rain.pid.
+start_rain() {
+  sweep_kill "${DIR}/scripts/core/rain\.py"
+  setsid python3 "$DIR/scripts/core/rain.py" "$DIR" >> "$LOGS_DIR/rain.log" 2>&1 &
+  echo $! > "$RUN_DIR/rain.pid"
+  disown 2>/dev/null || true
+  sleep 0.3
+  if [ -f "$RUN_DIR/rain.pid" ] && kill -0 "$(cat "$RUN_DIR/rain.pid" 2>/dev/null)" 2>/dev/null; then
+    echo "raindrop layer started (PID $(cat "$RUN_DIR/rain.pid"))"
+  else
+    echo "raindrop layer: failed to start (see logs/rain.log); the widget is unaffected"
+  fi
+}
+
 # Recompute the layout and reopen every window (keeps the daemon running).
 relayout() {
   eww --config "$DIR/eww" close-all 2>/dev/null
@@ -352,6 +373,7 @@ main() {
   layout_windows
   start_watcher
   start_monitor_watch
+  start_rain
   echo "Clock + weather widget and system monitor panel are running (eww)."
 }
 
