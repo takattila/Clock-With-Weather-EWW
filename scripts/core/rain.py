@@ -30,6 +30,7 @@ restart.
 Usage: ./rain.py [config_dir]      (defaults to the repo root)
 """
 
+import ctypes
 import json
 import os
 import random
@@ -87,6 +88,10 @@ JITTER_MIN, JITTER_MAX = 0.7, 1.4
 DURATION_SLOW, DURATION_FAST = 2.4, 0.55
 # Keep the fall slightly overshooting the bottom edge so drops vanish cleanly.
 OVERSCAN = 60
+# The configured droplet count is a density, defined for this area (full HD):
+# a smaller monitor gets proportionally fewer drops, so every screen looks the
+# same and the CPU cost follows the pixels actually painted.
+REFERENCE_AREA = 1920 * 1080
 
 THEME_FILE = os.path.join("eww", "eww.theme.json")
 CACHE_FILE = os.path.join("generated", "weather_cache.json")
@@ -146,6 +151,19 @@ def base_duration(speed):
     return DURATION_SLOW - ratio * (DURATION_SLOW - DURATION_FAST)
 
 
+def drops_for_monitor(count, width, height):
+    """The drop count for ONE monitor, scaled by its area.
+
+    The configured count is a *density*, defined for a full-HD screen: 24 drops
+    on 1920x1080. Without this every monitor got the same number of drops, so a
+    1368x768 screen was twice as dense as the 1920x1080 one next to it. Scaling
+    by the pixel area makes every monitor look the same, and keeps the CPU cost
+    proportional to the pixels actually painted instead of to the monitor count.
+    """
+    area = max(1, int(width) * int(height))
+    return clamp_count(int(round(count * area / float(REFERENCE_AREA))))
+
+
 def plan_drops(count, speed, width, height, seed=SEED):
     """Lay out `count` droplets for a width x height monitor.
 
@@ -153,13 +171,23 @@ def plan_drops(count, speed, width, height, seed=SEED):
     so the generated CSS is stable between runs. `duration` is the CSS animation
     duration, `delay` a NEGATIVE value (seconds) that staggers the drops along
     the path - a positive delay would leave them all bunched at the start line.
+
+    `count` is a full-HD density and is scaled to this monitor's area (see
+    drops_for_monitor), and the x positions are STRATIFIED: drop i is jittered
+    inside its own 1/count-wide column. Pure random x left whole vertical bands
+    empty on a wide monitor (measured: the 960-1152 px band had no drop at all
+    on 1920x1080) and, because the seed is fixed, painted the same sparse
+    pattern on every screen size.
     """
-    count = clamp_count(count)
     width = max(1, int(width))
     height = max(1, int(height))
+    count = drops_for_monitor(count, width, height)
     travel = height + OVERSCAN
     duration = base_duration(speed)
     rng = random.Random(seed)
+
+    step = width / float(count) if count else width
+    max_x = max(0, width - DROPLET_W)
 
     drops = []
     for i in range(count):
@@ -168,11 +196,18 @@ def plan_drops(count, speed, width, height, seed=SEED):
         # A streak is a fast, long drop; a regular drop a short, slower one.
         if streak:
             drop_duration *= 0.7
+        # One drop per column, jittered inside it -> no empty band, whatever
+        # the monitor width and count are.
+        x = min(max_x, max(0, int((i + rng.random()) * step)))
         drops.append({
             "index": i,
-            "x": rng.randrange(0, max(1, width - DROPLET_W)),
+            "x": x,
             "duration": round(drop_duration, 3),
-            "delay": round(-drop_duration * rng.random(), 3),
+            # Strictly negative: a fraction of the fall already elapsed when
+            # the animation starts. The 0.02 floor keeps that true even when
+            # the RNG returns 0.0 (which would have produced a 0.0s delay and
+            # left that drop sitting at the start line).
+            "delay": round(-drop_duration * (0.02 + 0.98 * rng.random()), 3),
             "height": DROPLET_H * 2 if streak else DROPLET_H,
         })
 
@@ -263,6 +298,99 @@ def read_tint(config_dir):
 
 
 # --------------------------------------------------------------------------
+# Click-through: punching the input hole
+# --------------------------------------------------------------------------
+# The layer is a full-screen window, so it must be UNHITTABLE - every click
+# has to fall through to the desktop under it. Two mechanisms, because one is
+# not enough:
+#
+#   * Gdk.Window.set_pass_through(True) is the portable call, and the only one
+#     on Wayland. On this X11 setup it is NOT enough: get_pass_through()
+#     returned True while the window still swallowed every click, so the
+#     desktop context menu never opened (measured with xdotool: the window
+#     under the pointer was the rain layer, not the desktop).
+#   * An EMPTY X input shape is what actually works. Done through XShape
+#     (ShapeInput + zero rectangles) on the toplevel, which is exactly what a
+#     click-through overlay needs, and it also survives a WM re-shaping the
+#     window. ctypes + libXext, both always present on X11 - no new dependency.
+#
+# The layer is also override-redirect (see RainLayer._on_realize), because a
+# MANAGED window gets its input shape overwritten by the window manager
+# (Cinnamon/Muffin does), which silently undoes the hole.
+
+XSHAPE_INPUT = 2
+_XSHAPE_SET = 0
+_XSHAPE_UNSORTED = 0
+_xshape_libs = None
+
+
+def _load_xshape():
+    """Load libX11 + libXext once. Returns (xext, x11) or (None, None)."""
+    global _xshape_libs
+    if _xshape_libs is not None:
+        return _xshape_libs
+    try:
+        x11 = ctypes.CDLL("libX11.so.6")
+        xext = ctypes.CDLL("libXext.so.6")
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XFlush.argtypes = [ctypes.c_void_p]
+        xext.XShapeSelectInput.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int]
+        xext.XShapeCombineRectangles.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+        _xshape_libs = (xext, x11)
+    except (OSError, AttributeError):
+        _xshape_libs = (None, None)
+    return _xshape_libs
+
+
+def empty_input_shape(gdk_window):
+    """Make an X11 window unhittable by giving it an empty input shape.
+
+    Returns True when the shape was really emptied. Safe to call repeatedly -
+    that is the point: the WM may re-assert a shape, and a hide/show cycle
+    (auto mode toggling) remaps the window.
+    """
+    xext, x11 = _load_xshape()
+    if xext is None:
+        return False
+    try:
+        display = x11.XOpenDisplay(None)
+        if not display:
+            return False
+        xid = ctypes.c_ulong(gdk_window.get_xid())
+        xext.XShapeSelectInput(display, xid, 1)
+        # Zero rectangles => nothing in the window can be hit.
+        xext.XShapeCombineRectangles(
+            display, xid, XSHAPE_INPUT, 0, 0, 0,
+            None, 0, _XSHAPE_SET, _XSHAPE_UNSORTED)
+        x11.XFlush(display)
+        return True
+    except Exception:
+        return False
+
+
+def punch_input_hole(gdk_window):
+    """Everything needed for the window to be click-through, in one call.
+
+    Returns True only when the window really is unhittable *here*: on X11 that
+    means the input shape was emptied (set_pass_through alone was measured not
+    to be enough), on Wayland it means pass_through was accepted.
+    """
+    passed_through = False
+    try:
+        gdk_window.set_pass_through(True)
+        passed_through = bool(gdk_window.get_pass_through())
+    except Exception:
+        passed_through = False
+    if WAYLAND:
+        return passed_through
+    return empty_input_shape(gdk_window)
+
+
+# --------------------------------------------------------------------------
 # GTK layer
 # --------------------------------------------------------------------------
 
@@ -298,9 +426,28 @@ class RainLayer:
             if display is not None and monitor < display.get_n_monitors():
                 GtkLayerShell.set_monitor(self.win, display.get_monitor(monitor))
         else:
-            # override-redirect so no WM tries to decorate or place us.
+            # OVERRIDE-REDIRECT is mandatory here, not cosmetic: a MANAGED
+            # window gets its input shape overwritten by the WM (measured on
+            # Cinnamon/Muffin), which silently undid the empty input shape that
+            # set_pass_through() installs - the layer then swallowed every
+            # click and the desktop context menu never opened. An override-
+            # redirect window is never decorated, never placed and never
+            # re-shaped by the WM, so the click-through hole survives.
+            # GtkWindow has no setter for it, and it has to be requested on the
+            # GdkWindow in the realize handler: that is the last point where
+            # GDK can still apply it (it takes effect on the map, verified:
+            # "Override Redirect State: yes").
+            self.win.connect("realize", self._on_realize)
             self.win.set_type_hint(Gdk.WindowTypeHint.DESKTOP)
+            # Geometry is ours, exactly like the widget windows: one layer per
+            # monitor, sized and positioned on THAT monitor's own area, so the
+            # rain never spills onto a neighbour and the WM cannot move us.
+            self.win.set_size_request(self.geometry[2], self.geometry[3])
             self.win.move(self.geometry[0], self.geometry[1])
+            # Re-punch the hole after every map: a hide/show cycle (auto mode
+            # toggling) and some WMs re-shape on map. Cheap, and it makes the
+            # guarantee hold for the whole session, not just the first second.
+            self.win.connect("map-event", self._on_map)
 
         self.overlay = Gtk.Overlay()
         self.overlay.set_size_request(*self.geometry[2:])
@@ -404,13 +551,44 @@ class RainLayer:
         self._provider = provider
         return True
 
+    def _on_realize(self, widget):
+        """Claim override-redirect on the GdkWindow as it is realized.
+
+        Without this the WM manages the full-screen layer, re-asserts its own
+        input shape over ours and the layer eats every click on the desktop.
+        """
+        if WAYLAND:
+            return
+        try:
+            gdk = widget.get_window()
+            if gdk is not None:
+                gdk.set_override_redirect(True)
+        except Exception:
+            pass
+
     def realize_click_through(self):
         """Punch the input hole. Must run after the window is realized."""
         gdk_window = self.win.get_window()
         if gdk_window is None:
             return False
-        gdk_window.set_pass_through(True)
-        return bool(gdk_window.get_pass_through())
+        return punch_input_hole(gdk_window)
+
+    def _on_map(self, *_):
+        """Re-punch the click-through hole right after (re)mapping.
+
+        Returns False so GTK keeps the default map handling. A second,
+        slightly delayed pass covers WMs that only re-shape once the window is
+        actually on screen.
+        """
+        if self.realize_click_through():
+            GLib.timeout_add(250, self._late_click_through)
+        return False
+
+    def _late_click_through(self):
+        if self.win.get_mapped() and not self.realize_click_through():
+            sys.stderr.write(
+                "rain: click-through lost on monitor %d\n" % self.monitor)
+        return False
 
     def set_active(self, active):
         if active and not self.win.get_visible():
@@ -536,6 +714,16 @@ class RainApp:
                     layer.deactivate()
 
         self._was_active = active
+
+        # Re-punch the click-through hole while running. A window manager may
+        # re-assert a shape on the window, and the hole is the whole point of
+        # this process: if it is lost, the layer silently eats every click on
+        # the desktop. Two X requests per layer every POLL_SEC is nothing.
+        if active:
+            for layer in self.layers:
+                if layer.win.get_visible() and not layer.realize_click_through():
+                    sys.stderr.write(
+                        "rain: click-through lost on monitor %d\n" % layer.monitor)
         return True
 
 

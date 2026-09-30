@@ -112,6 +112,47 @@ def test_plan_drops_stays_inside_the_monitor_width():
     assert all(0 <= d["x"] <= 1920 - rain.DROPLET_W for d in drops)
 
 
+def test_plan_drops_count_is_a_full_hd_density():
+    # The configured count is a density defined for full HD; a smaller monitor
+    # gets proportionally fewer drops, so both screens look equally dense
+    # (measured 11.57 vs 11.42 drops/Mpx).
+    assert len(rain.plan_drops(24, 5, 1920, 1080)[0]) == 24
+    assert len(rain.plan_drops(24, 5, 1368, 768)[0]) == 12
+    assert len(rain.plan_drops(24, 5, 3840, 2160)[0]) == 96
+
+
+def test_plan_drops_covers_every_column_of_a_wide_monitor():
+    # Regression: pure random x left whole vertical bands empty (the 960-1152
+    # px band of a 1920x1080 screen had no drop at all), which read as "the
+    # rain does not fall across the whole width". Stratified x must put one
+    # drop in every 1/count-wide column, and hit all ten 10% bands.
+    for width, height in ((1920, 1080), (1368, 768), (3840, 2160), (1024, 768)):
+        drops, _ = rain.plan_drops(24, 5, width, height)
+        step = width / float(len(drops))
+        columns = {int(d["x"] // step) for d in drops}
+        assert len(columns) == len(drops), (width, height, sorted(columns))
+        # With at least ten drops the ten 10%-wide bands are all hit, so no
+        # stretch of the width is ever left bare (both real monitors: 24 and
+        # 12 drops). Below ten drops only the grid invariant above can hold.
+        if len(drops) >= 10:
+            bands = {min(9, int(d["x"] * 10 // width)) for d in drops}
+            assert len(bands) == 10, (width, height, sorted(bands))
+
+
+def test_plan_drops_stay_inside_the_monitor():
+    for width, height in ((1920, 1080), (1368, 768), (800, 600)):
+        drops, _ = rain.plan_drops(30, 5, width, height)
+        for d in drops:
+            assert 0 <= d["x"] <= max(0, width - rain.DROPLET_W)
+
+
+def test_drops_for_monitor_scales_with_area():
+    assert rain.drops_for_monitor(24, 1920, 1080) == 24
+    assert rain.drops_for_monitor(24, 1368, 768) == 12
+    assert rain.drops_for_monitor(0, 1920, 1080) == 0
+    assert rain.drops_for_monitor(500, 1920, 1080) == 120   # clamped
+
+
 def test_plan_drops_negative_delays_spread_the_rain():
     # A POSITIVE delay would leave every drop bunched at the start line and
     # then stop; negative delays start each drop mid-flight.
@@ -163,9 +204,11 @@ def test_plan_drops_includes_some_streaks():
 
 
 def test_plan_drops_handles_degenerate_monitor_size():
+    # A 0x0 monitor (Gdk reported nothing) must not raise and must not produce
+    # an unusable state; the density scaling may not silently empty it either.
     drops, travel = rain.plan_drops(5, 5, 0, 0)
-    assert len(drops) == 5
     assert travel > 0
+    assert all(0 <= d["x"] for d in drops)
 
 
 # --- CSS generation ----------------------------------------------------------
@@ -640,3 +683,195 @@ def test_layer_requests_an_alpha_visual_and_app_paintable(monkeypatch):
     assert win.app_paintable is True, (
         "without app_paintable GTK fills the window with the theme background")
     assert calls[:2] == ["set_visual", "set_app_paintable"]
+
+
+# --- click-through (the input hole) -----------------------------------------
+
+class _FakeGdkWindow:
+    """Duck-typed Gdk.Window: the hole helpers only use these four calls."""
+
+    def __init__(self, xid=0x1234, pass_through_works=True):
+        self.xid = xid
+        self._pass_through = False
+        self._pass_through_works = pass_through_works
+
+    def set_pass_through(self, value):
+        self._pass_through = self._pass_through_works and value
+
+    def get_pass_through(self):
+        return self._pass_through
+
+    def get_xid(self):
+        return self.xid
+
+
+class _FakeXlib:
+    def __init__(self):
+        self.flushed = 0
+        self._display = 0xABCD
+
+    def XOpenDisplay(self, _name):
+        return self._display
+
+    def XFlush(self, _display):
+        self.flushed += 1
+
+
+class _FakeXext:
+    def __init__(self):
+        self.select_input = []
+        self.combine = []
+
+    def XShapeSelectInput(self, display, xid, enabled):
+        self.select_input.append((display, xid, enabled))
+
+    def XShapeCombineRectangles(self, display, xid, kind, x, y, ordered,
+                                rects, count, op, ordering):
+        self.combine.append((kind, count, rects, op))
+
+
+@pytest.fixture
+def fake_xshape(monkeypatch):
+    """Stand in for libXext/libX11 and record what gets called."""
+    xext, x11 = _FakeXext(), _FakeXlib()
+    monkeypatch.setattr(rain, "_load_xshape", lambda: (xext, x11))
+    return xext, x11
+
+
+def test_empty_input_shape_gives_the_window_no_input_region():
+    # The real cause of "the desktop context menu never appears": pass_through
+    # was True while the full-screen window still ate every click, so the
+    # input shape is emptied directly - zero rectangles, ShapeInput.
+    xext, x11 = _FakeXext(), _FakeXlib()
+    rain._xshape_libs = (xext, x11)
+    assert rain.empty_input_shape(_FakeGdkWindow(xid=0xBEEF)) is True
+    assert len(xext.select_input) == 1
+    display, xid, enabled = xext.select_input[0]
+    assert (display, getattr(xid, "value", xid), enabled) == (0xABCD, 0xBEEF, 1)
+    assert [c[0] for c in xext.combine] == [rain.XSHAPE_INPUT]
+    assert xext.combine[0][1] == 0          # no rectangles -> unhittable
+    assert x11.flushed == 1
+
+
+def test_punch_input_hole_needs_the_shape_on_x11(monkeypatch, fake_xshape):
+    # pass_through alone was measured NOT to be enough on this X11 setup, so
+    # it must not be reported as a working click-through on its own.
+    xext, _x11 = fake_xshape
+    assert rain.punch_input_hole(_FakeGdkWindow()) is True
+    assert xext.combine, "the X input shape must be emptied too"
+    # ...and the two mechanisms together must both be applied.
+    window = _FakeGdkWindow()
+    rain.punch_input_hole(window)
+    assert window.get_pass_through() is True
+
+
+def test_punch_input_hole_uses_only_pass_through_on_wayland(monkeypatch):
+    # Wayland has no XShape: set_pass_through is the whole mechanism there.
+    monkeypatch.setattr(rain, "WAYLAND", True)
+    xext, _x11 = _FakeXext(), _FakeXlib()
+    rain._xshape_libs = (xext, _x11)
+    window = _FakeGdkWindow()
+    assert rain.punch_input_hole(window) is True
+    assert xext.combine == []
+    assert window.get_pass_through() is True
+
+
+def test_punch_input_hole_reports_failure_without_libxext(monkeypatch):
+    monkeypatch.setattr(rain, "_load_xshape", lambda: (None, None))
+    assert rain.empty_input_shape(_FakeGdkWindow()) is False
+    # No crash, and the failure is visible (the daemon logs it) rather than
+    # silently pretending the layer is click-through.
+    assert rain.punch_input_hole(_FakeGdkWindow()) is False
+
+
+def test_punch_input_hole_survives_a_broken_window(monkeypatch):
+    class _Broken:
+        def set_pass_through(self, _v):
+            raise RuntimeError("window gone")
+
+        def get_pass_through(self):
+            return False
+
+        def get_xid(self):
+            raise RuntimeError("window gone")
+
+    assert rain.punch_input_hole(_Broken()) is False
+
+
+def test_realize_click_through_uses_the_punch(monkeypatch):
+    calls = []
+    monkeypatch.setattr(rain, "punch_input_hole",
+                        lambda w: calls.append(w) or True)
+    layer = rain.RainLayer.__new__(rain.RainLayer)
+
+    class _Win:
+        def get_window(self):
+            return "gdk-window"
+
+    layer.win = _Win()
+    assert layer.realize_click_through() is True
+    assert calls == ["gdk-window"]
+
+    layer.win = type("W", (), {"get_window": staticmethod(lambda: None)})()
+    assert layer.realize_click_through() is False
+
+
+def test_tick_reasserts_the_hole_on_a_visible_layer(monkeypatch):
+    # A WM can re-assert a shape, and the layer is remapped on every show, so
+    # the poll re-punches the visible layers instead of trusting the WM.
+    app = rain.RainApp.__new__(rain.RainApp)
+    app.config_dir = "."
+    app.layers = []
+    app._mtimes = None
+    app._monitors = rain.RainApp._monitor_signature()
+    app._was_active = True
+
+    settings = {
+        "enabled": True, "auto": False, "count": 24, "speed": 5,
+        "opacity": 0.35, "manual": True, "tint": "#c9d6e4",
+    }
+    monkeypatch.setattr(rain, "read_settings", lambda _d: settings)
+    monkeypatch.setattr(rain, "read_tint", lambda _d: "#c9d6e4")
+    monkeypatch.setattr(
+        rain.RainApp, "active_now", lambda self, _s: True)
+    monkeypatch.setattr(
+        rain, "_safe_mtime",
+        lambda _p: object())  # force `changed` on the first tick
+
+    class _Layer:
+        monitor = 0
+
+        def __init__(self):
+            self.punched = 0
+            self.applied = 0
+
+        def win(self):
+            return None
+
+        def get_visible(self):
+            return True
+
+        def realize_click_through(self):
+            self.punched += 1
+            return True
+
+        def apply(self, _settings, _tint):
+            self.applied += 1
+
+        def set_active(self, _active):
+            pass
+
+        def deactivate(self):
+            pass
+
+    layer = _Layer()
+    layer.win = type("W", (), {"get_visible": staticmethod(lambda: True)})()
+    app.layers = [layer]
+    app.tick()
+    assert layer.punched >= 1
+
+
+def test_xshape_input_kind_is_the_input_shape():
+    # ShapeBounding = 0, ShapeClip = 1, ShapeInput = 2: getting this wrong
+    # would empty the visible shape (or nothing at all) instead.
+    assert rain.XSHAPE_INPUT == 2

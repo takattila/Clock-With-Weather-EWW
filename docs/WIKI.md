@@ -558,8 +558,22 @@ shared assets are stored here.
 `scripts/core/rain.py` is a **standalone GTK3 process**, deliberately *not* an
 eww window. eww 0.6.0 exposes no click-through / input-shape property, so a
 full-screen eww surface would swallow every click on the desktop. Owning a
-`Gtk.Window` makes `Gdk.Window.set_pass_through()` available, and it is verified
-to return `True` on a realized window.
+`Gtk.Window` makes `Gdk.Window.set_pass_through()` available — but on this
+X11/Cinnamon setup it is **not sufficient**: it returns `True` while the
+full-screen window still swallows every click, so the desktop context menu never
+opened (measured with `xdotool`: the window under the pointer was the rain
+layer, not the desktop). The layer is therefore made unhittable directly:
+
+| Backend | Mechanism |
+|---|---|
+| X11 | **override-redirect** (set from the `realize` handler, because a *managed* window gets its input shape overwritten by the window manager) + an **empty X input shape**: `XShapeSelectInput` + `XShapeCombineRectangles(ShapeInput, 0 rectangles)` through `ctypes`/libXext |
+| Wayland | `set_pass_through(True)` (the only mechanism available there) |
+
+Both are applied by one helper, `punch_input_hole()`, which is called on
+`realize`, on `map` and **again on every 2 s poll** — a WM may re-assert a shape,
+and the layer is remapped whenever auto mode hides/shows it. `--selftest`
+reports `click_through=True` only when the input shape really was emptied on X11,
+never on the strength of the pass-through flag alone.
 
 ### How it is stacked
 
@@ -591,6 +605,17 @@ window, and every click passes through it.
   unit-testable. 30 % of drops are longer, faster streaks
   (`STREAK_CHANCE`), every drop gets a 0.7-1.4x duration jitter, and drops are
   sorted by x so the generated CSS is byte-stable.
+- **The count is a density, not a per-monitor total.** It is defined for
+  full HD (`REFERENCE_AREA = 1920*1080`) and scaled by each monitor's own pixel
+  area, so a 1368x768 screen next to a 1920x1080 one gets 12 drops instead of
+  24 — both ~11.5 drops/Mpx, i.e. the same rain everywhere, and the CPU cost
+  follows the pixels actually painted rather than the number of monitors.
+- **Stratified x, never random x.** Drop *i* is jittered inside its own
+  `width/count`-wide column. Pure random x left whole vertical bands empty —
+  measured: the 960-1152 px band of the 1920x1080 screen had **no drop at
+  all**, and because the seed is fixed it painted the same sparse pattern at
+  every screen size, which read as "the rain does not fall across the whole
+  width". Every 10 % band is now guaranteed a drop.
 - `speed` maps linearly onto the animation duration: **2.4 s at 1** down to
   **0.55 s at 10** (`DURATION_SLOW` / `DURATION_FAST`).
 - The tint is read from `eww/eww.theme.json` (`color_light`, then `menu_ink`,
@@ -669,14 +694,15 @@ layer that should have rain is empty:
 
 ```
 monitor 0: size=1920x1080 click_through=True drops=24 visible=True expected_visible=True
-monitor 1: size=1368x768  click_through=True drops=24 visible=True expected_visible=True
+monitor 1: size=1368x768  click_through=True drops=12 visible=True expected_visible=True
 ```
 
 Troubleshooting:
 
 | Symptom | Cause / fix |
 |---|---|
-| The rain is there but clicks are swallowed | The window was never realized, so `set_pass_through` could not run. Check `logs/rain.log` for `click-through NOT active`. |
+| The rain is there but clicks are swallowed | The input shape was lost (the WM re-asserted it, or the window was never realized). The poll re-punches it every 2 s and logs `click-through lost on monitor N`; check `logs/rain.log`. On X11 the punch needs `libXext.so.6` (present on every X11 system) — `--selftest` prints `click_through=False` if it could not be applied. |
+| The rain covers only part of a wide monitor | Fixed in v5.0.0: x is stratified and the count scales with the area. If it happens again, check that `plan_drops()` is reached with the monitor's real `width`/`height` (the layer rebuilds on a monitor-geometry change). |
 | No rain, `auto: true` | Check `generated/weather_cache.json` — `is_raining` is what the layer reads, and `weather.py` only refreshes it on a **successful** fetch. |
 | The rain does not follow the clock's temperature | Both read the same 10-minute `defpoll`; a mismatch means the cache is older than the widget data. |
 | Too much CPU | Lower `count` (see the table in the release notes) or set `count: 0`. |

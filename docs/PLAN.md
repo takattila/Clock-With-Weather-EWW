@@ -891,7 +891,7 @@ Two independent bugs moved the clock and the panel off their own monitor:
 
 ## Verification (executed)
 
-- `python3 -m pytest tests/ -q` — **570 passed** (was 370): +95 in
+- `python3 -m pytest tests/ -q` — **585 passed** (was 370): +110 in
   `test_rain.py` (clamping, speed→duration mapping, the seeded layout incl.
   negative delays and x-sorted stable CSS, CSS generation, merged-config
   reads, weather-cache reads, the active-matrix, and the layer bookkeeping
@@ -924,12 +924,33 @@ Two independent bugs moved the clock and the panel off their own monitor:
      was then regenerated from the real API;
   3. **`hard-reset.sh` restarted the layer `start.sh --relayout` had just
      started** — it swept and relaunched unconditionally. It now only starts one
-     when no layer is running at all.
+     when no layer is running at all;
+  4. **the layer was opaque** — the window was never made RGBA, so the CSS
+     background painted over the wallpaper. Fixed with an RGBA visual +
+     `set_app_paintable(True)` + a transparent `.rain-window` rule (pixel-diffed
+     on/off: 3.49 % of the pixels changed, in the drop regions only);
+  5. **the full-screen layer ate every click** — the desktop context menu never
+     appeared. Root cause: `Gdk.Window.set_pass_through()` returned `True` but
+     did not empty the X input shape, and the window was a *managed* window, so
+     the WM could re-assert a shape over it. Fixed with override-redirect from
+     the `realize` handler + a real empty input shape
+     (`XShapeSelectInput` + `XShapeCombineRectangles(ShapeInput, 0)`, ctypes /
+     libXext), re-punched on `map` and on every poll. Verified with `xdotool`:
+     the window under the pointer is the desktop on both monitors, and a
+     right-click opens the Nemo desktop menu with the layer up;
+  6. **the rain did not cover the full width of a wide monitor** — x was pure
+     random with a fixed seed, so the pattern was the same, differently
+     stretched, at every screen size: measured, the 960-1152 px band of the
+     1920x1080 monitor had no drop at all. Fixed by stratifying x (one drop per
+     `width/count` column, jittered inside it, every 10 % band guaranteed) and
+     by treating the configured count as a full-HD *density* scaled by each
+     monitor's own area, so a 1368x768 screen gets 12 drops instead of 24 and
+     both monitors look the same.
 - `--selftest` on the real dual-monitor setup:
 
   | Config | Result |
   |---|---|
-  | `auto: false, count: 24` | both layers `click_through=True drops=24 visible=True`, exit 0 |
+  | `auto: false, count: 24` | both layers `click_through=True`, `drops=24` on 1920x1080 and `drops=12` on 1368x768 (equal density), `visible=True`, exit 0 |
   | `enabled: false` | both layers hidden, 0 drops, exit 0 |
   | `auto: true` + `is_raining: false` | both layers hidden, exit 0 |
 
