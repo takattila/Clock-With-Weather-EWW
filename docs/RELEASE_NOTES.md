@@ -11,8 +11,8 @@ layer-shell) and also works on **X11**. Powered by the
 
 **v5.0.0 brings the weather to the whole screen.** When it rains outside, rain
 falls on your desktop: a transparent, **click-through** layer sits behind every
-window (layer-shell *bottom* on Wayland, keep-below on X11), so you can click
-straight through it while it rains over your icons. The right-click menu's new
+window (layer-shell *bottom* on Wayland, the window manager's desktop layer on
+X11), so you can click straight through it while it rains over your icons. The right-click menu's new
 **Raindrops** row opens a small panel **centered on your monitor** with a
 master switch, an **Auto** mode that lets the layer follow the actual
 OpenWeatherMap condition, and manual **droplet count / speed / opacity** — no
@@ -121,13 +121,14 @@ restart, and no extra API calls.
 
   ```bash
   python3 ~/.eww/Clock-With-Weather-EWW/scripts/core/rain.py       ~/.eww/Clock-With-Weather-EWW --selftest
-  # monitor 0: size=1920x1080 click_through=True drops=24 visible=True expected_visible=True
-  # monitor 1: size=1368x768  click_through=True drops=24 visible=True expected_visible=True
+  # monitor 0: size=1920x1080 click_through=True on_desktop=True drops=24 visible=True expected_visible=True
+  # monitor 1: size=1368x768  click_through=True on_desktop=True drops=12 visible=True expected_visible=True
   ```
 
-  It exits non-zero if a shown layer is not click-through, if a layer's
-  visibility disagrees with the config, or if a layer that should have rain is
-  empty.
+  It exits non-zero if a shown layer is not click-through, if a shown layer is
+  not in the window manager's desktop layer (which would paint the rain over
+  open windows), if a layer's visibility disagrees with the config, or if a
+  layer that should have rain is empty.
 
 ### Upgrade from v4.2.1
 

@@ -931,13 +931,13 @@ Two independent bugs moved the clock and the panel off their own monitor:
      on/off: 3.49 % of the pixels changed, in the drop regions only);
   5. **the full-screen layer ate every click** — the desktop context menu never
      appeared. Root cause: `Gdk.Window.set_pass_through()` returned `True` but
-     did not empty the X input shape, and the window was a *managed* window, so
-     the WM could re-assert a shape over it. Fixed with override-redirect from
-     the `realize` handler + a real empty input shape
+     did not empty the X input shape, and the WM can re-assert a shape over a
+     managed window. Fixed with a real empty input shape
      (`XShapeSelectInput` + `XShapeCombineRectangles(ShapeInput, 0)`, ctypes /
-     libXext), re-punched on `map` and on every poll. Verified with `xdotool`:
-     the window under the pointer is the desktop on both monitors, and a
-     right-click opens the Nemo desktop menu with the layer up;
+     libXext), re-punched on `realize`, on `map` and on every poll. Verified by
+     reading the shape back (`XShapeGetRectangles(ShapeInput)` -> 0 rectangles
+     on both layers) and with `xdotool`: the window under the pointer is the
+     desktop, and a right-click opens the Nemo desktop menu with the layer up;
   6. **the rain did not cover the full width of a wide monitor** — x was pure
      random with a fixed seed, so the pattern was the same, differently
      stretched, at every screen size: measured, the 960-1152 px band of the
@@ -945,12 +945,34 @@ Two independent bugs moved the clock and the panel off their own monitor:
      `width/count` column, jittered inside it, every 10 % band guaranteed) and
      by treating the configured count as a full-HD *density* scaled by each
      monitor's own area, so a 1368x768 screen gets 12 drops instead of 24 and
-     both monitors look the same.
+     both monitors look the same;
+  7. **the rain painted over open application windows** — the layer was
+     override-redirect, which the window manager does not manage, so it could
+     neither honour the DESKTOP type hint nor keep the requested order: an
+     explicit `XRestackWindows` held for about a second and then the WM put the
+     layer back on top (it drifted back while the process was `SIGSTOP`ped).
+     `set_keep_below(True)` had been ignored at map time for the same reason.
+     Fixed by making the layer a **managed** window with the DESKTOP type hint
+     and asking the WM to restack it with `_NET_ACTIVE_WINDOW`
+     (`request_desktop_layer()`, source indication 2 = pager, sent from the
+     `realize` handler, on `map` and on every poll; the window is unfocusable
+     so no focus moves). Measured: the layer moves from the top of the stack
+     (94) to just above the desktop window and below every app window (85), and
+     stays there. `layer_is_on_desktop()` re-reads `_NET_CLIENT_LIST_STACKING`
+     and requires the layer to be above every desktop-type window and below at
+     least one other client, skipping this process's other layer by
+     `_NET_WM_PID`; the daemon warns only after 3 consecutive misses because
+     the WM registers a new window asynchronously. Pixel-diffed with the layer
+     on and off: 9 drop-shaped marks (3 px wide, 16-32 px tall) on the desktop
+     of monitor 1 and 1 on the visible part of monitor 0, and **zero** over the
+     1699x1087 VS Code window or the eww widgets — the two marks on the eww
+     panel are the drops showing through its transparent background, i.e.
+     behind it.
 - `--selftest` on the real dual-monitor setup:
 
   | Config | Result |
   |---|---|
-  | `auto: false, count: 24` | both layers `click_through=True`, `drops=24` on 1920x1080 and `drops=12` on 1368x768 (equal density), `visible=True`, exit 0 |
+  | `auto: false, count: 24` | both layers `click_through=True` **and** `on_desktop=True`, `drops=24` on 1920x1080 and `drops=12` on 1368x768 (equal density), `visible=True`, exit 0 |
   | `enabled: false` | both layers hidden, 0 drops, exit 0 |
   | `auto: true` + `is_raining: false` | both layers hidden, exit 0 |
 

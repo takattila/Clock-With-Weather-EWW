@@ -335,7 +335,9 @@ start_input_daemon() {
 # Start the raindrop layer (scripts/core/rain.py, v5.0.0). It is a standalone
 # GTK3 process rather than an eww window because eww 0.6.0 exposes no
 # click-through property, and a full-screen eww surface would swallow every
-# click on the desktop. It sits in layer-shell BOTTOM / keep-below and polls
+# click on the desktop. It sits in layer-shell BOTTOM (Wayland) / the window
+# manager's desktop layer (X11, a managed DESKTOP window the WM restacks with
+# _NET_ACTIVE_WINDOW) and polls
 # config.yaml + config.local.yaml + generated/weather_cache.json, so it picks
 # panel edits up live and survives `eww reload`. A stale layer left over from a
 # previous session is swept first (single-instance guarantee, like the

@@ -6,7 +6,9 @@ timing, CSS generation and config/cache reading that decides what the layer
 shows, so it must all be correct headless and deterministic.
 """
 
+import ctypes
 import json
+import os
 import re
 
 import pytest
@@ -732,9 +734,9 @@ class _FakeXext:
 
 @pytest.fixture
 def fake_xshape(monkeypatch):
-    """Stand in for libXext/libX11 and record what gets called."""
-    xext, x11 = _FakeXext(), _FakeXlib()
-    monkeypatch.setattr(rain, "_load_xshape", lambda: (xext, x11))
+    """Stand in for libX11/libXext and record what gets called."""
+    x11, xext = _FakeXlib(), _FakeXext()
+    monkeypatch.setattr(rain, "_load_x11", lambda: (x11, xext))
     return xext, x11
 
 
@@ -743,7 +745,7 @@ def test_empty_input_shape_gives_the_window_no_input_region():
     # was True while the full-screen window still ate every click, so the
     # input shape is emptied directly - zero rectangles, ShapeInput.
     xext, x11 = _FakeXext(), _FakeXlib()
-    rain._xshape_libs = (xext, x11)
+    rain._x11_libs = (x11, xext)
     assert rain.empty_input_shape(_FakeGdkWindow(xid=0xBEEF)) is True
     assert len(xext.select_input) == 1
     display, xid, enabled = xext.select_input[0]
@@ -769,7 +771,7 @@ def test_punch_input_hole_uses_only_pass_through_on_wayland(monkeypatch):
     # Wayland has no XShape: set_pass_through is the whole mechanism there.
     monkeypatch.setattr(rain, "WAYLAND", True)
     xext, _x11 = _FakeXext(), _FakeXlib()
-    rain._xshape_libs = (xext, _x11)
+    rain._x11_libs = (_x11, xext)
     window = _FakeGdkWindow()
     assert rain.punch_input_hole(window) is True
     assert xext.combine == []
@@ -777,7 +779,7 @@ def test_punch_input_hole_uses_only_pass_through_on_wayland(monkeypatch):
 
 
 def test_punch_input_hole_reports_failure_without_libxext(monkeypatch):
-    monkeypatch.setattr(rain, "_load_xshape", lambda: (None, None))
+    monkeypatch.setattr(rain, "_load_x11", lambda: (None, None))
     assert rain.empty_input_shape(_FakeGdkWindow()) is False
     # No crash, and the failure is visible (the daemon logs it) rather than
     # silently pretending the layer is click-through.
@@ -825,6 +827,7 @@ def test_tick_reasserts_the_hole_on_a_visible_layer(monkeypatch):
     app._mtimes = None
     app._monitors = rain.RainApp._monitor_signature()
     app._was_active = True
+    app._unrestacked = {}
 
     settings = {
         "enabled": True, "auto": False, "count": 24, "speed": 5,
@@ -855,6 +858,9 @@ def test_tick_reasserts_the_hole_on_a_visible_layer(monkeypatch):
             self.punched += 1
             return True
 
+        def stack_on_desktop(self):
+            return True
+
         def apply(self, _settings, _tint):
             self.applied += 1
 
@@ -875,3 +881,271 @@ def test_xshape_input_kind_is_the_input_shape():
     # ShapeBounding = 0, ShapeClip = 1, ShapeInput = 2: getting this wrong
     # would empty the visible shape (or nothing at all) instead.
     assert rain.XSHAPE_INPUT == 2
+
+
+# --- X11: the desktop layer (EWMH) -------------------------------------------
+
+_ROOT = 0x1234
+ATOM_IDS = {
+    "_NET_ACTIVE_WINDOW": 201,
+    "_NET_CLIENT_LIST_STACKING": 202,
+    "_NET_WM_WINDOW_TYPE": 203,
+    "_NET_WM_WINDOW_TYPE_DESKTOP": 204,
+    "_NET_WM_PID": 205,
+}
+DESKTOP_TYPE = ATOM_IDS["_NET_WM_WINDOW_TYPE_DESKTOP"]
+DESKTOP_WIN = 100      # the Nemo desktop window
+LAYER = 200            # the rain layer of monitor 0
+SIBLING = 201          # the rain layer of monitor 1
+APP_WIN = 300          # any ordinary application window
+
+
+def _target(ref):
+    """ctypes.byref() wrapper -> the object it points at.
+
+    rain.py passes its out-parameters wrapped in ctypes.byref(), which arrive
+    at the fake as CArgObject, not as the pointer/value they carry.
+    """
+    inner = getattr(ref, "_obj", None)
+    return inner if inner is not None else ref
+
+
+class _FakeEwmhXlib:
+    """libX11 stand-in that serves window properties and records events."""
+
+    def __init__(self, props=None):
+        self.props = props or {}
+        self.sent = []
+        self.synced = 0
+        self.closed = 0
+        self._display = 0xFEED
+        self._atoms = {}
+
+    def XOpenDisplay(self, _name):
+        return self._display
+
+    def XInternAtom(self, _display, name, _only_if_exists):
+        key = name.decode("utf-8")
+        if key not in self._atoms:
+            self._atoms[key] = ATOM_IDS.get(key, 900 + len(self._atoms))
+        return self._atoms[key]
+
+    def XDefaultRootWindow(self, _display):
+        return _ROOT
+
+    def XSendEvent(self, display, window, propagate, mask, event):
+        self.sent.append((display, window, propagate, mask, _target(event)))
+
+    def XSync(self, _display, _discard):
+        self.synced += 1
+
+    def XCloseDisplay(self, _display):
+        self.closed += 1
+
+    def XFlush(self, _display):
+        pass
+
+    def XFree(self, _ptr):
+        pass
+
+    def _name_of(self, atom):
+        for key, value in self._atoms.items():
+            if value == atom:
+                return key
+        return None
+
+    def XGetWindowProperty(self, _display, window, prop, _start, _length,
+                           _delete, _req_type, actual_type, actual_format,
+                           count, after, data):
+        values = self.props.get((window, self._name_of(prop)), [])
+        if not values:
+            _target(actual_format).value = 0
+            _target(count).value = 0
+            return 1
+        _target(actual_format).value = 32
+        _target(count).value = len(values)
+        # Xlib hands the values back as an array of C long.
+        buf = (ctypes.c_ulong * len(values))(*values)
+        _target(data).value = ctypes.cast(buf, ctypes.c_void_p).value
+        return 0
+
+
+def _ewmh_props(stacking, types, pids):
+    props = {(_ROOT, "_NET_CLIENT_LIST_STACKING"): stacking}
+    for window, type_list in types.items():
+        props[(window, "_NET_WM_WINDOW_TYPE")] = type_list
+    for window, pid in pids.items():
+        props[(window, "_NET_WM_PID")] = [pid]
+    return props
+
+
+@pytest.fixture
+def ewmh(monkeypatch):
+    """Return a factory: ewmh(stacking, types, pids) patches the X11 loader."""
+    def _install(stacking, types, pids):
+        x11 = _FakeEwmhXlib(_ewmh_props(stacking, types, pids))
+        monkeypatch.setattr(rain, "_load_x11", lambda: (x11, _FakeXext()))
+        return x11
+    return _install
+
+
+def test_request_desktop_layer_sends_the_ewmh_restack_request(ewmh):
+    # The measured mechanism: a MANAGED window plus _NET_ACTIVE_WINDOW, which
+    # is what makes Muffin run its restacking pass and honour the DESKTOP type.
+    x11 = ewmh([LAYER], {LAYER: [DESKTOP_TYPE]}, {LAYER: os.getpid()})
+    assert rain.request_desktop_layer(_FakeGdkWindow(xid=0xC0DE)) is True
+    _display, window, propagate, mask, event = x11.sent[0]
+    # the fake already unwrapped the ctypes.byref() around the XEvent
+    assert window == _ROOT                       # a root event, as EWMH says
+    assert propagate is False
+    assert mask == rain._X_SUBSTRUCTURE_REDIRECT | rain._X_SUBSTRUCTURE_NOTIFY
+    ev = event.xclient
+    assert ev.type == rain._X_CLIENT_MESSAGE
+    assert ev.send_event == 1
+    assert ev.window == 0xC0DE
+    assert ev.message_type == ATOM_IDS["_NET_ACTIVE_WINDOW"]
+    assert ev.format == 32
+    assert ev.data.l[0] == 0xC0DE               # the window to activate
+    assert ev.data.l[1] == 0                    # CurrentTime
+    assert ev.data.l[2] == rain.EWMH_SOURCE_PAGER
+    assert x11.synced == 1
+    assert x11.closed == 1
+
+
+def test_request_desktop_layer_reports_failure_without_x11(monkeypatch):
+    monkeypatch.setattr(rain, "_load_x11", lambda: (None, None))
+    assert rain.request_desktop_layer(_FakeGdkWindow()) is False
+
+
+def test_request_desktop_layer_gives_up_when_the_atom_is_missing(monkeypatch):
+    class _NoAtom(_FakeEwmhXlib):
+        def XInternAtom(self, _display, _name, _only_if_exists):
+            return 0
+
+    x11 = _NoAtom()
+    monkeypatch.setattr(rain, "_load_x11", lambda: (x11, _FakeXext()))
+    assert rain.request_desktop_layer(_FakeGdkWindow()) is False
+    assert x11.sent == []
+
+
+def test_layer_is_on_desktop_between_the_desktop_and_the_apps(ewmh):
+    ewmh([DESKTOP_WIN, LAYER, APP_WIN],
+         {DESKTOP_WIN: [DESKTOP_TYPE], LAYER: [DESKTOP_TYPE], APP_WIN: []},
+         {DESKTOP_WIN: 11, LAYER: os.getpid(), APP_WIN: 22})
+    assert rain.layer_is_on_desktop(_FakeGdkWindow(xid=LAYER)) is True
+
+
+def test_layer_is_on_desktop_ignores_the_other_layer_of_the_same_process(ewmh):
+    # Both layers of the daemon carry the DESKTOP type, so a naive check finds
+    # "a desktop window above me" in the sibling layer and gives up.
+    sibling = os.getpid()
+    ewmh([DESKTOP_WIN, LAYER, SIBLING, APP_WIN],
+         {DESKTOP_WIN: [DESKTOP_TYPE], LAYER: [DESKTOP_TYPE], SIBLING: [DESKTOP_TYPE],
+          APP_WIN: []},
+         {DESKTOP_WIN: 11, LAYER: sibling, SIBLING: sibling, APP_WIN: 22})
+    assert rain.layer_is_on_desktop(_FakeGdkWindow(xid=LAYER)) is True
+
+
+def test_layer_is_on_desktop_is_false_under_a_desktop_window(ewmh):
+    ewmh([APP_WIN, LAYER, DESKTOP_WIN],
+         {DESKTOP_WIN: [DESKTOP_TYPE], LAYER: [DESKTOP_TYPE], APP_WIN: []},
+         {DESKTOP_WIN: 11, LAYER: os.getpid(), APP_WIN: 22})
+    assert rain.layer_is_on_desktop(_FakeGdkWindow(xid=LAYER)) is False
+
+
+def test_layer_is_on_desktop_is_false_on_top_of_everything(ewmh):
+    # Nothing above the layer: it is the top window, so it would paint over
+    # every application even though the order technically holds.
+    ewmh([DESKTOP_WIN, APP_WIN, LAYER],
+         {DESKTOP_WIN: [DESKTOP_TYPE], LAYER: [DESKTOP_TYPE], APP_WIN: []},
+         {DESKTOP_WIN: 11, LAYER: os.getpid(), APP_WIN: 22})
+    assert rain.layer_is_on_desktop(_FakeGdkWindow(xid=LAYER)) is False
+
+
+def test_layer_is_on_desktop_is_false_for_an_unmanaged_window(ewmh):
+    # An override-redirect window never appears in the WM's stacking list, so
+    # the check cannot vouch for it.
+    ewmh([DESKTOP_WIN, APP_WIN], {DESKTOP_WIN: [DESKTOP_TYPE], APP_WIN: []}, {DESKTOP_WIN: 11, APP_WIN: 22})
+    assert rain.layer_is_on_desktop(_FakeGdkWindow(xid=LAYER)) is False
+
+
+def test_layer_is_on_desktop_without_x11(monkeypatch):
+    monkeypatch.setattr(rain, "_load_x11", lambda: (None, None))
+    assert rain.layer_is_on_desktop(_FakeGdkWindow()) is False
+
+
+def _tick_app(monkeypatch, layer):
+    app = rain.RainApp.__new__(rain.RainApp)
+    app.config_dir = "."
+    app.layers = [layer]
+    app._mtimes = None
+    app._monitors = rain.RainApp._monitor_signature()
+    app._was_active = True
+    app._unrestacked = {}
+    settings = {
+        "enabled": True, "auto": False, "count": 24, "speed": 5,
+        "opacity": 0.35, "manual": True, "tint": "#c9d6e4",
+    }
+    monkeypatch.setattr(rain, "read_settings", lambda _d: settings)
+    monkeypatch.setattr(rain, "read_tint", lambda _d: "#c9d6e4")
+    monkeypatch.setattr(rain.RainApp, "active_now", lambda self, _s: True)
+    monkeypatch.setattr(rain, "_safe_mtime", lambda _p: object())
+    return app
+
+
+class _StackLayer:
+    """A visible layer whose desktop-layer check can be made to fail."""
+
+    monitor = 0
+
+    def __init__(self, on_desktop):
+        self.on_desktop = on_desktop
+        self.win = type("W", (), {"get_visible": staticmethod(lambda: True)})()
+
+    def realize_click_through(self):
+        return True
+
+    def stack_on_desktop(self):
+        return self.on_desktop
+
+    def apply(self, _settings, _tint):
+        pass
+
+    def set_active(self, _active):
+        pass
+
+    def deactivate(self):
+        pass
+
+
+def test_tick_warns_only_after_the_layer_keeps_missed_the_desktop(
+        monkeypatch, capsys):
+    # The WM registers a new window asynchronously, so the first polls after a
+    # map can legitimately fail; warning on those would be a false alarm.
+    layer = _StackLayer(on_desktop=False)
+    app = _tick_app(monkeypatch, layer)
+    for _ in range(rain.LAYER_WARN_AFTER - 1):
+        app.tick()
+        assert capsys.readouterr().err == ""
+    app.tick()
+    err = capsys.readouterr().err
+    assert "desktop layer" in err
+    assert str(layer.monitor) in err
+
+
+def test_tick_forgets_the_misses_once_the_layer_is_back_in_place(
+        monkeypatch, capsys):
+    layer = _StackLayer(on_desktop=False)
+    app = _tick_app(monkeypatch, layer)
+    for _ in range(rain.LAYER_WARN_AFTER - 1):
+        app.tick()
+    layer.on_desktop = True
+    app.tick()
+    assert app._unrestacked == {}
+    # A later relapse warns again, and only after the same run of failures.
+    layer.on_desktop = False
+    for _ in range(rain.LAYER_WARN_AFTER - 1):
+        app.tick()
+        assert capsys.readouterr().err == ""
+    app.tick()
+    assert "desktop layer" in capsys.readouterr().err

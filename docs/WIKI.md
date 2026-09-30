@@ -566,7 +566,7 @@ layer, not the desktop). The layer is therefore made unhittable directly:
 
 | Backend | Mechanism |
 |---|---|
-| X11 | **override-redirect** (set from the `realize` handler, because a *managed* window gets its input shape overwritten by the window manager) + an **empty X input shape**: `XShapeSelectInput` + `XShapeCombineRectangles(ShapeInput, 0 rectangles)` through `ctypes`/libXext |
+| X11 | an **empty X input shape**: `XShapeSelectInput` + `XShapeCombineRectangles(ShapeInput, 0 rectangles)` through `ctypes`/libXext. The layer *is* a managed window (it has to be, see below), so the WM is free to re-assert a shape — that is why the hole is re-punched on `realize`, on `map` and on every poll instead of being protected by an override-redirect window |
 | Wayland | `set_pass_through(True)` (the only mechanism available there) |
 
 Both are applied by one helper, `punch_input_hole()`, which is called on
@@ -580,7 +580,37 @@ never on the strength of the pass-through flag alone.
 | Backend | Mechanism |
 |---|---|
 | Wayland | `GtkLayerShell.init_for_window` + `Layer.BOTTOM`, anchored to all four edges, `KeyboardMode.NONE` |
-| X11 | `set_keep_below(True)` + `Gdk.WindowTypeHint.DESKTOP`, moved to the monitor's origin |
+| X11 | a **managed** window with `Gdk.WindowTypeHint.DESKTOP`, moved to the monitor's origin, and an explicit `_NET_ACTIVE_WINDOW` request (`request_desktop_layer()`) |
+
+The X11 arrangement is the only one that works, and it was measured twice over
+(three arrangements were tried):
+
+- `set_keep_below(True)` + the DESKTOP type hint is **ignored at map time**.
+  Every new window lands on top of the stack, and a full-screen layer then
+  paints rain over every open application.
+- An **override-redirect** window with an explicit `XRestackWindows` holds the
+  position for about a second and then the WM puts it back on top (it drifted
+  back while the layer process was `SIGSTOP`ped). The WM neither honours the
+  DESKTOP type nor the requested order for a window it does not manage.
+- A **managed** window plus `_NET_ACTIVE_WINDOW` **works**: the WM runs its
+  restacking pass and applies its own layering, which puts a
+  `_NET_WM_WINDOW_TYPE_DESKTOP` window in the desktop layer — measured moving
+  from the top of the stack (94) to just above the desktop window and below
+  every app window (85) — and it *stays* there, including for windows opened
+  later, because those are stacked above the desktop layer. The request is sent
+  with source indication `2` (pager: it comes from the desktop side, not from
+  an application) and the window is unfocusable, so no keyboard focus moves.
+
+`layer_is_on_desktop()` re-reads `_NET_CLIENT_LIST_STACKING` and checks that the
+layer is above every desktop-type window and below at least one other client —
+the window manager's own stacking list, so the answer does not depend on
+anything the layer believes. Windows the WM does not track (override-redirect
+ones, unmapped helpers) are invisible to that check, and the *other* layer of
+the same process is skipped by `_NET_WM_PID` so it is not mistaken for a
+desktop window. The daemon only warns after `LAYER_WARN_AFTER` (3) consecutive
+misses, because a WM registers a new window asynchronously and the first polls
+after a map legitimately fail. `--selftest` reports `on_desktop=True|False` per
+monitor.
 
 The window is undecorated, non-resizable, unfocusable, skipped in the taskbar
 and the pager. Either way it sits above the wallpaper and below every normal
@@ -693,8 +723,8 @@ click-through, when a layer's visibility disagrees with the config, or when a
 layer that should have rain is empty:
 
 ```
-monitor 0: size=1920x1080 click_through=True drops=24 visible=True expected_visible=True
-monitor 1: size=1368x768  click_through=True drops=12 visible=True expected_visible=True
+monitor 0: size=1920x1080 click_through=True on_desktop=True drops=24 visible=True expected_visible=True
+monitor 1: size=1368x768  click_through=True on_desktop=True drops=12 visible=True expected_visible=True
 ```
 
 Troubleshooting:

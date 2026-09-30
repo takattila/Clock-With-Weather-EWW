@@ -137,8 +137,9 @@ used/total text:
 ### Raindrop effect (v5.0.0)
 
 When it rains outside, it rains on your desktop: a transparent, **click-through**
-layer falls **behind** every window (layer-shell *bottom* on Wayland, keep-below
-on X11), so you can click straight through it while it rains over your icons.
+layer falls **behind** every window (layer-shell *bottom* on Wayland, the window
+manager's desktop layer on X11), so you can click straight through it while it
+rains over your icons.
 Right-click the clock → **Raindrops** opens a small panel **centered on your
 monitor**:
 

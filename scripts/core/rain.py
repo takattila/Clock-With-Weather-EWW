@@ -9,8 +9,13 @@ its own GtkWindow instead, where `Gdk.Window.set_pass_through` is available and
 verified to return True (see `pass_through` assertion in `RainLayer`).
 
 Stacking: layer-shell Layer.BOTTOM on Wayland (below every normal window, above
-the wallpaper), override-redirect + keep_below on X11. Either way the layer is
-unfocusable, undecorated and skipped in the taskbar.
+the wallpaper). On X11 the layer is a MANAGED window with the DESKTOP type hint
+and the window manager is asked to put it in the desktop layer with
+`_NET_ACTIVE_WINDOW` (see request_desktop_layer) - an override-redirect window
+is invisible to the WM, and the WM keeps pulling an unmanaged window back to the
+top, so managed + a desktop layer is the only arrangement that stays behind the
+open apps (measured). Either way the layer is unfocusable, undecorated and
+skipped in the taskbar.
 
 The animation is plain GTK3 CSS `@keyframes` on `margin-top`. Deliberately NOT
 `transform: translateY(...)`: GTK3 3.24.41's CSS engine rejects it outright
@@ -79,6 +84,9 @@ SPEED_MIN, SPEED_MAX = 1, 10
 SEED = 20240501
 
 POLL_SEC = 2
+# Consecutive polls with the layer outside the desktop layer before a warning is
+# worth printing: the WM registers a new window asynchronously.
+LAYER_WARN_AFTER = 3
 DROPLET_W, DROPLET_H = 2, 16
 # Fraction of drops rendered as a longer, faster streak.
 STREAK_CHANCE = 0.3
@@ -314,36 +322,58 @@ def read_tint(config_dir):
 #     click-through overlay needs, and it also survives a WM re-shaping the
 #     window. ctypes + libXext, both always present on X11 - no new dependency.
 #
-# The layer is also override-redirect (see RainLayer._on_realize), because a
-# MANAGED window gets its input shape overwritten by the window manager
-# (Cinnamon/Muffin does), which silently undoes the hole.
+# The layer IS a managed window on X11 (it has to be, to reach the desktop
+# layer), and a managed window can get its input shape overwritten by the window
+# manager - Cinnamon/Muffin does that on map. So the hole is re-punched on every
+# map and on every poll instead of being protected by an override-redirect
+# window; see RainLayer._on_map and enforce_overlay_state.
 
 XSHAPE_INPUT = 2
 _XSHAPE_SET = 0
 _XSHAPE_UNSORTED = 0
-_xshape_libs = None
+_X_ANY_PROPERTY_TYPE = 0  # Xatom.h AnyPropertyType
+_EWMH_WINDOW_TYPE = "_NET_WM_WINDOW_TYPE"
+_EWMH_DESKTOP_TYPE = "_NET_WM_WINDOW_TYPE_DESKTOP"
+_EWMH_CLIENT_LIST_STACKING = "_NET_CLIENT_LIST_STACKING"
+_EWMH_WM_PID = "_NET_WM_PID"
+_x11_libs = None
 
 
-def _load_xshape():
-    """Load libX11 + libXext once. Returns (xext, x11) or (None, None)."""
-    global _xshape_libs
-    if _xshape_libs is not None:
-        return _xshape_libs
+def _load_x11():
+    """Load libX11 + libXext once. Returns (x11, xext) or (None, None)."""
+    global _x11_libs
+    if _x11_libs is not None:
+        return _x11_libs
     try:
         x11 = ctypes.CDLL("libX11.so.6")
         xext = ctypes.CDLL("libXext.so.6")
         x11.XOpenDisplay.restype = ctypes.c_void_p
         x11.XFlush.argtypes = [ctypes.c_void_p]
+        x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x11.XInternAtom.argtypes = [
+            ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x11.XInternAtom.restype = ctypes.c_ulong
+        x11.XGetWindowProperty.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong,
+            ctypes.c_long, ctypes.c_long, ctypes.c_int, ctypes.c_ulong,
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_void_p)]
+        x11.XGetWindowProperty.restype = ctypes.c_int
+        x11.XFree.argtypes = [ctypes.c_void_p]
+        x11.XSendEvent.argtypes = [
+            ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int, ctypes.c_long,
+            ctypes.POINTER(_XEvent)]
         xext.XShapeSelectInput.argtypes = [
             ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int]
         xext.XShapeCombineRectangles.argtypes = [
             ctypes.c_void_p, ctypes.c_ulong, ctypes.c_int,
             ctypes.c_int, ctypes.c_int, ctypes.c_int,
             ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
-        _xshape_libs = (xext, x11)
+        _x11_libs = (x11, xext)
     except (OSError, AttributeError):
-        _xshape_libs = (None, None)
-    return _xshape_libs
+        _x11_libs = (None, None)
+    return _x11_libs
 
 
 def empty_input_shape(gdk_window):
@@ -353,7 +383,7 @@ def empty_input_shape(gdk_window):
     that is the point: the WM may re-assert a shape, and a hide/show cycle
     (auto mode toggling) remaps the window.
     """
-    xext, x11 = _load_xshape()
+    x11, xext = _load_x11()
     if xext is None:
         return False
     try:
@@ -370,6 +400,198 @@ def empty_input_shape(gdk_window):
         return True
     except Exception:
         return False
+
+
+# --- X11: keeping the layer on the desktop ---------------------------------
+# The layer must be visible on the wallpaper and invisible over open windows.
+# Three mechanisms were measured on Cinnamon/Muffin before this one worked:
+#
+#   * set_keep_below(True) + the DESKTOP type hint: IGNORED at map time. Every
+#     new window lands on top of the stack, and a full-screen layer then paints
+#     rain over every open application.
+#   * an OVERRIDE-REDIRECT window with an explicit XRestackWindows: works for
+#     about a second, then the window manager puts it back on top (measured:
+#     it drifted back while the layer process was SIGSTOPped). The WM does not
+#     manage such a window, so it can neither honour the DESKTOP type nor keep
+#     the order we asked for.
+#   * a MANAGED window plus an explicit `_NET_ACTIVE_WINDOW` request: THIS is
+#     what works. The window manager then applies its own layering, which puts
+#     a `_NET_WM_WINDOW_TYPE_DESKTOP` window in the desktop layer - measured
+#     moving from the top of the stack (94) to just above the desktop window
+#     and below every app window (85) - and keeps it there, including when new
+#     windows are opened, because they are stacked above the desktop layer.
+#
+# So the layer stays a normal GTK window and asks the WM for the desktop layer
+# on every map and every poll; the click-through hole is punched separately (see
+# above). The window is not focusable, so the activation request never steals
+# the keyboard focus: it is only a restacking request in disguise.
+
+EWMH_ACTIVE_WINDOW = "_NET_ACTIVE_WINDOW"
+EWMH_SOURCE_PAGER = 2
+_X_CLIENT_MESSAGE = 33
+_X_SUBSTRUCTURE_REDIRECT = 0x00080000
+_X_SUBSTRUCTURE_NOTIFY = 0x00020000
+
+
+class _XClientMessageData(ctypes.Union):
+    _fields_ = [("b", ctypes.c_char * 20), ("s", ctypes.c_short * 10),
+                ("l", ctypes.c_long * 5)]
+
+
+class _XClientMessageEvent(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_int), ("serial", ctypes.c_ulong),
+        ("send_event", ctypes.c_int), ("display", ctypes.c_void_p),
+        ("window", ctypes.c_ulong), ("message_type", ctypes.c_ulong),
+        ("format", ctypes.c_int), ("data", _XClientMessageData),
+    ]
+
+
+class _XEvent(ctypes.Union):
+    _fields_ = [("type", ctypes.c_int),
+                ("xclient", _XClientMessageEvent),
+                ("pad", ctypes.c_long * 24)]
+
+
+def request_desktop_layer(gdk_window):
+    """Ask the window manager to stack the layer into the desktop layer.
+
+    `_NET_ACTIVE_WINDOW` is what triggers Muffin's restacking pass; sent with
+    the "pager" source indication because the request comes from the desktop
+    side, not from an application. The window is not focusable, so no focus
+    change follows. Returns True when the request was sent.
+    """
+    x11, _xext = _load_x11()
+    if x11 is None:
+        return False
+    display = x11.XOpenDisplay(None)
+    if not display:
+        return False
+    try:
+        atom = x11.XInternAtom(display, EWMH_ACTIVE_WINDOW.encode("utf-8"), False)
+        if not atom:
+            return False
+        window = ctypes.c_ulong(gdk_window.get_xid())
+        event = _XEvent()
+        event.xclient.type = _X_CLIENT_MESSAGE
+        event.xclient.send_event = True
+        event.xclient.window = window
+        event.xclient.message_type = atom
+        event.xclient.format = 32
+        event.xclient.data.l[0] = window.value
+        event.xclient.data.l[1] = 0              # CurrentTime
+        event.xclient.data.l[2] = EWMH_SOURCE_PAGER
+        x11.XSendEvent(display, x11.XDefaultRootWindow(display), False,
+                       _X_SUBSTRUCTURE_REDIRECT | _X_SUBSTRUCTURE_NOTIFY,
+                       ctypes.byref(event))
+        x11.XSync(display, False)
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            x11.XCloseDisplay(display)
+        except Exception:
+            pass
+
+
+def _atom(display, name):
+    x11, _xext = _load_x11()
+    return x11.XInternAtom(display, name.encode("utf-8"), True)
+
+
+def _property_ids(display, window, prop_atom):
+    """The 32-bit values of a window property (atoms, window ids, cardinals).
+
+    Asked with AnyPropertyType: `_NET_CLIENT_LIST_STACKING` is a WINDOW list
+    while `_NET_WM_WINDOW_TYPE` is an ATOM list, and a mismatched req_type makes
+    XGetWindowProperty fail instead of returning the actual type. Both are
+    32-bit, so the bytes read the same either way.
+
+    The values come back as an array of C `long` (Xlib widens the protocol's
+    32-bit units to `long` for the client), so they are read as c_ulong - on
+    Linux x86-64 that is 8 bytes per value, which is exactly what Xlib wrote.
+    """
+    x11, _xext = _load_x11()
+    actual_type = ctypes.c_ulong()
+    actual_format = ctypes.c_int()
+    count = ctypes.c_ulong()
+    after = ctypes.c_ulong()
+    data = ctypes.c_void_p()
+    try:
+        status = x11.XGetWindowProperty(
+            display, window, prop_atom, 0, 4096, False, _X_ANY_PROPERTY_TYPE,
+            ctypes.byref(actual_type), ctypes.byref(actual_format),
+            ctypes.byref(count), ctypes.byref(after), ctypes.byref(data))
+        if (status != 0 or not data.value or count.value == 0
+                or actual_format.value != 32):
+            return []
+        values = ctypes.cast(
+            data, ctypes.POINTER(ctypes.c_ulong * count.value)).contents
+        ids = [int(values[i]) for i in range(count.value)]
+        x11.XFree(data)
+        return ids
+    except Exception:
+        return []
+
+
+def _window_pid(display, window):
+    """The PID of a window's client, from _NET_WM_PID (None when unknown)."""
+    x11, _xext = _load_x11()
+    try:
+        values = _property_ids(display, window, _atom(display, _EWMH_WM_PID))
+        return values[0] if values else None
+    except Exception:
+        return None
+
+
+def layer_is_on_desktop(gdk_window):
+    """True when the window manager has the layer in the desktop layer.
+
+    Verified against the WM's own stacking list, bottom-to-top:
+      * the layer must be ABOVE every desktop-type window (the wallpaper is
+        painted by the desktop window, so that is what makes the rain visible),
+      * and BELOW at least one other client (an app window), which is what
+        keeps the rain off the applications.
+    Windows the WM does not track (override-redirect ones, unmapped helpers)
+    are not in the list and cannot disturb the comparison.
+    """
+    x11, _xext = _load_x11()
+    if x11 is None:
+        return False
+    display = x11.XOpenDisplay(None)
+    if not display:
+        return False
+    try:
+        type_atom = _atom(display, _EWMH_WINDOW_TYPE)
+        desktop_atom = _atom(display, _EWMH_DESKTOP_TYPE)
+        list_atom = _atom(display, _EWMH_CLIENT_LIST_STACKING)
+        if not type_atom or not desktop_atom or not list_atom:
+            return False
+        own = int(gdk_window.get_xid())
+        managed = _property_ids(display, x11.XDefaultRootWindow(display), list_atom)
+        if own not in managed:
+            return False
+        own_pos = managed.index(own)
+        # The other layer of this process carries the same DESKTOP type; it is
+        # a rain window, not a desktop, so it must not be mistaken for one.
+        own_pid = os.getpid()
+        for window in managed:
+            if window == own:
+                continue
+            if _window_pid(display, window) == own_pid:
+                continue
+            if desktop_atom in _property_ids(display, window, type_atom):
+                if managed.index(window) > own_pos:
+                    return False      # a desktop window is above the rain
+        return own_pos < len(managed) - 1
+    except Exception:
+        return False
+    finally:
+        try:
+            x11.XCloseDisplay(display)
+        except Exception:
+            pass
 
 
 def punch_input_hole(gdk_window):
@@ -408,7 +630,10 @@ class RainLayer:
         self.win.set_skip_taskbar_hint(True)
         self.win.set_skip_pager_hint(True)
         self.win.set_type_hint(Gdk.WindowTypeHint.UTILITY)
-        self.win.set_keep_below(True)
+        if WAYLAND:
+            # The layer shell owns the stacking there; the keep-below hints are
+            # only a fallback for compositors that ignore the layer.
+            self.win.set_keep_below(True)
         self.win.set_keep_above(False)
         self._make_transparent()
 
@@ -426,17 +651,15 @@ class RainLayer:
             if display is not None and monitor < display.get_n_monitors():
                 GtkLayerShell.set_monitor(self.win, display.get_monitor(monitor))
         else:
-            # OVERRIDE-REDIRECT is mandatory here, not cosmetic: a MANAGED
-            # window gets its input shape overwritten by the WM (measured on
-            # Cinnamon/Muffin), which silently undid the empty input shape that
-            # set_pass_through() installs - the layer then swallowed every
-            # click and the desktop context menu never opened. An override-
-            # redirect window is never decorated, never placed and never
-            # re-shaped by the WM, so the click-through hole survives.
-            # GtkWindow has no setter for it, and it has to be requested on the
-            # GdkWindow in the realize handler: that is the last point where
-            # GDK can still apply it (it takes effect on the map, verified:
-            # "Override Redirect State: yes").
+            # A MANAGED window, deliberately: the window manager only applies
+            # its layering to windows it manages, and that is the only way to
+            # land in the desktop layer (see request_desktop_layer). An
+            # override-redirect window is invisible to the WM, so it keeps
+            # whatever stacking it was mapped with and the WM keeps pulling it
+            # back on top - measured, the rain painted over open apps.
+            # The price of being managed is that the WM may re-assert an input
+            # shape over ours, so the click-through hole is punched on every map
+            # and on every poll.
             self.win.connect("realize", self._on_realize)
             self.win.set_type_hint(Gdk.WindowTypeHint.DESKTOP)
             # Geometry is ours, exactly like the widget windows: one layer per
@@ -552,19 +775,16 @@ class RainLayer:
         return True
 
     def _on_realize(self, widget):
-        """Claim override-redirect on the GdkWindow as it is realized.
+        """X11: ask for the desktop layer as soon as the window exists.
 
-        Without this the WM manages the full-screen layer, re-asserts its own
-        input shape over ours and the layer eats every click on the desktop.
+        Harmless to run before the map: the WM acts on the request when the
+        window is mapped, and enforce_overlay_state() repeats it afterwards.
         """
         if WAYLAND:
             return
-        try:
-            gdk = widget.get_window()
-            if gdk is not None:
-                gdk.set_override_redirect(True)
-        except Exception:
-            pass
+        gdk = widget.get_window()
+        if gdk is not None:
+            request_desktop_layer(gdk)
 
     def realize_click_through(self):
         """Punch the input hole. Must run after the window is realized."""
@@ -573,21 +793,45 @@ class RainLayer:
             return False
         return punch_input_hole(gdk_window)
 
+    def stack_on_desktop(self):
+        """Keep the layer on the desktop: above the wallpaper, below apps."""
+        gdk_window = self.win.get_window()
+        if gdk_window is None:
+            return False
+        if not request_desktop_layer(gdk_window):
+            return False
+        return layer_is_on_desktop(gdk_window)
+
+    def enforce_overlay_state(self):
+        """Click-through + desktop stacking. Idempotent; safe to re-run.
+
+        Both properties are per-window, per-map state that something else can
+        undo (the WM re-shapes a window, an app lowers itself below the layer),
+        so the poll re-asserts them instead of trusting the first map.
+        """
+        if not self.realize_click_through():
+            return False
+        if WAYLAND:
+            # The layer shell owns the stacking on Wayland (Layer.BOTTOM).
+            return True
+        return self.stack_on_desktop()
+
     def _on_map(self, *_):
-        """Re-punch the click-through hole right after (re)mapping.
+        """Re-assert the hole and the stacking right after (re)mapping.
 
         Returns False so GTK keeps the default map handling. A second,
         slightly delayed pass covers WMs that only re-shape once the window is
         actually on screen.
         """
-        if self.realize_click_through():
+        if self.enforce_overlay_state():
             GLib.timeout_add(250, self._late_click_through)
         return False
 
     def _late_click_through(self):
-        if self.win.get_mapped() and not self.realize_click_through():
+        if self.win.get_mapped() and not self.enforce_overlay_state():
             sys.stderr.write(
-                "rain: click-through lost on monitor %d\n" % self.monitor)
+                "rain: click-through or desktop stacking lost on monitor %d\n"
+                % self.monitor)
         return False
 
     def set_active(self, active):
@@ -626,6 +870,7 @@ class RainApp:
         self._mtimes = None
         self._monitors = None
         self._was_active = None
+        self._unrestacked = {}
         self._build_layers()
 
     def _build_layers(self):
@@ -715,15 +960,32 @@ class RainApp:
 
         self._was_active = active
 
-        # Re-punch the click-through hole while running. A window manager may
-        # re-assert a shape on the window, and the hole is the whole point of
-        # this process: if it is lost, the layer silently eats every click on
-        # the desktop. Two X requests per layer every POLL_SEC is nothing.
+        # Re-assert the two per-window properties while running. The hole is
+        # what keeps clicks on the desktop working, and the stacking is what
+        # keeps the rain off open application windows; either can be undone
+        # under us, so it is re-applied on every poll. A handful of X requests
+        # per layer every POLL_SEC is nothing.
         if active:
             for layer in self.layers:
-                if layer.win.get_visible() and not layer.realize_click_through():
+                if not layer.win.get_visible():
+                    continue
+                if not layer.realize_click_through():
                     sys.stderr.write(
                         "rain: click-through lost on monitor %d\n" % layer.monitor)
+                elif not layer.stack_on_desktop():
+                    # The WM registers a new window asynchronously, so the first
+                    # poll or two after a map can still fail - only complain
+                    # when it keeps failing. Not fatal either way: the layer
+                    # stays visible, just on top of the open windows.
+                    misses = self._unrestacked.get(layer.monitor, 0) + 1
+                    self._unrestacked[layer.monitor] = misses
+                    if misses == LAYER_WARN_AFTER:
+                        sys.stderr.write(
+                            "rain: the window manager is not putting the layer "
+                            "of monitor %d in the desktop layer, so the rain "
+                            "paints over open windows\n" % layer.monitor)
+                else:
+                    self._unrestacked.pop(layer.monitor, None)
         return True
 
 
@@ -745,27 +1007,41 @@ def selftest(config_dir):
     # RainApp connects the realize handler itself, so a hotplug rebuild is
     # covered too.
     app = RainApp(config_dir)
-    app.tick()    # Realize (and therefore the pass-through flag) only settles once the
-    # window is on screen, so give X/Wayland a few frames before checking.
-    GLib.timeout_add(400, lambda: (Gtk.main_quit(), False)[1])
+    app.tick()
+    # Both per-window properties settle late and asynchronously: the input hole
+    # needs the window on screen, and the window manager only registers a new
+    # window in its stacking list after the map was processed. Checking too
+    # early reported a false failure (measured), so re-assert and then wait.
+    def _settle():
+        for layer in app.layers:
+            layer.enforce_overlay_state()
+        return False
+    GLib.timeout_add(400, _settle)
+    GLib.timeout_add(1200, lambda: (Gtk.main_quit(), False)[1])
     Gtk.main()
 
     ok = True
     for layer in app.layers:
         # set_pass_through lives on the Gdk.Window, not on Gtk.Window.
         gdk_window = layer.win.get_window()
-        click_through = bool(gdk_window.get_pass_through()) if gdk_window else False
+        click_through = layer.realize_click_through() if gdk_window else False
+        on_desktop = layer.stack_on_desktop() if (gdk_window and not WAYLAND) else True
         drops = len(layer.drops)
         expected = app.active_now(read_settings(config_dir))
         visible = layer.win.get_visible()
-        print("monitor %d: size=%dx%d click_through=%s drops=%d visible=%s expected_visible=%s" % (
-            layer.monitor, layer.geometry[2], layer.geometry[3], click_through,
-            drops, visible, expected,
-        ))
+        print("monitor %d: size=%dx%d click_through=%s on_desktop=%s drops=%d "
+              "visible=%s expected_visible=%s" % (
+                  layer.monitor, layer.geometry[2], layer.geometry[3],
+                  click_through, on_desktop, drops, visible, expected,
+              ))
         # A hidden layer is never on screen, so it cannot swallow a click: only
         # assert click-through on the layers that are actually shown.
         if visible and not click_through:
             print("  FAIL: clicks would be swallowed")
+            ok = False
+        if visible and not on_desktop:
+            print("  FAIL: not in the desktop layer, so the rain paints over "
+                  "open windows")
             ok = False
         if visible != expected:
             print("  FAIL: visibility does not match the config")
