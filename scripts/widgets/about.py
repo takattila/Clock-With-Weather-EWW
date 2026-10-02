@@ -84,25 +84,30 @@ def collect():
 
 
 def monitor_selector(index):
-    """eww monitor selector for the enumeration `index`: the connector NAME
-    when known, else the index.
+    """eww monitor selector for the enumeration `index`: the GDK name when it
+    resolves, else the index.
 
     eww/GDK selects a monitor by index, but GDK's index order is the order it
     first saw the outputs and does not necessarily follow `xrandr
     --listmonitors` (which lists the primary monitor first) — after a hotplug
     the dismiss layer would open on the wrong screen. The name is order
     independent.
+
+    The name is the EDID MODEL name, not the DRM connector name: on Wayland
+    GDK reports "Smart TV" / "IRT-UW3480" and eww rejects a connector name
+    ("Failed to get monitor HDMI-A-1"), which would leave the dismiss layer
+    unable to open. gdk_monitor.selectors() resolves it by geometry.
     """
     try:
+        import gdk_monitor
+
         out = subprocess.check_output(
             ["python3", os.path.join(CONFIG_DIR, "scripts", "core", "monitors.py")],
             stderr=subprocess.DEVNULL, text=True, timeout=5,
         )
-        m = next((m for m in json.loads(out).get("monitors", [])
-                  if int(m["index"]) == int(index)), None)
-        name = (m or {}).get("name")
-        if name and str(name) != str(index):
-            return str(name)
+        found = gdk_monitor.selectors(json.loads(out).get("monitors")).get(int(index))
+        if found:
+            return str(found)
     except Exception:
         pass
     return str(index)

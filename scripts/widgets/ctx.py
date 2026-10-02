@@ -73,20 +73,26 @@ def get_monitors_cached():
 
 
 def monitor_selector(data, index):
-    """eww monitor selector for the enumeration `index`: the connector NAME
-    when known, else the index.
+    """eww monitor selector for the enumeration `index`: the GDK name when it
+    resolves, else the index.
 
     eww/GDK selects a monitor by index, but GDK's index order is the order it
     first saw the outputs and does not necessarily follow `xrandr
     --listmonitors` (which lists the primary monitor first) — after a hotplug
     the popup would open on the wrong screen. The name is order independent.
+
+    The name is the EDID MODEL name, not the DRM connector name: on Wayland
+    GDK reports "Smart TV" / "IRT-UW3480" and eww rejects a connector name
+    ("Failed to get monitor HDMI-A-1"), which would leave the menu unable to
+    open at all. gdk_monitor.selectors() resolves the mapping by geometry.
     """
     try:
-        m = next((m for m in (data or {}).get("monitors", [])
-                  if int(m["index"]) == int(index)), None)
-        name = (m or {}).get("name")
-        if name and str(name) != str(index):
-            return str(name)
+        import gdk_monitor
+
+        sel = gdk_monitor.selectors((data or {}).get("monitors") or [])
+        found = sel.get(int(index))
+        if found:
+            return str(found)
     except Exception:
         pass
     return str(index)
