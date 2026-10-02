@@ -4,6 +4,10 @@ The GTK layer itself is exercised by `./rain.py <dir> --selftest` (it needs a
 real display to verify click-through); everything tested here is the geometry,
 timing, CSS generation and config/cache reading that decides what the layer
 shows, so it must all be correct headless and deterministic.
+
+The `import gi` inside rain.py is the one thing that cannot be faked from here,
+and the CI runners have no PyGObject, so gi_stub.install() stands in for it when
+needed (see tests/gi_stub.py).
 """
 
 import ctypes
@@ -13,7 +17,13 @@ import re
 
 import pytest
 
-import rain
+import gi_stub
+
+gi_stub.install()
+
+import rain  # noqa: E402  (after gi_stub.install, on purpose)
+
+gi_stub.uninstall()  # rain.py holds what it needs; other GTK tests skip again
 
 
 # --- clamping / coercion -----------------------------------------------------

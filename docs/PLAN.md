@@ -906,6 +906,23 @@ Two independent bugs moved the clock and the panel off their own monitor:
   (precipitation matching, the missing-`main` default, the cache write, and
   "an error response must not overwrite the cache") and the rain-key block in
   `test_config_set.py`.
+- **CI, and why the three rain commits were red.** The runners install
+  `requirements.txt`, which has no PyGObject (it has no wheels — building it
+  there needs the GTK development headers), so `import rain` hit
+  `sys.exit("rain: GTK3 unavailable")` during collection and the whole matrix
+  job died with "no tests ran". Skipping `test_rain.py` instead, the way the
+  other GTK test modules do, would have thrown away all 121 tests: they fake
+  every GTK call themselves (monkeypatched `Gtk.Window` / `Gtk.Overlay` /
+  `Gtk.CssProvider`, a fake `Gdk.Window` for the input-hole and EWMH calls) and
+  only need the `import gi` at the top of `rain.py` to succeed. `tests/gi_stub.py`
+  provides exactly that, and nothing else: any GTK call the tests did *not*
+  fake raises, so no test can pass against the stub where it would fail against
+  real GTK, and `Gdk.Display.get_default()` returns `None` just like real GTK3
+  without a `DISPLAY`. The stub is taken back out of `sys.modules` right after
+  `rain.py` is imported, so the panel tests keep skipping in CI as before.
+  Verified headless: `467 passed, 3 skipped` with `import gi` blocked, and the
+  full `596 passed` locally against real GTK. `EWW_TEST_GI_STUB=1` forces the
+  stub, so the CI path can be checked from a desktop.
 - `bash -n` on `start.sh` / `stop.sh` / `hard-reset.sh` — clean; ShellCheck at
   error level is clean on all three (4 pre-existing warnings in `start.sh`).
 - Bugs the final audit found and fixed (all three had a regression test or an
