@@ -100,10 +100,19 @@ generate_theme() {
 # PRIMARY monitor first). After a hotplug the two orders can disagree, and the
 # geometry computed for monitor N is then applied to a different physical
 # screen (the panel ends up in the middle of the desktop, the clock off-center).
-# So the monitor is addressed by its connector NAME (order independent), and the
-# index is only the fallback for the (unexpected) case where eww cannot resolve
-# the name. `mon` is passed separately: it is the enumeration index the scripts
-# (ctx.py --monitor) and the per_monitor config keys are indexed by.
+# So the monitor is addressed by its GDK NAME (order independent -- the EDID
+# model name, resolved from the connector name by scripts/core/gdk_monitor.py
+# before we get here), and the index is only the fallback for the (unexpected)
+# case where eww cannot resolve the name. `mon` is passed separately: it is the
+# enumeration index the scripts (ctx.py --monitor) and the per_monitor config
+# keys are indexed by.
+#
+# NOTE: the name is the EDID model name, NOT the DRM connector name. eww
+# resolves it against GDK, which reports the former ("Smart TV", "IRT-UW3480")
+# and rejects the latter outright, with "Failed to get monitor HDMI-A-1 / The
+# available monitors are: [0] Smart TV / [1] IRT-UW3480" -- so passing the
+# connector name here means the name never resolves and every open costs the
+# full retry budget before landing on the index fallback.
 #
 # The name is retried, not just tried once: the compositor reports the new
 # monitor immediately, but the daemon's own GDK monitor list only catches up
@@ -113,7 +122,7 @@ generate_theme() {
 # would then park the window on the wrong physical screen, where eww keeps it
 # (the monitor is resolved once, at open time). So retry briefly, and only
 # fall back when the name stays unresolvable.
-# Usage: open_on_monitor <id> <monitor name> <monitor index> <window> [args...]
+# Usage: open_on_monitor <id> <GDK monitor name> <monitor index> <window> [args...]
 open_on_monitor() {
   local id="$1" name="$2" idx="$3" win="$4"
   shift 4
@@ -168,10 +177,23 @@ layout_windows() {
   count=0
   # The layout line is idx|px|py|pw|ph|anchor|name: px/py/panchor are no
   # longer consumed here (the panel geometry comes from widget_rect.py's canvas
-  # keys), `name` is the monitor's connector name, used as eww's monitor
-  # selector (see open_on_monitor).
+  # keys), `name` is the monitor's connector name, kept for
+  # widget_rect.py --monitor-name (which matches that name).
+  #
+  # eww's monitor selector is NOT that name: eww resolves it against GDK,
+  # which on Wayland reports the EDID MODEL name (HDMI-A-1 -> "Smart TV",
+  # DP-2 -> "IRT-UW3480"), and rejects a connector name outright. So resolve
+  # every monitor up front into MSEL[index] and address the windows with that;
+  # an unresolvable monitor falls back to the index (what open_on_monitor did
+  # before). See scripts/core/gdk_monitor.py.
+  declare -A MSEL=()
+  while IFS=$'\t' read -r sidx _sname ssel; do
+    [ -z "$sidx" ] && continue
+    MSEL["$sidx"]="$ssel"
+  done < <(printf '%s' "$monitors" | python3 "$DIR/scripts/core/gdk_monitor.py")
   while IFS='|' read -r idx _ _ pw ph _ mname; do
     [ -z "$idx" ] && continue
+    msel="${MSEL[$idx]:-$mname}"
 
     # Clock widget geometry. The eww window is a fixed-size transparent
     # CANVAS and the transform widget only scales the drawing inside it, so
@@ -207,7 +229,7 @@ layout_windows() {
     main_scale_perc_x="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key scale_x --monitor "$idx") * 100)))")"
     main_scale_perc_y="$(python3 -c "print(int(round($(python3 "$DIR/scripts/core/config.py" --key scale_y --monitor "$idx") * 100)))")"
 
-    open_on_monitor "main_$idx" "$mname" "$idx" "$win_main" \
+    open_on_monitor "main_$idx" "$msel" "$idx" "$win_main" \
       --arg "main_win_x=$main_win_x" --arg "main_win_y=$main_win_y" \
       --arg "main_win_w=$main_win_w" --arg "main_win_h=$main_win_h" \
       --arg "main_w=$main_natural_w" --arg "main_h=$main_natural_h" \
@@ -236,7 +258,7 @@ layout_windows() {
         val="$(printf '%s' "$panel_geom" | python3 -c "import json,sys; print(json.load(sys.stdin)[\"$k\"])")"
         eval "p$k=\$val"
       done
-      open_on_monitor "panel_$idx" "$mname" "$idx" "$win_panel" \
+      open_on_monitor "panel_$idx" "$msel" "$idx" "$win_panel" \
         --arg "pw=$pw" --arg "ph=$ph" \
         --arg "pwin_x=$pwin_x" --arg "pwin_y=$pwin_y" \
         --arg "pwin_w=$pwin_w" --arg "pwin_h=$pwin_h" \

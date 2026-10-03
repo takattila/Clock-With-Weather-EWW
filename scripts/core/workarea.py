@@ -173,15 +173,21 @@ def get_net_workarea():
     return None
 
 
-def kde_panel_frame(screen):
-    """Query the KDE Plasma taskbar's visual frame via the KWin scripting API.
+def kde_panel_frames(screen):
+    """Query the KDE Plasma taskbar's visual frames via the KWin scripting API.
 
     _NET_WORKAREA only reports the taskbar's exclusive zone, which is smaller
     than the panel's actual frame (floating panels add margins around it). The
     widget must keep `gap` away from the *frame*, so the top/bottom gap matches
-    the config value on screen. Returns (x, y, w, h) of the largest non-desktop
+    the config value on screen. Returns the LIST of every non-desktop
     plasmashell surface, or None when unavailable (non-KDE, no qdbus6/journald
     ...), in which case the caller falls back to the exclusive zone.
+
+    Every surface is returned, not just the biggest one: each monitor carries
+    its own Plasma panel, and the virtual desktop bounding box is always wider
+    than any single monitor, so "the largest surface" is the one whose desktop
+    (wallpaper) surface is the biggest -- not the monitor's taskbar. The
+    caller selects the frame that overlaps its own monitor rect.
     """
     try:
         script = os.path.join(tempfile.gettempdir(), "kwin_panel_dump.js")
@@ -209,7 +215,7 @@ def kde_panel_frame(screen):
             env=env, capture_output=True, text=True, timeout=5,
         )
         sw, sh = screen
-        best = None
+        frames = []
         for _ in range(3):
             time.sleep(1.0)
             try:
@@ -226,13 +232,25 @@ def kde_panel_frame(screen):
                 x, y, w, h = (int(v) for v in m.groups())
                 if w >= sw - 1 and h >= sh - 1:
                     continue
-                if best is None or w * h > best[2] * best[3]:
-                    best = (x, y, w, h)
-            if best is not None:
+                frames.append((x, y, w, h))
+            if frames:
                 break
-        return best
+        return frames
     except Exception:
         return None
+
+
+def kde_panel_frame(screen):
+    """Single-frame convenience wrapper: the biggest kde_panel_frames() hit.
+
+    Only valid for code paths that handle ONE monitor at a time (the
+    single-monitor path, and gaps_for_rect fallbacks). Multi-monitor callers
+    MUST use kde_panel_frames() and pick per monitor instead.
+    """
+    frames = kde_panel_frames(screen)
+    if not frames:
+        return None
+    return max(frames, key=lambda f: f[2] * f[3])
 
 
 def kde_cursor():
@@ -450,7 +468,7 @@ def gaps_for_rect(monitors, monitor_index, x, y, w, h, compositor):
     global_screen = global_bounds(monitors)
     global_workarea = workarea if workarea else (0, 0, global_screen[0], global_screen[1])
     taskbar = detect_taskbar(global_screen, global_workarea)
-    frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
+    frame = kde_panel_frames(global_screen) if taskbar in ("top", "bottom") else None
 
     m = next((mm for mm in monitors if mm["index"] == monitor_index), None)
     if m is None:
@@ -608,18 +626,28 @@ def _base_geometry_for(monitor, global_workarea, taskbar, frame, gaps, composito
         local_workarea = (0, 0, screen[0], screen[1])
         local_taskbar = "none"
 
-    # Translate the taskbar frame into this monitor's local coordinates;
-    # it is only relevant on the monitor(s) it geometrically overlaps.
+    # Translate the taskbar frame into this monitor's local coordinates.
+    # `frame` may be a single (x, y, w, h) rect or a list of them: with several
+    # monitors each one has its OWN Plasma panel, so picking a single global
+    # winner would hand monitors that panel's geometry or push the panel off
+    # screen. Select the frame that overlaps THIS monitor, and skip a surface
+    # that covers the monitor's whole rectangle -- that is the desktop
+    # (wallpaper) surface, not a taskbar.
     local_frame = None
     if frame:
-        fx, fy, fw, fh = frame
-        if (
-            fx < mx + screen[0]
-            and fx + fw > mx
-            and fy < my + screen[1]
-            and fy + fh > my
-        ):
-            local_frame = (fx - mx, fy - my, fw, fh)
+        candidates = frame if isinstance(frame, list) else [frame]
+        for fx, fy, fw, fh in candidates:
+            if not (
+                fx < mx + screen[0]
+                and fx + fw > mx
+                and fy < my + screen[1]
+                and fy + fh > my
+            ):
+                continue
+            if fw >= screen[0] - 1 and fh >= screen[1] - 1:
+                continue
+            if local_frame is None or fw * fh > local_frame[2] * local_frame[3]:
+                local_frame = (fx - mx, fy - my, fw, fh)
 
     panel = compute_panel(
         screen, local_workarea, local_taskbar, gaps, compositor, kde_frame=local_frame
@@ -703,7 +731,7 @@ def compute_per_monitor(monitors, gaps, compositor, panel_alignment="right",
 
     # The taskbar's visual frame (with floating-panel margins) is what the panel
     # must keep the top/bottom gap away from, so the gap matches the config.
-    frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
+    frame = kde_panel_frames(global_screen) if taskbar in ("top", "bottom") else None
     offsets = load_panel_offsets(config_dir) if config_dir else {}
 
     for m in monitors:
@@ -764,7 +792,7 @@ def main():
         global_screen = global_bounds(monitors)
         global_workarea = workarea if workarea else (0, 0, global_screen[0], global_screen[1])
         taskbar = detect_taskbar(global_screen, global_workarea)
-        frame = kde_panel_frame(global_screen) if taskbar in ("top", "bottom") else None
+        frame = kde_panel_frames(global_screen) if taskbar in ("top", "bottom") else None
         m = next((mm for mm in monitors if mm["index"] == monitor_index), None)
         if m is None:
             sys.exit("ERROR: monitor %d not found" % monitor_index)

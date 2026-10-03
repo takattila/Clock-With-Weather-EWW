@@ -310,7 +310,7 @@ def test_compute_per_monitor(monkeypatch, config_dir):
         "        position_y: 10\n",
     )
     monkeypatch.setattr(workarea, "get_net_workarea", lambda: (0, 40, 1920, 1040))
-    monkeypatch.setattr(workarea, "kde_panel_frame", lambda screen: None)
+    monkeypatch.setattr(workarea, "kde_panel_frames", lambda screen: None)
     monitors = [_monitor(0, 0, 0, 1920, 1080), _monitor(1, 1920, 0, 1280, 720)]
 
     result = workarea.compute_per_monitor(monitors, DEFAULT_GAPS, "wayland", "right", str(config_dir))
@@ -335,7 +335,7 @@ def test_compute_per_monitor(monkeypatch, config_dir):
 def test_compute_per_monitor_x11(monkeypatch, config_dir):
     write_cfg(config_dir, "panel:\n  window:\n    alignment: right\n")
     monkeypatch.setattr(workarea, "get_net_workarea", lambda: (0, 40, 1920, 1040))
-    monkeypatch.setattr(workarea, "kde_panel_frame", lambda screen: None)
+    monkeypatch.setattr(workarea, "kde_panel_frames", lambda screen: None)
 
     result = workarea.compute_per_monitor(
         [_monitor(0)], DEFAULT_GAPS, "x11", "right", str(config_dir)
@@ -358,7 +358,7 @@ def test_compute_per_monitor_x11(monkeypatch, config_dir):
 )
 def test_gaps_for_rect_round_trip(monkeypatch, taskbar, wa, compositor, frame_w):
     monkeypatch.setattr(workarea, "get_net_workarea", lambda: wa)
-    monkeypatch.setattr(workarea, "kde_panel_frame", lambda screen: None)
+    monkeypatch.setattr(workarea, "kde_panel_frames", lambda screen: None)
     monitor = _monitor()
     monitors = [monitor]
 
@@ -387,7 +387,7 @@ def test_gaps_for_rect_round_trip(monkeypatch, taskbar, wa, compositor, frame_w)
 
 def test_gaps_for_rect_values(monkeypatch):
     monkeypatch.setattr(workarea, "get_net_workarea", lambda: (0, 0, 1920, 1080))
-    monkeypatch.setattr(workarea, "kde_panel_frame", lambda screen: None)
+    monkeypatch.setattr(workarea, "kde_panel_frames", lambda screen: None)
     out = workarea.gaps_for_rect(
         [_monitor()], 0, 1654, 16, 250, 1048, "wayland"
     )
