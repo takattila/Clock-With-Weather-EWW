@@ -348,6 +348,7 @@ def _load_x11():
         x11 = ctypes.CDLL("libX11.so.6")
         xext = ctypes.CDLL("libXext.so.6")
         x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
         x11.XFlush.argtypes = [ctypes.c_void_p]
         x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
         x11.XInternAtom.argtypes = [
@@ -386,6 +387,7 @@ def empty_input_shape(gdk_window):
     x11, xext = _load_x11()
     if xext is None:
         return False
+    display = None
     try:
         display = x11.XOpenDisplay(None)
         if not display:
@@ -400,6 +402,9 @@ def empty_input_shape(gdk_window):
         return True
     except Exception:
         return False
+    finally:
+        if display:
+            x11.XCloseDisplay(display)
 
 
 # --- X11: keeping the layer on the desktop ---------------------------------

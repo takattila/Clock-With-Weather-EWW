@@ -720,6 +720,7 @@ class _FakeGdkWindow:
 class _FakeXlib:
     def __init__(self):
         self.flushed = 0
+        self.closed = []
         self._display = 0xABCD
 
     def XOpenDisplay(self, _name):
@@ -727,6 +728,10 @@ class _FakeXlib:
 
     def XFlush(self, _display):
         self.flushed += 1
+
+    def XCloseDisplay(self, display):
+        self.closed.append(display)
+        return 0
 
 
 class _FakeXext:
@@ -808,6 +813,29 @@ def test_punch_input_hole_survives_a_broken_window(monkeypatch):
             raise RuntimeError("window gone")
 
     assert rain.punch_input_hole(_Broken()) is False
+
+
+def test_empty_input_shape_closes_the_display_it_opened(fake_xshape):
+    # empty_input_shape runs on every poll tick (POLL_SEC). An XOpenDisplay
+    # that is never closed is one leaked X client connection per tick: 200 of
+    # them hit the X server's 256-client limit, after which every other X
+    # client (xdotool, xbindkeys, ...) fails with "Maximum number of clients
+    # reached".
+    xext, x11 = fake_xshape
+    assert rain.empty_input_shape(_FakeGdkWindow()) is True
+    assert x11.closed == [x11._display]
+
+
+def test_empty_input_shape_closes_the_display_when_it_fails():
+    class _Broken:
+        def get_xid(self):
+            raise RuntimeError("window gone")
+
+    x11, xext = _FakeXlib(), _FakeXext()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(rain, "_load_x11", lambda: (x11, xext))
+        assert rain.empty_input_shape(_Broken()) is False
+    assert x11.closed == [x11._display]
 
 
 def test_realize_click_through_uses_the_punch(monkeypatch):
