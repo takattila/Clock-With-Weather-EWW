@@ -268,7 +268,8 @@ def test_menu_content_height_matches_real_row_sum():
     assert submenu.menu_content_height("bogus") == submenu.menu_content_height("clock")
 
 
-def test_menu_layout_top_of_screen_keeps_y_and_sizes_window():
+def test_menu_layout_top_of_screen_keeps_y_and_sizes_window(monkeypatch):
+    _many_themes(monkeypatch, 42)
     content_h = submenu.menu_content_height("clock")
     needed_h = submenu.THEME_ROW_TOP + submenu.max_pane_height(2) + submenu.MENU_PAD
     y, window_h = submenu.menu_layout(100, 1080, content_h, needed_h)
