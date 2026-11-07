@@ -14,12 +14,13 @@ small file generated/input_session.json:
   {"mode": "move", "widget": "clock", "monitor": 0}   <- move.py (Move/Resize)
   {"mode": "gap", "widget": "clock", "monitor": 0}    <- gap_ctl.py (Panel gap)
   {"mode": "weather", "widget": "clock", "monitor": 0} <- weather_ctl.py
+  {"mode": "rain", "widget": "clock", "monitor": 0}   <- rain_ctl.py (v5.0.0)
 
 Actions (only while that file exists):
   UNIVERSAL ESC (any mode, also while an entry of a GTK form owns the
   keyboard mid-typing - ESC is never captured by a field):
     move               -> move_ctl.py --action cancel (discard without saving)
-    everything else    -> scripts/close_popup.py (ctx / gap / weather /
+    everything else    -> scripts/close_popup.py (ctx / gap / weather / rain /
                            about and ANY future session mode that signals
                            itself through the session file)
   move (non-ESC keys):

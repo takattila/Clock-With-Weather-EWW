@@ -83,8 +83,11 @@ The repository runs headless checks on every push / pull request
 
 - `pytest` for the logic that is testable without a display: `config.py`,
   `config_set.py`, `workarea.py`, `theme.py`, `weather.py` (mocked
-  `requests`), `system.py` and `panel.py` (mocked `psutil`). Run them locally
-  with:
+  `requests`), `system.py`, `panel.py` (mocked `psutil`), the rain layer
+  `rain.py` (pure geometry/CSS/config helpers; the GTK calls are stubbed) and
+  the GTK forms' pure helpers (`rain_panel.py`, `weather_panel.py`, ...). The
+  click-through / visibility behavior that needs a real display is verified
+  separately by `rain.py --selftest` (section 5b). Run them locally with:
 
   ```bash
   pip install -r requirements.txt
@@ -228,6 +231,12 @@ appearance: light       # theme name -> assets/themes/appearance/<name>/appearan
 weather:
   name: default         # -> assets/themes/weather/<name>/weather.yaml,
                         # or omit it and define the city settings inline (see below)
+  rain:                 # the v5.0.0 raindrop layer (see section 5b)
+    enabled: true       # master switch; false removes the layer entirely
+    auto: true          # only fall while the condition is precipitation
+    count: 24           # droplets per monitor, 0-120
+    speed: 5            # 1 (drizzle, ~2.4s/drop) .. 10 (downpour, ~0.55s/drop)
+    opacity: 0.35       # 0.0-1.0
   window:               # clock widget position (same names as a Conky alignment)
     alignment: middle_middle   # top_left..middle_middle
     position_x: 0       # pixel offset of the clock from its anchor
@@ -496,7 +505,9 @@ data), `scripts/widgets/` (panel, context menu, About popups),
 | Script | Output | Responsibility |
 |---|---|---|
 | `system.py` | `{hdd, ram, cpu, swap}` | `psutil`/`shutil`-based system info, dynamic `format_bytes` (B/KB/MB/GB/TB) |
-| `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call to the configured `api_url`, rounding, °C/°F |
+| `weather.py` | OpenWeatherMap JSON + `temp_fmt`, `unit_symbol`, `icon_path` | API call to the configured `api_url`, rounding, °C/°F; also writes `condition` + `is_raining` into `generated/weather_cache.json` on a **successful** fetch (a failed call leaves the last good state, so consumers never see a stale flip) |
+| `rain.py` (`scripts/core/`) | — | the v5.0.0 **raindrop layer**: one click-through, behind-everything `Gtk.Window` per monitor, droplets animated with generated GTK3 CSS (`margin-top` `@keyframes`); polls `config.yaml`, `config.local.yaml`, `eww/eww.theme.json`, `generated/weather_cache.json` and the monitor geometry every 2 s; started/stopped by `start.sh` / `stop.sh`, log `logs/rain.log`, PID `run/rain.pid`; `--selftest` verifies click-through + visibility and exits non-zero on failure |
+| `rain_ctl.py` / `rain_panel.py` (`scripts/move/`) | GTK window | the right-click menu's **Raindrops** row: `rain_ctl.py` centers the panel on the menu's monitor and signals the `rain` input session; `rain_panel.py` is the form (Enabled / Auto / Droplets / Speed / Opacity, draggable): the controls are a DRAFT, only **Save** writes the changed keys through `config_set.py` in one pass (one config write = one `eww reload` instead of one per slider tick), the status line shows *Save to apply*, an out-of-range value refuses the whole save with a red inline error, **Reset** drops the local rain overrides and **Cancel** discards |
 | `panel.py` | `{cpu_file, mem_file, down_file, up_file, cpu_txt, ...}` | generating chart SVGs (`charts/*.svg`, 100-point scrolling history), active NIC detection; per-chart colors + glow flag from `eww.theme.json` (`chart.*`), with the `$color-light` regex as fallback |
 | `theme.py` | `eww.theme.scss` + `eww.theme.json` + tinted icons under `generated/icons/` | `config.yaml` `appearance` + `assets/themes/appearance/<name>/appearance.yaml` → EWW theme (+ PNG tinting when `appearance.icon.color` is set); also emits the v3.0.0 style values (`chart.*`, `panel.background.*`, `font.shadow`) as `$chart-*` / `$panel-bg-*` / `$text-shadow` SCSS vars + JSON fields |
 | `config.py` | merged JSON / `--key` values | `config.yaml` + `assets/themes/weather/<name>/weather.yaml` **or** the inline `weather` map → the values for the `defpoll`s |
@@ -539,6 +550,192 @@ shared assets are stored here.
   `language_code`, `lang`, `units`).
 - `assets/fonts/NotoSans-Regular.ttf` — the bundled font (the GTK side still needs the
   `Noto Sans` family installed via fontconfig).
+
+---
+
+## 5b. The raindrop layer (v5.0.0)
+
+`scripts/core/rain.py` is a **standalone GTK3 process**, deliberately *not* an
+eww window. eww 0.6.0 exposes no click-through / input-shape property, so a
+full-screen eww surface would swallow every click on the desktop. Owning a
+`Gtk.Window` makes `Gdk.Window.set_pass_through()` available — but on this
+X11/Cinnamon setup it is **not sufficient**: it returns `True` while the
+full-screen window still swallows every click, so the desktop context menu never
+opened (measured with `xdotool`: the window under the pointer was the rain
+layer, not the desktop). The layer is therefore made unhittable directly:
+
+| Backend | Mechanism |
+|---|---|
+| X11 | an **empty X input shape**: `XShapeSelectInput` + `XShapeCombineRectangles(ShapeInput, 0 rectangles)` through `ctypes`/libXext. The layer *is* a managed window (it has to be, see below), so the WM is free to re-assert a shape — that is why the hole is re-punched on `realize`, on `map` and on every poll instead of being protected by an override-redirect window |
+| Wayland | `set_pass_through(True)` (the only mechanism available there) |
+
+Both are applied by one helper, `punch_input_hole()`, which is called on
+`realize`, on `map` and **again on every 2 s poll** — a WM may re-assert a shape,
+and the layer is remapped whenever auto mode hides/shows it. `--selftest`
+reports `click_through=True` only when the input shape really was emptied on X11,
+never on the strength of the pass-through flag alone.
+
+### How it is stacked
+
+| Backend | Mechanism |
+|---|---|
+| Wayland | `GtkLayerShell.init_for_window` + `Layer.BOTTOM`, anchored to all four edges, `KeyboardMode.NONE` |
+| X11 | a **managed** window with `Gdk.WindowTypeHint.DESKTOP`, moved to the monitor's origin, and an explicit `_NET_ACTIVE_WINDOW` request (`request_desktop_layer()`) |
+
+The X11 arrangement is the only one that works, and it was measured twice over
+(three arrangements were tried):
+
+- `set_keep_below(True)` + the DESKTOP type hint is **ignored at map time**.
+  Every new window lands on top of the stack, and a full-screen layer then
+  paints rain over every open application.
+- An **override-redirect** window with an explicit `XRestackWindows` holds the
+  position for about a second and then the WM puts it back on top (it drifted
+  back while the layer process was `SIGSTOP`ped). The WM neither honours the
+  DESKTOP type nor the requested order for a window it does not manage.
+- A **managed** window plus `_NET_ACTIVE_WINDOW` **works**: the WM runs its
+  restacking pass and applies its own layering, which puts a
+  `_NET_WM_WINDOW_TYPE_DESKTOP` window in the desktop layer — measured moving
+  from the top of the stack (94) to just above the desktop window and below
+  every app window (85) — and it *stays* there, including for windows opened
+  later, because those are stacked above the desktop layer. The request is sent
+  with source indication `2` (pager: it comes from the desktop side, not from
+  an application) and the window is unfocusable, so no keyboard focus moves.
+
+`layer_is_on_desktop()` re-reads `_NET_CLIENT_LIST_STACKING` and checks that the
+layer is above every desktop-type window and below at least one other client —
+the window manager's own stacking list, so the answer does not depend on
+anything the layer believes. Windows the WM does not track (override-redirect
+ones, unmapped helpers) are invisible to that check, and the *other* layer of
+the same process is skipped by `_NET_WM_PID` so it is not mistaken for a
+desktop window. The daemon only warns after `LAYER_WARN_AFTER` (3) consecutive
+misses, because a WM registers a new window asynchronously and the first polls
+after a map legitimately fail. `--selftest` reports `on_desktop=True|False` per
+monitor.
+
+The window is undecorated, non-resizable, unfocusable, skipped in the taskbar
+and the pager. Either way it sits above the wallpaper and below every normal
+window, and every click passes through it.
+
+### How the animation is built
+
+- One `Gtk.Overlay` per monitor, `size_request` = the monitor's full size.
+- Each droplet is a `Gtk.Box` added with `add_overlay()`, positioned by CSS
+  `margin-left` / `min-width` / `min-height` and animated with **one shared
+  `@keyframes raindrop` on `margin-top`**:
+  `from { margin-top: -16px }` → `to { margin-top: <height + 60>px }`.
+- **Why `margin-top` and not `transform`**: GTK 3.24.41's CSS engine rejects
+  `transform` outright (`No property named 'transform'`), and `top` /
+  `width` / `height` are *widget* properties in GTK3, not CSS properties. Only
+  `margin-top` both works and is animatable.
+- **Negative `animation-delay`** per drop (up to one full duration). This is
+  what spreads the rain across the screen: a *positive* delay would leave every
+  drop bunched at the start line until its first cycle ended.
+- **Seeded layout** (`SEED = 20240501`): the same count always yields the same
+  rain, on any machine and after any restart — which is what makes the geometry
+  unit-testable. 30 % of drops are longer, faster streaks
+  (`STREAK_CHANCE`), every drop gets a 0.7-1.4x duration jitter, and drops are
+  sorted by x so the generated CSS is byte-stable.
+- **The count is a density, not a per-monitor total.** It is defined for
+  full HD (`REFERENCE_AREA = 1920*1080`) and scaled by each monitor's own pixel
+  area, so a 1368x768 screen next to a 1920x1080 one gets 12 drops instead of
+  24 — both ~11.5 drops/Mpx, i.e. the same rain everywhere, and the CPU cost
+  follows the pixels actually painted rather than the number of monitors.
+- **Stratified x, never random x.** Drop *i* is jittered inside its own
+  `width/count`-wide column. Pure random x left whole vertical bands empty —
+  measured: the 960-1152 px band of the 1920x1080 screen had **no drop at
+  all**, and because the seed is fixed it painted the same sparse pattern at
+  every screen size, which read as "the rain does not fall across the whole
+  width". Every 10 % band is now guaranteed a drop.
+- `speed` maps linearly onto the animation duration: **2.4 s at 1** down to
+  **0.55 s at 10** (`DURATION_SLOW` / `DURATION_FAST`).
+- The tint is read from `eww/eww.theme.json` (`color_light`, then `menu_ink`,
+  then `color_dark`), so the rain matches the active theme instead of being a
+  foreign white on a dark desktop.
+- The provider is registered at `GTK_STYLE_PROVIDER_PRIORITY_APPLICATION` and
+  the **previous provider is removed first** — providers registered for a
+  screen are only dropped by removing them, so a slider drag would otherwise
+  stack one provider per frame and leak the old rules (whose
+  equal-specificity `.rain-drop-*` classes race the new ones).
+
+### When does it rain?
+
+`RainApp.active_now()` combines the settings:
+
+```
+enabled == false            -> hidden (and the droplet widgets are released)
+count == 0                  -> hidden
+auto == true  and not raining -> hidden
+otherwise                   -> shown
+```
+
+"raining" is `is_raining` from `generated/weather_cache.json`, which
+`weather.py` writes on every successful fetch. OpenWeatherMap's
+`weather[0].main` is a single token from a fixed vocabulary, so it is matched
+case-insensitively for **exact membership** against `Rain`, `Drizzle`,
+`Thunderstorm`, `Squall`, `Shower`, `Snow`. `Mist` / `Fog`
+/ `Haze` / `Smoke` / `Dust` / `Sand` / `Ash` / `Tornado` deliberately do **not**
+count — nothing is visibly falling, and the widget's own icon already reports
+them. A missing or corrupt cache falls back to `True` (showing rain) rather
+than a silently dry screen, which is the friendlier failure.
+
+**There is no intensity scaling.** The droplet count comes from the panel, not
+from the API: OpenWeatherMap's condition list has no rain-intensity field, and
+a heavy shower should not cost ten times the CPU of a light one.
+
+### Config keys
+
+`config.yaml` → `weather.rain.*` (overridable in `config.local.yaml`; written
+by `config_set.py` under the `rain_` prefixed key names, all of them **global**,
+i.e. `--monitor` is rejected):
+
+| key | range | meaning |
+|---|---|---|
+| `enabled` | bool | master switch; `false` removes the layer entirely |
+| `auto` | bool | only fall while it actually rains |
+| `count` | 0-120 | droplets on screen per monitor |
+| `speed` | 1-10 | 1 = drizzle (~2.4 s/drop), 10 = downpour (~0.55 s/drop) |
+| `opacity` | 0.0-1.0 | droplet opacity |
+
+### Lifecycle and the config
+
+- `start.sh` → `start_rain()` sweeps leftovers (`sweep_kill`) **before**
+  starting, so repeated starts can never stack two full-screen layers;
+  PID `run/rain.pid`, log `logs/rain.log`.
+- `stop.sh` → `stop_rain()` kills by pid file, then `sweep_kill` catches
+  generations whose pid file is gone.
+- `hard-reset.sh` restarts the layer after a factory reset — but only when eww
+  is actually running, so a reset on a stopped install never spawns a stray
+  full-screen window.
+- The layer writes nothing. It survives `eww reload` and re-reads
+  `config.yaml`, `config.local.yaml`, `eww/eww.theme.json`,
+  `generated/weather_cache.json` and the monitor geometry by mtime every
+  `POLL_SEC` (2 s), so panel edits, a theme switch, a weather refresh, a
+  hotplug or a resolution change all apply without a restart.
+
+### Verifying it
+
+```bash
+python3 ~/.eww/Clock-With-Weather-EWW/scripts/core/rain.py     ~/.eww/Clock-With-Weather-EWW --selftest
+```
+
+Prints one line per monitor and exits non-zero when a *shown* layer is not
+click-through, when a layer's visibility disagrees with the config, or when a
+layer that should have rain is empty:
+
+```
+monitor 0: size=1920x1080 click_through=True on_desktop=True drops=24 visible=True expected_visible=True
+monitor 1: size=1368x768  click_through=True on_desktop=True drops=12 visible=True expected_visible=True
+```
+
+Troubleshooting:
+
+| Symptom | Cause / fix |
+|---|---|
+| The rain is there but clicks are swallowed | The input shape was lost (the WM re-asserted it, or the window was never realized). The poll re-punches it every 2 s and logs `click-through lost on monitor N`; check `logs/rain.log`. On X11 the punch needs `libXext.so.6` (present on every X11 system) — `--selftest` prints `click_through=False` if it could not be applied. |
+| The rain covers only part of a wide monitor | Fixed in v5.0.0: x is stratified and the count scales with the area. If it happens again, check that `plan_drops()` is reached with the monitor's real `width`/`height` (the layer rebuilds on a monitor-geometry change). |
+| No rain, `auto: true` | Check `generated/weather_cache.json` — `is_raining` is what the layer reads, and `weather.py` only refreshes it on a **successful** fetch. |
+| The rain does not follow the clock's temperature | Both read the same 10-minute `defpoll`; a mismatch means the cache is older than the widget data. |
+| Too much CPU | Lower `count` (see the table in the release notes) or set `count: 0`. |
 
 ---
 

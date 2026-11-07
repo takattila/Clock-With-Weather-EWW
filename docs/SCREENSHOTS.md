@@ -1,4 +1,4 @@
-# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor, + v4.1.0 progress bars, + v4.2.0 About report)
+# Screenshots — Theme Gallery (v3.0.0, + v3.1.0 windows, + v4.0.0 theme editor, + v4.1.0 progress bars, + v4.2.0 About report, + v5.0.0 raindrops)
 
 Every ready-made appearance theme, captured on a 1920×1080 monitor —
 **45 themes: 9 style themes and 12 classic color themes (each in a fully
@@ -302,3 +302,45 @@ color:
 | Color picker — live preview (over #ffa368) |
 |---|
 | ![Color picker preview](images/screenshots/color-picker-preview.png) |
+
+## Raindrop effect (v5.0.0)
+
+The rain layer is a **separate, click-through window behind the desktop**, so
+it never appears "on" the widget: it rains over the wallpaper and *under* every
+other window. Two captures belong here once the layer is running on a machine
+with `count: 24` and a visible desktop:
+
+| Rain over the desktop — `window-raindrops-main.png` |
+|---|
+| *(to be captured — see below)* |
+
+| Raindrops settings — `window-raindrops.png` |
+|---|
+| *(to be captured — see below)* |
+
+To capture them, start the layer and use the same `spectacle` command as in
+WIKI section 7 (the widget is a native GTK window, so the headless-Chrome
+harness in `tools/screenshots/` cannot take it):
+
+```bash
+# 1. make it rain regardless of the real weather (auto off = manual mode).
+#    setup.sh only does the first-time API-key setup, it does NOT touch the
+#    rain settings - these are the keys the panel writes:
+CS=~/.eww/Clock-With-Weather-EWW/scripts/core/config_set.py
+python3 "$CS" --key rain_enabled --value true
+python3 "$CS" --key rain_auto    --value false
+python3 "$CS" --key rain_count   --value 24
+python3 "$CS" --key rain_speed   --value 5
+python3 "$CS" --key rain_opacity --value 0.35
+#    (equivalent to: weather: { rain: { enabled: true, auto: false, ... } }
+#     in config.local.yaml)
+# 2. right-click the clock -> Raindrops, and shoot the panel; ESC closes it
+# 3. shoot the desktop with the layer running:
+spectacle -b -o docs/images/screenshots/window-raindrops-main.png
+```
+
+What a good shot shows: the droplets are **behind** an open window (the window
+stays crisp and fully readable), the tint follows the theme (a light-blue
+accent on the light themes, the theme's accent on the dark ones), and — for the
+panel shot — the window is **centered on the monitor** the menu was opened on,
+with the *Save to apply* hint visible after moving a slider.

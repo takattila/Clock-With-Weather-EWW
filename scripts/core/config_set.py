@@ -41,6 +41,12 @@ error):
    ./config_set.py --key lang --value hu             -> weather.lang
    ./config_set.py --key api_url --value https://... -> weather.api_url
 
+   ./config_set.py --key rain_enabled --value false  -> weather.rain.enabled
+   ./config_set.py --key rain_auto --value false     -> weather.rain.auto
+   ./config_set.py --key rain_count --value 40       -> weather.rain.count  (0-120)
+   ./config_set.py --key rain_speed --value 8        -> weather.rain.speed  (1-10)
+   ./config_set.py --key rain_opacity --value 0.5    -> weather.rain.opacity (0.0-1.0)
+
 Keys not touched by this run are preserved: the whole previous local tree is
 loaded, updated and dumped back. Values are coerced (positions and gaps to
 int, scale to float, panel_enabled to bool, the rest kept as strings),
@@ -94,11 +100,16 @@ def coerce_value(key, raw):
             return float(raw)
         except (TypeError, ValueError):
             sys.exit("ERROR: %s must be a number, got: %s" % (key, raw))
-    if key == "enabled":
+    if key in ("enabled", "auto"):
         flag = str(raw).strip().lower()
         if flag in ("true", "false"):
             return flag == "true"
-        sys.exit("ERROR: panel_enabled must be true or false, got: %s" % (raw,))
+        sys.exit("ERROR: %s must be true or false, got: %s" % (key, raw))
+    if key == "opacity":
+        try:
+            return float(str(raw).strip())
+        except (TypeError, ValueError):
+            sys.exit("ERROR: opacity must be a number, got: %s" % (raw,))
     if key in ("hour_format", "appearance", "units", "alignment",
                "progress_mode", "city", "language_code", "lang", "api_url"):
         return str(raw).strip()
@@ -166,6 +177,38 @@ def resolve_target(args):
         if str(args.value) not in ("text", "progress"):
             sys.exit("ERROR: progress_mode must be text or progress, got: %s" % (args.value,))
         return ["system", "progress_mode"], "system.progress_mode"
+
+    # --- raindrop-effect keys (v5.0.0; weather.rain.*) -----------------------
+    if args.key.startswith("rain_"):
+        reject_monitor(args)
+        leaf = args.key[len("rain_"):]
+        if leaf in ("enabled", "auto"):
+            return ["weather", "rain", leaf], "weather.rain.%s" % leaf
+        if leaf == "count":
+            try:
+                value = int(str(args.value).strip())
+            except (TypeError, ValueError):
+                sys.exit("ERROR: rain_count must be an integer, got: %s" % (args.value,))
+            if not 0 <= value <= 120:
+                sys.exit("ERROR: rain_count must be between 0 and 120, got: %s" % (args.value,))
+            return ["weather", "rain", "count"], "weather.rain.count"
+        if leaf == "speed":
+            try:
+                value = int(str(args.value).strip())
+            except (TypeError, ValueError):
+                sys.exit("ERROR: rain_speed must be an integer, got: %s" % (args.value,))
+            if not 1 <= value <= 10:
+                sys.exit("ERROR: rain_speed must be between 1 and 10, got: %s" % (args.value,))
+            return ["weather", "rain", "speed"], "weather.rain.speed"
+        if leaf == "opacity":
+            try:
+                value = float(str(args.value).strip())
+            except (TypeError, ValueError):
+                sys.exit("ERROR: rain_opacity must be a number, got: %s" % (args.value,))
+            if not 0.0 <= value <= 1.0:
+                sys.exit("ERROR: rain_opacity must be between 0.0 and 1.0, got: %s" % (args.value,))
+            return ["weather", "rain", "opacity"], "weather.rain.opacity"
+        sys.exit("ERROR: unsupported rain key: %s" % args.key)
 
     # --- widget-scoped keys --------------------------------------------------
     if args.widget is None:

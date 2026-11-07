@@ -82,9 +82,25 @@ stop_helpers() {
   done
 }
 
+# Stop the raindrop layer (PID file written by scripts/bin/start.sh, v5.0.0).
+# The pidfile kill is followed by a pattern sweep in main(), because the
+# pidfile only reaches the newest instance and a full-screen layer left running
+# would keep animating over the desktop after the widget was stopped.
+stop_rain() {
+  if [ -f "$DIR/run/rain.pid" ]; then
+    PID="$(cat "$DIR/run/rain.pid" 2>/dev/null)"
+    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+      kill "$PID" 2>/dev/null || true
+      echo "raindrop layer stopped (PID $PID)"
+    fi
+    rm -f "$DIR/run/rain.pid"
+  fi
+}
+
 main() {
   stop_watcher
   stop_monitor_watch
+  stop_rain
   stop_helpers
   stop_eww
   # Pattern-based sweep AFTER the pidfile kills: the pidfile approach only
@@ -95,6 +111,7 @@ main() {
   # never handled before (it is started lazily via sudo from session.py).
   sweep_kill "${DIR}/scripts/core/watch\.py"
   sweep_kill "${DIR}/scripts/core/monitor_watch\.py"
+  sweep_kill "${DIR}/scripts/core/rain\.py"
   sweep_kill "${DIR}/scripts/move/input_daemon\.py"
   echo "Clock + weather widget and system monitor panel stopped (eww)."
 }
