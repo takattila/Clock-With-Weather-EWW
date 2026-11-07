@@ -773,6 +773,7 @@ def test_empty_input_shape_gives_the_window_no_input_region():
 def test_punch_input_hole_needs_the_shape_on_x11(monkeypatch, fake_xshape):
     # pass_through alone was measured NOT to be enough on this X11 setup, so
     # it must not be reported as a working click-through on its own.
+    monkeypatch.setattr(rain, "WAYLAND", False)
     xext, _x11 = fake_xshape
     assert rain.punch_input_hole(_FakeGdkWindow()) is True
     assert xext.combine, "the X input shape must be emptied too"
@@ -782,18 +783,67 @@ def test_punch_input_hole_needs_the_shape_on_x11(monkeypatch, fake_xshape):
     assert window.get_pass_through() is True
 
 
-def test_punch_input_hole_uses_only_pass_through_on_wayland(monkeypatch):
-    # Wayland has no XShape: set_pass_through is the whole mechanism there.
+def test_punch_input_hole_uses_the_wayland_input_shape(monkeypatch):
+    # Wayland has no XShape, and set_pass_through is a no-op there: the empty
+    # input region is the mechanism that actually lets clicks through. Without
+    # it the full-screen layer swallowed every right-click on the clock.
     monkeypatch.setattr(rain, "WAYLAND", True)
-    xext, _x11 = _FakeXext(), _FakeXlib()
-    rain._x11_libs = (_x11, xext)
+    calls = []
+    monkeypatch.setattr(rain, "empty_input_shape_wayland",
+                        lambda w: calls.append(w) or True)
     window = _FakeGdkWindow()
     assert rain.punch_input_hole(window) is True
-    assert xext.combine == []
+    assert calls == [window]
     assert window.get_pass_through() is True
 
 
+def test_empty_input_shape_wayland_empties_the_surface_region(monkeypatch):
+    pytest.importorskip("cairo")
+
+    class _Display:
+        def __init__(self):
+            self.flushed = 0
+
+        def supports_input_shapes(self):
+            return True
+
+        def flush(self):
+            self.flushed += 1
+
+    class _Win:
+        def __init__(self):
+            self.calls = []
+
+        def input_shape_combine_region(self, region, x, y):
+            self.calls.append((region, x, y))
+
+    display = _Display()
+    monkeypatch.setattr(rain.Gdk.Display, "get_default",
+                        staticmethod(lambda: display))
+    window = _Win()
+    assert rain.empty_input_shape_wayland(window) is True
+    region, x, y = window.calls[0]
+    assert region.is_empty(), "an empty region is what lets the click through"
+    assert (x, y) == (0, 0)
+    assert display.flushed == 1
+
+
+def test_empty_input_shape_wayland_reports_no_input_shape_support(monkeypatch):
+    class _Display:
+        def supports_input_shapes(self):
+            return False
+
+    class _Win:
+        def input_shape_combine_region(self, *_args):
+            raise AssertionError("must not touch the window without support")
+
+    monkeypatch.setattr(rain.Gdk.Display, "get_default",
+                        staticmethod(lambda: _Display()))
+    assert rain.empty_input_shape_wayland(_Win()) is False
+
+
 def test_punch_input_hole_reports_failure_without_libxext(monkeypatch):
+    monkeypatch.setattr(rain, "WAYLAND", False)
     monkeypatch.setattr(rain, "_load_x11", lambda: (None, None))
     assert rain.empty_input_shape(_FakeGdkWindow()) is False
     # No crash, and the failure is visible (the daemon logs it) rather than
@@ -802,6 +852,8 @@ def test_punch_input_hole_reports_failure_without_libxext(monkeypatch):
 
 
 def test_punch_input_hole_survives_a_broken_window(monkeypatch):
+    monkeypatch.setattr(rain, "WAYLAND", False)
+
     class _Broken:
         def set_pass_through(self, _v):
             raise RuntimeError("window gone")

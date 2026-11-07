@@ -5,8 +5,10 @@ v5.0.0. Why this is a standalone GTK3 process and not an eww window: eww 0.6.0
 exposes no click-through / input-shape property, so a full-screen eww surface
 would swallow every click on the desktop. Measured on this machine
 (`strings $(which eww) | grep -i pass.through` -> nothing). This process owns
-its own GtkWindow instead, where `Gdk.Window.set_pass_through` is available and
-verified to return True (see `pass_through` assertion in `RainLayer`).
+its own GtkWindow instead, where the surface input region can be emptied: with
+`Gdk.Window.input_shape_combine_region(empty_region)` on Wayland and XShape on
+X11. (`Gdk.Window.set_pass_through` returns True on Wayland but is a no-op
+there, so it is NOT enough on its own.)
 
 Stacking: layer-shell Layer.BOTTOM on Wayland (below every normal window, above
 the wallpaper). On X11 the layer is a MANAGED window with the DESKTOP type hint
@@ -309,18 +311,21 @@ def read_tint(config_dir):
 # Click-through: punching the input hole
 # --------------------------------------------------------------------------
 # The layer is a full-screen window, so it must be UNHITTABLE - every click
-# has to fall through to the desktop under it. Two mechanisms, because one is
-# not enough:
+# has to fall through to the desktop under it. One mechanism per backend,
+# because Gdk.Window.set_pass_through(True) is a no-op on Wayland even though
+# get_pass_through() returns True there:
 #
-#   * Gdk.Window.set_pass_through(True) is the portable call, and the only one
-#     on Wayland. On this X11 setup it is NOT enough: get_pass_through()
-#     returned True while the window still swallowed every click, so the
-#     desktop context menu never opened (measured with xdotool: the window
-#     under the pointer was the rain layer, not the desktop).
-#   * An EMPTY X input shape is what actually works. Done through XShape
-#     (ShapeInput + zero rectangles) on the toplevel, which is exactly what a
-#     click-through overlay needs, and it also survives a WM re-shaping the
-#     window. ctypes + libXext, both always present on X11 - no new dependency.
+#   * Wayland: an EMPTY input shape. GDK's Wayland backend implements
+#     gdk_window_input_shape_combine_region() with the core protocol's
+#     wl_surface.set_input_region, so an empty cairo region makes the whole
+#     surface transparent to input. Without it the full-screen layer swallowed
+#     every right-click on the clock and the desktop (measured).
+#   * X11: an EMPTY X input shape. set_pass_through alone was measured NOT to
+#     be enough here: get_pass_through() returned True while the window still
+#     swallowed every click, so the desktop context menu never opened. XShape
+#     (ShapeInput + zero rectangles) on the toplevel is what works, and it
+#     also survives a WM re-shaping the window. ctypes + libXext, both always
+#     present on X11 - no new dependency.
 #
 # The layer IS a managed window on X11 (it has to be, to reach the desktop
 # layer), and a managed window can get its input shape overwritten by the window
@@ -405,6 +410,31 @@ def empty_input_shape(gdk_window):
     finally:
         if display:
             x11.XCloseDisplay(display)
+
+
+def empty_input_shape_wayland(gdk_window):
+    """Make a Wayland window unhittable by emptying its input region.
+
+    GDK's Wayland backend really maps `input_shape_combine_region()` onto the
+    core `wl_surface.set_input_region` request, so an EMPTY cairo region is
+    what lets clicks through. `set_pass_through` is a no-op there (it only
+    reports its own flag), which is why the layer used to swallow every
+    right-click on the clock and on the desktop.
+
+    Returns True only when the display advertises input-shape support AND the
+    call succeeded; safe to call repeatedly (GDK creates and destroys the
+    wl_region itself, so this does not leak protocol objects).
+    """
+    try:
+        display = Gdk.Display.get_default()
+        if display is None or not display.supports_input_shapes():
+            return False
+        import cairo
+        gdk_window.input_shape_combine_region(cairo.Region(), 0, 0)
+        display.flush()
+        return True
+    except Exception:
+        return False
 
 
 # --- X11: keeping the layer on the desktop ---------------------------------
@@ -604,16 +634,15 @@ def punch_input_hole(gdk_window):
 
     Returns True only when the window really is unhittable *here*: on X11 that
     means the input shape was emptied (set_pass_through alone was measured not
-    to be enough), on Wayland it means pass_through was accepted.
+    to be enough), on Wayland it means the surface input region was emptied
+    (set_pass_through is a no-op there).
     """
-    passed_through = False
     try:
         gdk_window.set_pass_through(True)
-        passed_through = bool(gdk_window.get_pass_through())
     except Exception:
-        passed_through = False
+        pass
     if WAYLAND:
-        return passed_through
+        return empty_input_shape_wayland(gdk_window)
     return empty_input_shape(gdk_window)
 
 
@@ -800,6 +829,10 @@ class RainLayer:
 
     def stack_on_desktop(self):
         """Keep the layer on the desktop: above the wallpaper, below apps."""
+        if WAYLAND:
+            # gtk-layer-shell owns stacking on Wayland (Layer.BOTTOM); the EWMH
+            # checks below are X11-only and would always report a miss there.
+            return True
         gdk_window = self.win.get_window()
         if gdk_window is None:
             return False
